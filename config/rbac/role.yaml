@@ -1,11 +1,84 @@
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  labels:
-    app.kubernetes.io/name: ocm-k8s-toolkit
-    app.kubernetes.io/managed-by: kustomize
   name: manager-role
 rules:
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "list", "watch"]
+- apiGroups:
+  - delivery.ocm.software
+  resources:
+  - components
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - delivery.ocm.software
+  resources:
+  - components/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - delivery.ocm.software
+  resources:
+  - components/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - delivery.ocm.software
+  resources:
+  - ocmrepositories
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - delivery.ocm.software
+  resources:
+  - ocmrepositories/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - delivery.ocm.software
+  resources:
+  - ocmrepositories/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - delivery.ocm.software
+  resources:
+  - resources
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - delivery.ocm.software
+  resources:
+  - resources/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - delivery.ocm.software
+  resources:
+  - resources/status
+  verbs:
+  - get
+  - patch
+  - update

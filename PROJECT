@@ -7,4 +7,32 @@ layout:
 - go.kubebuilder.io/v4
 projectName: ocm-k8s-toolkit
 repo: github.com/open-component-model/ocm-k8s-toolkit
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: ocm.software
+  group: delivery
+  kind: OCMRepository
+  path: github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: ocm.software
+  group: delivery
+  kind: Component
+  path: github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: ocm.software
+  group: delivery
+  kind: Resource
+  path: github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1
+  version: v1alpha1
 version: "3"
