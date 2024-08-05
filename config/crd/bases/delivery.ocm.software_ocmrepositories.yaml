@@ -41,7 +41,9 @@ spec:
             properties:
               configSet:
                 description: |-
-                  If the SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be
+                  The secrets referred to by SecretRef (or SecretRefs) may contain ocm config data. The ocm config allows to
+                  specify sets of configuration data (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
+                  SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be
                   effective.
                 type: string
               interval:
@@ -160,6 +162,11 @@ spec:
                   type: object
                 type: array
               configSets:
+                description: |-
+                  The secrets referred to by SecretRef (or SecretRefs) may contain ocm config data. The ocm config allows to
+                  specify sets of configuration data (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
+                  SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be
+                  effective.
                 type: string
               message:
                 type: string
