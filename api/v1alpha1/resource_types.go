@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -34,7 +35,7 @@ type ResourceSpec struct {
 	// +required
 	Resource ResourceId `json:"resource"`
 	// +optional
-	ResourceSelector ResourceSelector `json:"resourceSelector"`
+	ResourceSelector *apiextensionsv1.JSON `json:"resourceSelector"`
 	// +optional
 	SecretRef v1.LocalObjectReference `json:"secretRef,omitempty"`
 	// +optional

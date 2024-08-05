@@ -22,6 +22,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/server"
 
@@ -152,11 +153,13 @@ func main() {
 		setupLog.Error(err, "unable to initialize storage")
 		os.Exit(1)
 	}
+	ocmClient := ocm.NewClient()
 
 	if err = (&controller.ComponentReconciler{
-		Client:  mgr.GetClient(),
-		Scheme:  mgr.GetScheme(),
-		Storage: storage,
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		Storage:   storage,
+		OCMClient: ocmClient,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Component")
 		os.Exit(1)

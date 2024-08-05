@@ -22,15 +22,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // ComponentSpec defines the desired state of Component
 type ComponentSpec struct {
 	// +required
 	RepositoryRef ObjectKey `json:"repositoryRef"`
 	// +required
 	Component string `json:"component"`
+	// Semver defines the constraint of the fetched version. '>=v0.1'.
 	// +required
 	Semver string `json:"semver"`
 	// +optional
@@ -81,8 +79,6 @@ type ComponentStatus struct {
 	// effective.
 	// +optional
 	ConfigSet string `json:"configSet,omitempty"`
-	// +optional
-	ArtifactName string `json:"artifactName,omitempty"`
 }
 
 // +kubebuilder:object:root=true

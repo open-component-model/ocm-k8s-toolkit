@@ -39,6 +39,7 @@ spec:
           - --storage-adv-addr=ocm-k8s-toolkit-artifact-service.ocm-k8s-toolkit-system.svc.cluster.local.
         image: controller:latest
         name: manager
+        imagePullPolicy: Always
         ports:
           - containerPort: 9090
             name: http

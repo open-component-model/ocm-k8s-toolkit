@@ -1,0 +1,10 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Component
+metadata:
+  name: podinfo-component
+spec:
+  component: github.com/acme/podinfo
+  interval: 10m
+  repositoryRef:
+    name: podinfo-repo
+  semver: v0.0.1

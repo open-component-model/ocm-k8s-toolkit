@@ -27,6 +27,7 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -43,7 +44,7 @@ type ComponentReconciler struct {
 	Scheme *runtime.Scheme
 
 	Storage   *storage.Storage
-	OCMClient ocm.Client
+	OCMClient ocm.Contract
 }
 
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=components,verbs=get;list;watch;create;update;patch;delete
@@ -82,8 +83,6 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}()
 
-	// TODO: Add defer patch object status and conditions
-
 	repositoryObject := &deliveryv1alpha1.OCMRepository{}
 	if err := r.Get(ctx, types.NamespacedName{
 		Namespace: obj.Spec.RepositoryRef.Namespace,
@@ -114,7 +113,7 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, fmt.Errorf("failed to create authenticated OCM context: %w", err)
 	}
 
-	cv, err := r.OCMClient.GetComponentVersion(ctx, octx, obj, repositoryObject)
+	cv, err := r.OCMClient.GetComponentVersion(ctx, octx, obj, "v0.0.1", repositoryObject.Spec.RepositorySpec.Raw)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to retrieve component: %w", err)
 	}
@@ -131,17 +130,16 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, fmt.Errorf("failed to write file: %w", err)
 	}
 
-	// componentversionname-componentversionversion.tar.gz
-	// It could be possible that this is not enough.
 	revision := r.normalizeComponentVersionName(cv.GetName()) + "-" + cv.GetVersion()
-	// sha of this file as a revision?
 	if err := r.Storage.ReconcileArtifact(ctx, obj, revision, tmpDir, revision+".tar.gz", func(art *artifactv1.Artifact, s string) error {
 		// Archive directory to storage
 		if err := r.Storage.Archive(art, tmpDir, nil); err != nil {
 			return fmt.Errorf("unable to archive artifact to storage: %w", err)
 		}
 
-		obj.Status.ArtifactName = art.Name
+		obj.Status.ArtifactRef = v1.LocalObjectReference{
+			Name: art.Name,
+		}
 
 		return nil
 	}); err != nil {
@@ -149,6 +147,11 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// Update status
+	obj.Status.Component = deliveryv1alpha1.ComponentInfo{
+		RepositorySpec: repositoryObject.Spec.RepositorySpec,
+		Component:      obj.Spec.Component,
+		Version:        cv.GetVersion(),
+	}
 
 	// Return done.
 

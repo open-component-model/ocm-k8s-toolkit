@@ -63,6 +63,7 @@ spec:
                     type: string
                 type: object
               resource:
+                description: RepositorySpec defines the configuration of the repository.
                 properties:
                   extraIdentity:
                     additionalProperties:
@@ -72,22 +73,22 @@ spec:
                     type: string
                 type: object
               resourceSelector:
-                description: |-
-                  RawMessage is a raw encoded JSON value.
-                  It implements [Marshaler] and [Unmarshaler] and can
-                  be used to delay JSON decoding or precompute a JSON encoding.
-                format: byte
-                type: string
+                x-kubernetes-preserve-unknown-fields: true
               secretRef:
                 description: |-
                   LocalObjectReference contains enough information to let you locate the
                   referenced object inside the same namespace.
                 properties:
                   name:
+                    default: ""
                     description: |-
                       Name of the referent.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
                       TODO: Add other useful fields. apiVersion, kind, uid?
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      TODO: Drop `kubebuilder:default` when controller-gen doesn't need it https://github.com/kubernetes-sigs/kubebuilder/issues/3896.
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
@@ -98,10 +99,15 @@ spec:
                     referenced object inside the same namespace.
                   properties:
                     name:
+                      default: ""
                       description: |-
                         Name of the referent.
-                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        This field is effectively required, but due to backwards compatibility is
+                        allowed to be empty. Instances of this type with an empty value here are
+                        almost certainly wrong.
                         TODO: Add other useful fields. apiVersion, kind, uid?
+                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        TODO: Drop `kubebuilder:default` when controller-gen doesn't need it https://github.com/kubernetes-sigs/kubebuilder/issues/3896.
                       type: string
                   type: object
                   x-kubernetes-map-type: atomic
@@ -161,10 +167,15 @@ spec:
                   verified, other controllers (e.g. Resource controller) can use this without having to verify the signature again
                 properties:
                   name:
+                    default: ""
                     description: |-
                       Name of the referent.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
                       TODO: Add other useful fields. apiVersion, kind, uid?
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      TODO: Drop `kubebuilder:default` when controller-gen doesn't need it https://github.com/kubernetes-sigs/kubebuilder/issues/3896.
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
@@ -173,12 +184,7 @@ spec:
                   component:
                     type: string
                   repositorySpec:
-                    description: |-
-                      RawMessage is a raw encoded JSON value.
-                      It implements [Marshaler] and [Unmarshaler] and can
-                      be used to delay JSON decoding or precompute a JSON encoding.
-                    format: byte
-                    type: string
+                    x-kubernetes-preserve-unknown-fields: true
                   version:
                     type: string
                 type: object
@@ -293,10 +299,15 @@ spec:
                     referenced object inside the same namespace.
                   properties:
                     name:
+                      default: ""
                       description: |-
                         Name of the referent.
-                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        This field is effectively required, but due to backwards compatibility is
+                        allowed to be empty. Instances of this type with an empty value here are
+                        almost certainly wrong.
                         TODO: Add other useful fields. apiVersion, kind, uid?
+                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        TODO: Drop `kubebuilder:default` when controller-gen doesn't need it https://github.com/kubernetes-sigs/kubebuilder/issues/3896.
                       type: string
                   type: object
                   x-kubernetes-map-type: atomic
