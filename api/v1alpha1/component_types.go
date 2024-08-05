@@ -81,6 +81,8 @@ type ComponentStatus struct {
 	// effective.
 	// +optional
 	ConfigSet string `json:"configSet,omitempty"`
+	// +optional
+	ArtifactName string `json:"artifactName,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -93,6 +95,14 @@ type Component struct {
 
 	Spec   ComponentSpec   `json:"spec,omitempty"`
 	Status ComponentStatus `json:"status,omitempty"`
+}
+
+func (in *Component) GetObjectMeta() *metav1.ObjectMeta {
+	return &in.ObjectMeta
+}
+
+func (in *Component) GetKind() string {
+	return "Component"
 }
 
 // +kubebuilder:object:root=true
