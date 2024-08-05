@@ -75,6 +75,10 @@ type ResourceStatus struct {
 	// if they do not explicitly refer a secret.
 	// +optional
 	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
+	// The secrets referred to by SecretRef (or SecretRefs) may contain ocm config data. The ocm config allows to
+	// specify sets of configuration data (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
+	// SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be
+	// effective.
 	// +optional
 	ConfigSet string `json:"configSet,omitempty"`
 }
