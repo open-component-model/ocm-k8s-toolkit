@@ -82,3 +82,29 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - openfluxcd.mandelsoft.org
+  resources:
+  - artifacts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - openfluxcd.mandelsoft.org
+  resources:
+  - artifacts/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - openfluxcd.mandelsoft.org
+  resources:
+  - artifacts/status
+  verbs:
+  - get
+  - patch
+  - update
