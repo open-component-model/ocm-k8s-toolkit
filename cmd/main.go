@@ -19,6 +19,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -48,6 +49,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(deliveryv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(artifactv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
