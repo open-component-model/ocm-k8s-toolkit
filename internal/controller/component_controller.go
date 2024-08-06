@@ -25,7 +25,6 @@ import (
 	"strings"
 
 	"github.com/fluxcd/pkg/runtime/patch"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	v1 "k8s.io/api/core/v1"
@@ -37,6 +36,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 )
 
 // ComponentReconciler reconciles a Component object

@@ -17,15 +17,12 @@ package ocm
 
 import (
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/filesystem"
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-)
 
-const (
-	Signature = "test-signature"
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
 type testEnv struct {

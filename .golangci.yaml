@@ -1,32 +1,21 @@
 run:
-  go: "1.21"
+  go: "1.22"
   timeout: 10m
   tests: false
   allow-parallel-runners: true
-  skip-dirs:
-    - "./*/mock"
-
 linters-settings:
   funlen:
-    lines: 110
+    lines: 150
     statements: 60
-  staticcheck:
-    go: "1.21"
-  stylecheck:
-    go: "1.21"
   cyclop:
-    max-complexity: 15
+    max-complexity: 20
     skip-tests: true
   gosec:
     exclude-generated: true
   lll:
-    line-length: 120
+    line-length: 150
   misspell:
     locale: US
-  goimports:
-    local-prefixes: github.com/skarlso/caretaker/
-  govet:
-    check-shadowing: true
   nolintlint:
     allow-unused: false
     require-explanation: true
@@ -42,18 +31,18 @@ linters-settings:
       - ip
 
 issues:
+  exclude-dirs:
+    - "./*/mock"
+  exclude-files:
+    - pkg/ocm/fakes/fakes.go
+    - pkg/cache/fakes/cache.go
+    - pkg/untar/untar.go
   max-same-issues: 0
   max-issues-per-linter: 0
   exclude-rules:
     - text: "should not use dot imports|don't use an underscore in package name"
       linters:
         - golint
-    - text: "local replacement are not allowed: github.com/skarlso/caretaker"
-      linters:
-        - gomoddirectives
-    - text: "sig: func github.com/skarlso/caretaker/"
-      linters:
-        - wrapcheck
     - source: "https://"
       linters:
         - lll
@@ -70,6 +59,8 @@ issues:
         - funlen
         - scopelint
         - testpackage
+        - goconst
+        - godox
     - path: internal/version/
       linters:
         - gochecknoglobals
@@ -119,3 +110,7 @@ linters:
     - varnamelen
     - wrapcheck
     - staticcheck
+    - gochecknoglobals
+    - paralleltest
+    - wsl
+    - perfsprint

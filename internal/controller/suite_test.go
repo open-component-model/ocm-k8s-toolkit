@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -97,7 +98,12 @@ var (
 		Spec: v1alpha1.ComponentSpec{
 			Interval:  metav1.Duration{Duration: 10 * time.Minute},
 			Component: "github.com/open-component-model/test-component",
-			Verify:    []v1alpha1.Verification{},
+			RepositoryRef: v1alpha1.ObjectKey{
+				Namespace: "default",
+				Name:      "test-repository",
+			},
+			Semver: "v0.1.0",
+			Verify: []v1alpha1.Verification{},
 		},
 	}
 	DefaultResource = &v1alpha1.Resource{
@@ -116,7 +122,7 @@ var (
 )
 
 func getMockComponent(
-	cv *v1alpha1.Component,
+	name, version string,
 	opts ...fakes.AccessOptionFunc,
 ) ocm.ComponentVersionAccess {
 	res := &fakes.Resource[*ocm.ResourceMeta]{
@@ -127,8 +133,8 @@ func getMockComponent(
 		AccessOptions: opts,
 	}
 	comp := &fakes.Component{
-		Name:      cv.Spec.Component,
-		Version:   cv.Spec.Semver,
+		Name:      name,
+		Version:   version,
 		Resources: []*fakes.Resource[*ocm.ResourceMeta]{res},
 	}
 	res.Component = comp
@@ -142,6 +148,7 @@ func TestMain(m *testing.M) {
 	scheme := runtime.NewScheme()
 	_ = v1alpha1.AddToScheme(scheme)
 	_ = corev1.AddToScheme(scheme)
+	_ = artifactv1.AddToScheme(scheme)
 
 	env = &testEnv{
 		scheme: scheme,
