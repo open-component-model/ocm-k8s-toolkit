@@ -6,4 +6,6 @@ spec:
   repositorySpec:
     baseUrl: ghcr.io/open-component-model
     type: OCIRegistry
+  secretRef:
+    name: pull-creds
   interval: 10m

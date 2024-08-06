@@ -153,7 +153,7 @@ func main() {
 		setupLog.Error(err, "unable to initialize storage")
 		os.Exit(1)
 	}
-	ocmClient := ocm.NewClient()
+	ocmClient := ocm.NewClient(mgr.GetClient())
 
 	if err = (&controller.ComponentReconciler{
 		Client:    mgr.GetClient(),

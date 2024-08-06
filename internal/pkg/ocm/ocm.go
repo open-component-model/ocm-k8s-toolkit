@@ -23,6 +23,8 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/cpi"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type Contract interface {
@@ -30,14 +32,42 @@ type Contract interface {
 	GetComponentVersion(ctx context.Context, octx ocm.Context, component *v1alpha1.Component, version string, repoConfig []byte) (cpi.ComponentVersionAccess, error)
 }
 
-type Client struct{}
-
-func NewClient() *Client {
-	return &Client{}
+type Client struct {
+	client client.Client
 }
 
+func NewClient(client client.Client) *Client {
+	return &Client{
+		client: client,
+	}
+}
+
+// CreateAuthenticatedOCMContext provides a context with authentication configured.
 func (c *Client) CreateAuthenticatedOCMContext(ctx context.Context, obj *v1alpha1.OCMRepository) (ocm.Context, error) {
-	return ocm.DefaultContext(), nil
+	logger := log.FromContext(ctx).WithName("CreateAuthenticatedOCMContext")
+	octx := ocm.DefaultContext()
+
+	// If there are no credentials, this call is a no-op.
+	if obj.Spec.SecretRef.Name == "" {
+		return nil, nil
+	}
+
+	repo, err := octx.RepositoryForConfig(obj.Spec.RepositorySpec.Raw, nil)
+	if err != nil {
+		return nil, fmt.Errorf("ocm repository configuration error: %w", err)
+	}
+	defer repo.Close()
+
+	if err := ConfigureCredentials(ctx, octx, c.client, obj.Spec.SecretRef.Name, obj.Namespace); err != nil {
+		logger.V(v1alpha1.LevelDebug).Error(err, "failed to find credentials")
+
+		// we don't ignore not found errors
+		return nil, fmt.Errorf("failed to configure credentials for component: %w", err)
+	}
+
+	logger.V(v1alpha1.LevelDebug).Info("credentials configured")
+
+	return octx, nil
 }
 
 func (c *Client) GetComponentVersion(ctx context.Context, octx ocm.Context, component *v1alpha1.Component, version string, repoConfig []byte) (cpi.ComponentVersionAccess, error) {
