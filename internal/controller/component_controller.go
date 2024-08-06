@@ -56,6 +56,10 @@ type ComponentReconciler struct {
 // +kubebuilder:rbac:groups=openfluxcd.mandelsoft.org,resources=artifacts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openfluxcd.mandelsoft.org,resources=artifacts/finalizers,verbs=update
 
+// +kubebuilder:rbac:groups="",resources=secrets;configmaps;serviceaccounts,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=serviceaccounts/token,verbs=create
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+
 // Reconcile the component object.
 func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
 	logger := log.FromContext(ctx).WithName("component-controller")
@@ -108,7 +112,6 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}()
 
-	// Get the descriptor
 	octx, err := r.OCMClient.CreateAuthenticatedOCMContext(ctx, repositoryObject)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to create authenticated OCM context: %w", err)
