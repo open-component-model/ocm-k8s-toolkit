@@ -1,11 +1,11 @@
 apiVersion: delivery.ocm.software/v1alpha1
 kind: Component
 metadata:
-  name: podinfo-component
+  name: ocmcli-component
 spec:
-  component: github.com/acme/podinfo
+  component: ocm.software/ocmcli
   interval: 10m
   repositoryRef:
-    name: podinfo-repo
+    name: open-component-model-repo
     namespace: default
-  semver: v6.0.0
+  semver: 0.13.0
