@@ -16,6 +16,19 @@ endif
 # tools. (i.e. podman)
 CONTAINER_TOOL ?= docker
 
+# Repository root based on Git metadata
+REPOSITORY_ROOT := $(shell git rev-parse --show-toplevel)
+BUILD_DIR := $(REPOSITORY_ROOT)/build
+
+SOURCE_VER ?= $(shell go list -m all | grep github.com/openfluxcd/artifact | awk '{print $$2}')
+
+# Keep a record of the version of the downloaded source CRDs. It is used to
+# detect and download new CRDs when the SOURCE_VER changes.
+SOURCE_CRD_VER=$(BUILD_DIR)/.src-crd-$(SOURCE_VER)
+
+# Paths to download the CRD dependencies at.
+ARTIFACT_CRD ?= config/crd/bases/openfluxcd.mandelsoft.org_artifact.yaml
+
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
 SHELL = /usr/bin/env bash -o pipefail
@@ -60,7 +73,7 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate fmt vet envtest ## Run tests.
+test: manifests generate fmt vet download-crd-deps envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 # Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
@@ -162,6 +175,24 @@ KUSTOMIZE_VERSION ?= v5.4.1
 CONTROLLER_TOOLS_VERSION ?= v0.15.0
 ENVTEST_VERSION ?= release-0.18
 GOLANGCI_LINT_VERSION ?= v1.57.2
+
+# Delete previously downloaded CRDs and record the new version of the source
+# CRDs.
+$(SOURCE_CRD_VER):
+	rm -f $(BUILD_DIR)/.src-crd*
+	$(MAKE) cleanup-crd-deps
+	if ! test -d "$(BUILD_DIR)"; then mkdir -p $(BUILD_DIR); fi
+	touch $(SOURCE_CRD_VER)
+
+$(ARTIFACT_CRD):
+	curl -s https://raw.githubusercontent.com/openfluxcd/artifact/${SOURCE_VER}/config/crd/bases/openfluxcd.mandelsoft.org_artifacts.yaml -o $(ARTIFACT_CRD)
+
+# Download the CRDs the controller depends on
+download-crd-deps: $(SOURCE_CRD_VER) $(ARTIFACT_CRD)
+
+# Delete the downloaded CRD dependencies.
+cleanup-crd-deps:
+	rm -f $(ARTIFACT_CRD)
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
