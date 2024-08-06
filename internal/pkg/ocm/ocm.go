@@ -30,7 +30,13 @@ import (
 
 type Contract interface {
 	CreateAuthenticatedOCMContext(ctx context.Context, obj *v1alpha1.OCMRepository) (ocm.Context, error)
-	GetComponentVersion(ctx context.Context, octx ocm.Context, component *v1alpha1.Component, version string, repoConfig []byte) (cpi.ComponentVersionAccess, error)
+	GetComponentVersion(
+		ctx context.Context,
+		octx ocm.Context,
+		component *v1alpha1.Component,
+		version string,
+		repoConfig []byte,
+	) (cpi.ComponentVersionAccess, error)
 }
 
 type Client struct {
@@ -71,7 +77,13 @@ func (c *Client) CreateAuthenticatedOCMContext(ctx context.Context, obj *v1alpha
 	return octx, nil
 }
 
-func (c *Client) GetComponentVersion(ctx context.Context, octx ocm.Context, component *v1alpha1.Component, version string, repoConfig []byte) (cpi.ComponentVersionAccess, error) {
+func (c *Client) GetComponentVersion(
+	_ context.Context,
+	octx ocm.Context,
+	component *v1alpha1.Component,
+	version string,
+	repoConfig []byte,
+) (cpi.ComponentVersionAccess, error) {
 	repo, err := octx.RepositoryForConfig(repoConfig, nil)
 	if err != nil {
 		return nil, fmt.Errorf("ocm repository configuration error: %w", err)

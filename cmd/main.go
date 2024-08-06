@@ -148,7 +148,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	starter, storage, err := server.InitializeStorage(mgr.GetClient(), mgr.GetScheme(), storagePath, storageAdvAddr, artifactRetentionTTL, artifactRetentionRecords)
+	starter, storage, err := server.InitializeStorage(
+		mgr.GetClient(),
+		mgr.GetScheme(),
+		storagePath,
+		storageAdvAddr,
+		artifactRetentionTTL,
+		artifactRetentionRecords,
+	)
 	if err != nil {
 		setupLog.Error(err, "unable to initialize storage")
 		os.Exit(1)

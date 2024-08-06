@@ -27,7 +27,7 @@ import (
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
-// OCMRepositoryReconciler reconciles a OCMRepository object
+// OCMRepositoryReconciler reconciles a OCMRepository object.
 type OCMRepositoryReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -37,7 +37,7 @@ type OCMRepositoryReconciler struct {
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmrepositories/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmrepositories/finalizers,verbs=update
 
-func (r *OCMRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *OCMRepositoryReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
 	return ctrl.Result{}, nil

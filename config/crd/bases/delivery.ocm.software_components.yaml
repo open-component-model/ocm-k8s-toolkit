@@ -17,7 +17,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Component is the Schema for the components API
+        description: Component is the Schema for the components API.
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: ComponentSpec defines the desired state of Component
+            description: ComponentSpec defines the desired state of Component.
             properties:
               component:
                 type: string
@@ -121,7 +121,7 @@ spec:
             - semver
             type: object
           status:
-            description: ComponentStatus defines the observed state of Component
+            description: ComponentStatus defines the observed state of Component.
             properties:
               artifact:
                 description: ArtifactSpec defines the desired state of Artifact
