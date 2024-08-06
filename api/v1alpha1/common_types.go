@@ -38,8 +38,8 @@ type Verification struct {
 	Value string `json:"value,omitempty"`
 }
 
-// ResourceId defines the configuration of the repository.
-type ResourceId struct {
+// ResourceID defines the configuration of the repository.
+type ResourceID struct {
 	// +required
 	Name string `json:"name,omitempty"`
 	// +optional

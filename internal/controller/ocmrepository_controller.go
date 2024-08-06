@@ -27,7 +27,7 @@ import (
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
-// OCMRepositoryReconciler reconciles a OCMRepository object
+// OCMRepositoryReconciler reconciles a OCMRepository object.
 type OCMRepositoryReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -37,19 +37,8 @@ type OCMRepositoryReconciler struct {
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmrepositories/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmrepositories/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the OCMRepository object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.18.2/pkg/reconcile
-func (r *OCMRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *OCMRepositoryReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
-
-	// TODO(user): your logic here
 
 	return ctrl.Result{}, nil
 }

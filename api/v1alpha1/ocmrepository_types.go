@@ -22,10 +22,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// OCMRepositorySpec defines the desired state of OCMRepository
+// OCMRepositorySpec defines the desired state of OCMRepository.
 type OCMRepositorySpec struct {
 	// RepositorySpec is the config of the repository containing the component version.
-	// Used by RepositoryForConfig to initialise the needed
+	// Used by RepositoryForConfig to initialize the needed
 	// +required
 	RepositorySpec *apiextensionsv1.JSON `json:"repositorySpec"`
 	// +optional
@@ -44,7 +44,7 @@ type OCMRepositorySpec struct {
 	Suspend bool `json:"suspend,omitempty"`
 }
 
-// OCMRepositoryStatus defines the observed state of OCMRepository
+// OCMRepositoryStatus defines the observed state of OCMRepository.
 type OCMRepositoryStatus struct {
 	// +optional
 	State string `json:"state,omitempty"`
@@ -71,7 +71,7 @@ type OCMRepositoryStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// OCMRepository is the Schema for the ocmrepositories API
+// OCMRepository is the Schema for the ocmrepositories API.
 type OCMRepository struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -82,7 +82,7 @@ type OCMRepository struct {
 
 // +kubebuilder:object:root=true
 
-// OCMRepositoryList contains a list of OCMRepository
+// OCMRepositoryList contains a list of OCMRepository.
 type OCMRepositoryList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

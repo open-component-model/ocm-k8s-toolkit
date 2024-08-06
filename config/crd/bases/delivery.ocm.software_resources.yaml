@@ -17,7 +17,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Resource is the Schema for the resources API
+        description: Resource is the Schema for the resources API.
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: ResourceSpec defines the desired state of Resource
+            description: ResourceSpec defines the desired state of Resource.
             properties:
               componentRef:
                 properties:
@@ -63,7 +63,7 @@ spec:
                     type: string
                 type: object
               resource:
-                description: ResourceId defines the configuration of the repository.
+                description: ResourceID defines the configuration of the repository.
                 properties:
                   extraIdentity:
                     additionalProperties:
@@ -121,7 +121,7 @@ spec:
             - resource
             type: object
           status:
-            description: ResourceStatus defines the observed state of Resource
+            description: ResourceStatus defines the observed state of Resource.
             properties:
               artifact:
                 description: ArtifactSpec defines the desired state of Artifact

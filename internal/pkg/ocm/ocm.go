@@ -20,16 +20,23 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/cpi"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
 type Contract interface {
 	CreateAuthenticatedOCMContext(ctx context.Context, obj *v1alpha1.OCMRepository) (ocm.Context, error)
-	GetComponentVersion(ctx context.Context, octx ocm.Context, component *v1alpha1.Component, version string, repoConfig []byte) (cpi.ComponentVersionAccess, error)
+	GetComponentVersion(
+		ctx context.Context,
+		octx ocm.Context,
+		component *v1alpha1.Component,
+		version string,
+		repoConfig []byte,
+	) (cpi.ComponentVersionAccess, error)
 }
 
 type Client struct {
@@ -70,7 +77,13 @@ func (c *Client) CreateAuthenticatedOCMContext(ctx context.Context, obj *v1alpha
 	return octx, nil
 }
 
-func (c *Client) GetComponentVersion(ctx context.Context, octx ocm.Context, component *v1alpha1.Component, version string, repoConfig []byte) (cpi.ComponentVersionAccess, error) {
+func (c *Client) GetComponentVersion(
+	_ context.Context,
+	octx ocm.Context,
+	component *v1alpha1.Component,
+	version string,
+	repoConfig []byte,
+) (cpi.ComponentVersionAccess, error) {
 	repo, err := octx.RepositoryForConfig(repoConfig, nil)
 	if err != nil {
 		return nil, fmt.Errorf("ocm repository configuration error: %w", err)

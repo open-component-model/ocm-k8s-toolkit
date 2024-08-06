@@ -25,7 +25,6 @@ import (
 	"strings"
 
 	"github.com/fluxcd/pkg/runtime/patch"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	v1 "k8s.io/api/core/v1"
@@ -37,9 +36,10 @@ import (
 	"sigs.k8s.io/yaml"
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 )
 
-// ComponentReconciler reconciles a Component object
+// ComponentReconciler reconciles a Component object.
 type ComponentReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -71,11 +71,13 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if obj.GetDeletionTimestamp() != nil {
 		logger.Info("deleting component", "name", obj.Name)
+
 		return ctrl.Result{}, nil
 	}
 
 	if obj.Spec.Suspend {
 		logger.Info("component is suspended, skipping reconciliation")
+
 		return ctrl.Result{}, nil
 	}
 
@@ -125,29 +127,38 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	desc := cv.GetDescriptor()
 
+	//nolint:golint,godox // todos shouldn't fail linter
 	// TODO: This needs to be a list and recursively fetch component descriptors for references.
 	content, err := yaml.Marshal(desc)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to marshal content: %w", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(tmpDir, "component-descriptor.yaml"), content, 0o755); err != nil {
+	const perm = 0o655
+	if err := os.WriteFile(filepath.Join(tmpDir, "component-descriptor.yaml"), content, perm); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to write file: %w", err)
 	}
 
 	revision := r.normalizeComponentVersionName(cv.GetName()) + "-" + cv.GetVersion()
-	if err := r.Storage.ReconcileArtifact(ctx, obj, revision, tmpDir, revision+".tar.gz", func(art *artifactv1.Artifact, s string) error {
-		// Archive directory to storage
-		if err := r.Storage.Archive(art, tmpDir, nil); err != nil {
-			return fmt.Errorf("unable to archive artifact to storage: %w", err)
-		}
+	if err := r.Storage.ReconcileArtifact(
+		ctx,
+		obj,
+		revision,
+		tmpDir,
+		revision+".tar.gz",
+		func(art *artifactv1.Artifact, _ string) error {
+			// Archive directory to storage
+			if err := r.Storage.Archive(art, tmpDir, nil); err != nil {
+				return fmt.Errorf("unable to archive artifact to storage: %w", err)
+			}
 
-		obj.Status.ArtifactRef = v1.LocalObjectReference{
-			Name: art.Name,
-		}
+			obj.Status.ArtifactRef = v1.LocalObjectReference{
+				Name: art.Name,
+			}
 
-		return nil
-	}); err != nil {
+			return nil
+		},
+	); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to reconcile artifact: %w", err)
 	}
 

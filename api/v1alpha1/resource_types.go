@@ -26,14 +26,14 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// ResourceSpec defines the desired state of Resource
+// ResourceSpec defines the desired state of Resource.
 type ResourceSpec struct {
 	// +required
 	RepositoryRef ObjectKey `json:"repositoryRef"`
 	// +required
 	ComponentRef ObjectKey `json:"componentRef"`
 	// +required
-	Resource ResourceId `json:"resource"`
+	Resource ResourceID `json:"resource"`
 	// +optional
 	ResourceSelector *apiextensionsv1.JSON `json:"resourceSelector"`
 	// +optional
@@ -52,7 +52,7 @@ type ResourceSpec struct {
 	Suspend bool `json:"suspend,omitempty"`
 }
 
-// ResourceStatus defines the observed state of Resource
+// ResourceStatus defines the observed state of Resource.
 type ResourceStatus struct {
 	// +optional
 	State string `json:"state,omitempty"`
@@ -87,7 +87,7 @@ type ResourceStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// Resource is the Schema for the resources API
+// Resource is the Schema for the resources API.
 type Resource struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -98,7 +98,7 @@ type Resource struct {
 
 // +kubebuilder:object:root=true
 
-// ResourceList contains a list of Resource
+// ResourceList contains a list of Resource.
 type ResourceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

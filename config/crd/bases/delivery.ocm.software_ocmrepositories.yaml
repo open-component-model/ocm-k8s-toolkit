@@ -17,7 +17,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: OCMRepository is the Schema for the ocmrepositories API
+        description: OCMRepository is the Schema for the ocmrepositories API.
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: OCMRepositorySpec defines the desired state of OCMRepository
+            description: OCMRepositorySpec defines the desired state of OCMRepository.
             properties:
               configSet:
                 description: |-
@@ -51,7 +51,7 @@ spec:
               repositorySpec:
                 description: |-
                   RepositorySpec is the config of the repository containing the component version.
-                  Used by RepositoryForConfig to initialise the needed
+                  Used by RepositoryForConfig to initialize the needed
                 x-kubernetes-preserve-unknown-fields: true
               secretRef:
                 description: |-
@@ -98,7 +98,7 @@ spec:
             - repositorySpec
             type: object
           status:
-            description: OCMRepositoryStatus defines the observed state of OCMRepository
+            description: OCMRepositoryStatus defines the observed state of OCMRepository.
             properties:
               conditions:
                 items:

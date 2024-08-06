@@ -22,7 +22,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// ComponentSpec defines the desired state of Component
+// ComponentSpec defines the desired state of Component.
 type ComponentSpec struct {
 	// +required
 	RepositoryRef ObjectKey `json:"repositoryRef"`
@@ -51,7 +51,7 @@ type ComponentSpec struct {
 	Suspend bool `json:"suspend,omitempty"`
 }
 
-// ComponentStatus defines the observed state of Component
+// ComponentStatus defines the observed state of Component.
 type ComponentStatus struct {
 	// +optional
 	State string `json:"state,omitempty"`
@@ -84,7 +84,7 @@ type ComponentStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// Component is the Schema for the components API
+// Component is the Schema for the components API.
 type Component struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -103,7 +103,7 @@ func (in *Component) GetKind() string {
 
 // +kubebuilder:object:root=true
 
-// ComponentList contains a list of Component
+// ComponentList contains a list of Component.
 type ComponentList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
