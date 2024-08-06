@@ -7,4 +7,5 @@ spec:
   interval: 10m
   repositoryRef:
     name: podinfo-repo
-  semver: v0.0.1
+    namespace: default
+  semver: v6.0.0

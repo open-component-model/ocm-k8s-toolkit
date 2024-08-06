@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fluxcd/pkg/runtime/patch"
@@ -113,10 +114,11 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, fmt.Errorf("failed to create authenticated OCM context: %w", err)
 	}
 
-	cv, err := r.OCMClient.GetComponentVersion(ctx, octx, obj, "v0.0.1", repositoryObject.Spec.RepositorySpec.Raw)
+	cv, err := r.OCMClient.GetComponentVersion(ctx, octx, obj, obj.Spec.Semver, repositoryObject.Spec.RepositorySpec.Raw)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to retrieve component: %w", err)
 	}
+	defer cv.Close()
 
 	desc := cv.GetDescriptor()
 
@@ -126,7 +128,7 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, fmt.Errorf("failed to marshal content: %w", err)
 	}
 
-	if err := os.WriteFile("component-descriptor.yaml", content, 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, "component-descriptor.yaml"), content, 0o755); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to write file: %w", err)
 	}
 

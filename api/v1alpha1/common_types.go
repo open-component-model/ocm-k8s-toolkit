@@ -22,7 +22,7 @@ type Verification struct {
 	Value string `json:"value,omitempty"`
 }
 
-// RepositorySpec defines the configuration of the repository.
+// ResourceId defines the configuration of the repository.
 type ResourceId struct {
 	// +required
 	Name string `json:"name,omitempty"`

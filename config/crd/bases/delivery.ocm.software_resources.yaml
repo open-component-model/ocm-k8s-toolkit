@@ -63,7 +63,7 @@ spec:
                     type: string
                 type: object
               resource:
-                description: RepositorySpec defines the configuration of the repository.
+                description: ResourceId defines the configuration of the repository.
                 properties:
                   extraIdentity:
                     additionalProperties:
