@@ -1,0 +1,11 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Component
+metadata:
+  name: ocmcli-component
+spec:
+  component: ocm.software/ocmcli
+  interval: 10m
+  repositoryRef:
+    name: open-component-model-repo
+    namespace: default
+  semver: 0.13.0

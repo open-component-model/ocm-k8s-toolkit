@@ -18,11 +18,23 @@ package controller
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
+	"github.com/fluxcd/pkg/runtime/patch"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
+	"github.com/openfluxcd/controller-manager/storage"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/yaml"
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
@@ -31,6 +43,9 @@ import (
 type ComponentReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+
+	Storage   *storage.Storage
+	OCMClient ocm.Contract
 }
 
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=components,verbs=get;list;watch;create;update;patch;delete
@@ -41,19 +56,106 @@ type ComponentReconciler struct {
 // +kubebuilder:rbac:groups=openfluxcd.mandelsoft.org,resources=artifacts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openfluxcd.mandelsoft.org,resources=artifacts/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Component object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.18.2/pkg/reconcile
-func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+// Reconcile the component object.
+func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
+	logger := log.FromContext(ctx).WithName("component-controller")
 
-	// TODO(user): your logic here
+	obj := &deliveryv1alpha1.Component{}
+	if err := r.Get(ctx, req.NamespacedName, obj); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	if obj.GetDeletionTimestamp() != nil {
+		logger.Info("deleting component", "name", obj.Name)
+		return ctrl.Result{}, nil
+	}
+
+	if obj.Spec.Suspend {
+		logger.Info("component is suspended, skipping reconciliation")
+		return ctrl.Result{}, nil
+	}
+
+	patchHelper := patch.NewSerialPatcher(obj, r.Client)
+
+	// Always attempt to patch the object and status after each reconciliation.
+	defer func() {
+		if perr := patchHelper.Patch(ctx, obj); perr != nil {
+			retErr = errors.Join(retErr, perr)
+		}
+	}()
+
+	repositoryObject := &deliveryv1alpha1.OCMRepository{}
+	if err := r.Get(ctx, types.NamespacedName{
+		Namespace: obj.Spec.RepositoryRef.Namespace,
+		Name:      obj.Spec.RepositoryRef.Name,
+	}, repositoryObject); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get repository: %w", err)
+	}
+
+	// Reconcile the storage to create the main location and prepare the server.
+	if err := r.Storage.ReconcileStorage(ctx, obj); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to reconcile storage: %w", err)
+	}
+
+	// Create temp working dir
+	tmpDir, err := os.MkdirTemp("", fmt.Sprintf("%s-%s-%s-", obj.Kind, obj.Namespace, obj.Name))
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to create temporary working directory: %w", err)
+	}
+	defer func() {
+		if err = os.RemoveAll(tmpDir); err != nil {
+			ctrl.LoggerFrom(ctx).Error(err, "failed to remove temporary working directory")
+		}
+	}()
+
+	// Get the descriptor
+	octx, err := r.OCMClient.CreateAuthenticatedOCMContext(ctx, repositoryObject)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to create authenticated OCM context: %w", err)
+	}
+
+	cv, err := r.OCMClient.GetComponentVersion(ctx, octx, obj, obj.Spec.Semver, repositoryObject.Spec.RepositorySpec.Raw)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to retrieve component: %w", err)
+	}
+	defer cv.Close()
+
+	desc := cv.GetDescriptor()
+
+	// TODO: This needs to be a list and recursively fetch component descriptors for references.
+	content, err := yaml.Marshal(desc)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to marshal content: %w", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(tmpDir, "component-descriptor.yaml"), content, 0o755); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to write file: %w", err)
+	}
+
+	revision := r.normalizeComponentVersionName(cv.GetName()) + "-" + cv.GetVersion()
+	if err := r.Storage.ReconcileArtifact(ctx, obj, revision, tmpDir, revision+".tar.gz", func(art *artifactv1.Artifact, s string) error {
+		// Archive directory to storage
+		if err := r.Storage.Archive(art, tmpDir, nil); err != nil {
+			return fmt.Errorf("unable to archive artifact to storage: %w", err)
+		}
+
+		obj.Status.ArtifactRef = v1.LocalObjectReference{
+			Name: art.Name,
+		}
+
+		return nil
+	}); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to reconcile artifact: %w", err)
+	}
+
+	// Update status
+	obj.Status.Component = deliveryv1alpha1.ComponentInfo{
+		RepositorySpec: repositoryObject.Spec.RepositorySpec,
+		Component:      obj.Spec.Component,
+		Version:        cv.GetVersion(),
+	}
+
+	// Return done.
 
 	return ctrl.Result{}, nil
 }
@@ -63,4 +165,8 @@ func (r *ComponentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&deliveryv1alpha1.Component{}).
 		Complete(r)
+}
+
+func (r *ComponentReconciler) normalizeComponentVersionName(name string) string {
+	return strings.ReplaceAll(name, "/", "-")
 }

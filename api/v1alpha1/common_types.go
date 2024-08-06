@@ -1,6 +1,10 @@
 package v1alpha1
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+)
 
 type ObjectKey struct {
 	// +optional
@@ -18,10 +22,7 @@ type Verification struct {
 	Value string `json:"value,omitempty"`
 }
 
-type RepositorySpec json.RawMessage
-
-type ResourceSelector json.RawMessage
-
+// ResourceId defines the configuration of the repository.
 type ResourceId struct {
 	// +required
 	Name string `json:"name,omitempty"`
@@ -31,7 +32,7 @@ type ResourceId struct {
 
 type ComponentInfo struct {
 	// +required
-	RepositorySpec RepositorySpec `json:"repositorySpec,omitempty"`
+	RepositorySpec *apiextensionsv1.JSON `json:"repositorySpec,omitempty"`
 	// +required
 	Component string `json:"component,omitempty"`
 	// +required
