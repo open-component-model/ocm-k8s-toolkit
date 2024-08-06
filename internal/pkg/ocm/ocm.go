@@ -20,11 +20,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/cpi"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
 type Contract interface {
