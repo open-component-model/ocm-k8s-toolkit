@@ -13,6 +13,7 @@ require (
 	github.com/openfluxcd/artifact v0.0.0-20240731144814-1700a8a69770
 	github.com/openfluxcd/controller-manager v0.0.0-20240731140102-be5c90b6cc4a
 	k8s.io/api v0.30.3
+	k8s.io/apiextensions-apiserver v0.30.3
 	k8s.io/apimachinery v0.30.3
 	k8s.io/client-go v0.30.3
 	ocm.software/ocm v0.12.1-0.20240802152754-35cfb3a64361
@@ -334,7 +335,6 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	helm.sh/helm/v3 v3.15.3 // indirect
-	k8s.io/apiextensions-apiserver v0.30.3 // indirect
 	k8s.io/cli-runtime v0.30.3 // indirect
 	k8s.io/klog/v2 v2.120.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20240411171206-dc4e619f62f3 // indirect
