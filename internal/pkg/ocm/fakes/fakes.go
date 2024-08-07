@@ -38,6 +38,9 @@ type MockOcmClient struct {
 	getLatestComponentVersionVersion    string
 	getLatestComponentVersionErr        error
 	getLatestComponentVersionCalledWith [][]any
+	listComponentVersionsVersions       []ocmctrl.Version
+	listComponentVersionsErr            error
+	listComponentVersionsCalledWith     [][]any
 }
 
 var _ ocmctrl.Contract = &MockOcmClient{}
@@ -67,8 +70,8 @@ func (m *MockOcmClient) GetComponentVersionWasNotCalled() bool {
 	return len(m.getComponentVersionCalledWith) == 0
 }
 
-func (m *MockOcmClient) GetLatestValidComponentVersion(ctx context.Context, octx ocm.Context, obj *v1alpha1.Component) (string, error) {
-	m.getLatestComponentVersionCalledWith = append(m.getLatestComponentVersionCalledWith, []any{obj})
+func (m *MockOcmClient) GetLatestValidComponentVersion(_ context.Context, _ ocm.Context, obj *v1alpha1.Component, repoConfig []byte) (string, error) {
+	m.getLatestComponentVersionCalledWith = append(m.getLatestComponentVersionCalledWith, []any{obj, repoConfig})
 	return m.getLatestComponentVersionVersion, m.getLatestComponentVersionErr
 }
 
@@ -85,7 +88,20 @@ func (m *MockOcmClient) GetLatestComponentVersionWasNotCalled() bool {
 	return len(m.getLatestComponentVersionCalledWith) == 0
 }
 
-func (m *MockOcmClient) ListComponentVersions(logger logr.Logger, octx ocm.Context, obj *v1alpha1.Component) ([]ocmctrl.Version, error) {
-	//TODO implement me
-	panic("implement me")
+func (m *MockOcmClient) ListComponentVersions(_ logr.Logger, _ ocm.Context, obj *v1alpha1.Component, repoConfig []byte) ([]ocmctrl.Version, error) {
+	m.listComponentVersionsCalledWith = append(m.listComponentVersionsCalledWith, []any{obj, repoConfig})
+	return m.listComponentVersionsVersions, m.listComponentVersionsErr
+}
+
+func (m *MockOcmClient) ListComponentVersionsReturns(versions []ocmctrl.Version, err error) {
+	m.listComponentVersionsVersions = versions
+	m.listComponentVersionsErr = err
+}
+
+func (m *MockOcmClient) ListComponentVersionsCallingArgumentsOnCall(i int) []any {
+	return m.listComponentVersionsCalledWith[i]
+}
+
+func (m *MockOcmClient) ListComponentVersionsWasNotCalled() bool {
+	return len(m.listComponentVersionsCalledWith) == 0
 }
