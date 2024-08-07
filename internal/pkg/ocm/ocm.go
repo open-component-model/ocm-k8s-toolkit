@@ -43,7 +43,7 @@ type Contract interface {
 	GetComponentVersion(
 		ctx context.Context,
 		octx ocm.Context,
-		component *v1alpha1.Component,
+		name string,
 		version string,
 		repoConfig []byte,
 	) (cpi.ComponentVersionAccess, error)
@@ -70,7 +70,7 @@ func (c *Client) CreateAuthenticatedOCMContext(ctx context.Context, obj *v1alpha
 
 	// If there are no credentials, this call is a no-op.
 	if obj.Spec.SecretRef.Name == "" {
-		return nil, nil
+		return octx, nil
 	}
 
 	repo, err := octx.RepositoryForConfig(obj.Spec.RepositorySpec.Raw, nil)
@@ -94,7 +94,7 @@ func (c *Client) CreateAuthenticatedOCMContext(ctx context.Context, obj *v1alpha
 func (c *Client) GetComponentVersion(
 	_ context.Context,
 	octx ocm.Context,
-	component *v1alpha1.Component,
+	name string,
 	version string,
 	repoConfig []byte,
 ) (cpi.ComponentVersionAccess, error) {
@@ -104,7 +104,7 @@ func (c *Client) GetComponentVersion(
 	}
 	defer repo.Close()
 
-	comp, err := repo.LookupComponent(component.Spec.Component)
+	comp, err := repo.LookupComponent(name)
 	if err != nil {
 		return nil, fmt.Errorf("ocm component configuration error: %w", err)
 	}
@@ -112,7 +112,7 @@ func (c *Client) GetComponentVersion(
 
 	cv, err := comp.LookupVersion(version)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find version for component %s, %s: %w", component.Spec.Component, version, err)
+		return nil, fmt.Errorf("failed to find version for component %s, %s: %w", name, version, err)
 	}
 
 	return cv, nil
