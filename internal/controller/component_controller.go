@@ -202,7 +202,12 @@ func (r *ComponentReconciler) normalizeComponentVersionName(name string) string 
 	return strings.ReplaceAll(name, "/", "-")
 }
 
-func (r *ComponentReconciler) checkVersion(ctx context.Context, octx ocmctx.Context, obj *deliveryv1alpha1.Component, repoConfig []byte) (bool, string, error) {
+func (r *ComponentReconciler) checkVersion(
+	ctx context.Context,
+	octx ocmctx.Context,
+	obj *deliveryv1alpha1.Component,
+	repoConfig []byte,
+) (bool, string, error) {
 	logger := log.FromContext(ctx).WithName("version-reconcile")
 
 	latest, err := r.OCMClient.GetLatestValidComponentVersion(ctx, octx, obj, repoConfig)
