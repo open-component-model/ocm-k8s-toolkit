@@ -121,7 +121,7 @@ func (c *Context) AddComponent(component *Component) error {
 	// set up the repository context for the component.
 	component.repository = c.repo
 	component.context = c
-	component.ComponentDescriptor = c.constructComponentDescriptor(component)
+	component.ComponentDescriptor = ConstructComponentDescriptor(component)
 
 	// add the component to our global list of components
 	c.components[component.Name] = append(c.components[component.Name], component)
@@ -226,7 +226,7 @@ func (c *Context) BlobDigesters() ocm.BlobDigesterRegistry {
 	return nil
 }
 
-func (c *Context) constructComponentDescriptor(
+func ConstructComponentDescriptor(
 	component *Component,
 ) *compdesc.ComponentDescriptor {
 	var resources compdesc.Resources
@@ -246,6 +246,11 @@ func (c *Context) constructComponentDescriptor(
 		})
 	}
 
+	var references compdesc.References
+	for _, ref := range component.References {
+		references = append(references, ref)
+	}
+
 	compd := &compdesc.ComponentDescriptor{
 		Metadata: compdesc.Metadata{
 			ConfiguredVersion: "v2",
@@ -258,7 +263,8 @@ func (c *Context) constructComponentDescriptor(
 					Name: "acme",
 				},
 			},
-			Resources: resources,
+			Resources:  resources,
+			References: references,
 		},
 	}
 

@@ -10,6 +10,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/distribution/distribution/v3 v3.0.0-beta.1
 	github.com/fluxcd/pkg/runtime v0.47.1
+	github.com/fluxcd/pkg/tar v0.7.0
 	github.com/go-logr/logr v1.4.2
 	github.com/mandelsoft/logging v0.0.0-20240618075559-fdca28a87b0a
 	github.com/onsi/ginkgo/v2 v2.19.1
@@ -134,7 +135,6 @@ require (
 	github.com/fluxcd/pkg/apis/meta v1.5.0 // indirect
 	github.com/fluxcd/pkg/lockedfile v0.3.0 // indirect
 	github.com/fluxcd/pkg/sourceignore v0.7.0 // indirect
-	github.com/fluxcd/pkg/tar v0.7.0 // indirect
 	github.com/fluxcd/source-controller/api v1.3.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/fvbommel/sortorder v1.1.0 // indirect

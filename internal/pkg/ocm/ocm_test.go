@@ -57,7 +57,7 @@ func TestClientGetComponentVersion(t *testing.T) {
     type: OCIRegistry
 `)
 
-	cva, err := ocmClient.GetComponentVersion(context.Background(), octx, cv, "v0.0.1", repoConfig)
+	cva, err := ocmClient.GetComponentVersion(context.Background(), octx, cv.Spec.Component, "v0.0.1", repoConfig)
 	assert.NoError(t, err)
 	assert.Equal(t, cv.Spec.Component, cva.GetName())
 }

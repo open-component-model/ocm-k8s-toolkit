@@ -121,6 +121,7 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if !update {
 		logger.Info("reconciliation skipped, no update needed")
+
 		return ctrl.Result{
 			RequeueAfter: obj.GetRequeueAfter(),
 		}, nil
@@ -136,8 +137,10 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	desc := cv.GetDescriptor()
 	descriptors := []*compdesc.ComponentDescriptor{desc}
-	if err := r.traversReferences(ctx, octx, &descriptors, desc.References, repositoryObject.Spec.RepositorySpec.Raw); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to travers references: %w", err)
+	if desc != nil {
+		if err := r.traversReferences(ctx, octx, &descriptors, desc.References, repositoryObject.Spec.RepositorySpec.Raw); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to travers references: %w", err)
+		}
 	}
 
 	list := &Components{
@@ -254,7 +257,13 @@ func (r *ComponentReconciler) checkVersion(
 	return true, latest, nil
 }
 
-func (r *ComponentReconciler) traversReferences(ctx context.Context, octx ocmctx.Context, list *[]*compdesc.ComponentDescriptor, references compdesc.References, repoConfig []byte) error {
+func (r *ComponentReconciler) traversReferences(
+	ctx context.Context,
+	octx ocmctx.Context,
+	list *[]*compdesc.ComponentDescriptor,
+	references compdesc.References,
+	repoConfig []byte,
+) error {
 	logger := log.FromContext(ctx).WithName("travers-references")
 	for _, ref := range references {
 		logger.Info("fetching embedded component", "component", ref.ComponentName, "version", ref.Version)
