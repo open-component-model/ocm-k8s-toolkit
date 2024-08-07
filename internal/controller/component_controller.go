@@ -24,12 +24,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/fluxcd/pkg/runtime/patch"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	ocmctx "ocm.software/ocm/api/ocm"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -98,6 +100,34 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, fmt.Errorf("failed to get repository: %w", err)
 	}
 
+	octx, err := r.OCMClient.CreateAuthenticatedOCMContext(ctx, repositoryObject)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to create authenticated OCM context: %w", err)
+	}
+
+	// reconcile the version before calling reconcile func
+	update, version, err := r.checkVersion(ctx, octx, obj, repositoryObject.Spec.RepositorySpec.Raw)
+	if err != nil {
+		// The component might not be there yet. We don't fail but keep polling instead.
+		return ctrl.Result{
+			RequeueAfter: obj.GetRequeueAfter(),
+		}, nil
+	}
+
+	if !update {
+		return ctrl.Result{
+			RequeueAfter: obj.GetRequeueAfter(),
+		}, nil
+	}
+
+	cv, err := r.OCMClient.GetComponentVersion(ctx, octx, obj, version, repositoryObject.Spec.RepositorySpec.Raw)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to retrieve component: %w", err)
+	}
+	defer cv.Close()
+
+	desc := cv.GetDescriptor()
+
 	// Reconcile the storage to create the main location and prepare the server.
 	if err := r.Storage.ReconcileStorage(ctx, obj); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to reconcile storage: %w", err)
@@ -113,19 +143,6 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			ctrl.LoggerFrom(ctx).Error(err, "failed to remove temporary working directory")
 		}
 	}()
-
-	octx, err := r.OCMClient.CreateAuthenticatedOCMContext(ctx, repositoryObject)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to create authenticated OCM context: %w", err)
-	}
-
-	cv, err := r.OCMClient.GetComponentVersion(ctx, octx, obj, obj.Spec.Semver, repositoryObject.Spec.RepositorySpec.Raw)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to retrieve component: %w", err)
-	}
-	defer cv.Close()
-
-	desc := cv.GetDescriptor()
 
 	//nolint:golint,godox // todos shouldn't fail linter
 	// TODO: This needs to be a list and recursively fetch component descriptors for references.
@@ -183,4 +200,37 @@ func (r *ComponentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 func (r *ComponentReconciler) normalizeComponentVersionName(name string) string {
 	return strings.ReplaceAll(name, "/", "-")
+}
+
+func (r *ComponentReconciler) checkVersion(ctx context.Context, octx ocmctx.Context, obj *deliveryv1alpha1.Component, repoConfig []byte) (bool, string, error) {
+	logger := log.FromContext(ctx).WithName("ocm-component-version-reconcile")
+
+	latest, err := r.OCMClient.GetLatestValidComponentVersion(ctx, octx, obj, repoConfig)
+	if err != nil {
+		return false, "", fmt.Errorf("failed to get latest component version: %w", err)
+	}
+	logger.V(deliveryv1alpha1.LevelDebug).Info("got latest version of component", "version", latest)
+
+	latestSemver, err := semver.NewVersion(latest)
+	if err != nil {
+		return false, "", fmt.Errorf("failed to parse latest version: %w", err)
+	}
+
+	reconciledVersion := "0.0.0"
+	if obj.Status.Component.Version != "" {
+		reconciledVersion = obj.Status.Component.Version
+	}
+	current, err := semver.NewVersion(reconciledVersion)
+	if err != nil {
+		return false, "", fmt.Errorf("failed to parse reconciled version: %w", err)
+	}
+	logger.V(deliveryv1alpha1.LevelDebug).Info("current reconciled version is", "reconciled", current.String())
+
+	if latestSemver.Equal(current) || current.GreaterThan(latestSemver) {
+		logger.V(deliveryv1alpha1.LevelDebug).Info("Reconciled version equal to or greater than newest available version", "version", latestSemver)
+
+		return false, latest, nil
+	}
+
+	return true, latest, nil
 }

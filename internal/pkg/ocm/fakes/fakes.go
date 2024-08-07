@@ -19,6 +19,7 @@ package fakes
 import (
 	"context"
 
+	"github.com/go-logr/logr"
 	"ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/cpi"
 
@@ -82,4 +83,9 @@ func (m *MockOcmClient) GetLatestComponentVersionCallingArgumentsOnCall(i int) [
 
 func (m *MockOcmClient) GetLatestComponentVersionWasNotCalled() bool {
 	return len(m.getLatestComponentVersionCalledWith) == 0
+}
+
+func (m *MockOcmClient) ListComponentVersions(logger logr.Logger, octx ocm.Context, obj *v1alpha1.Component) ([]ocmctrl.Version, error) {
+	//TODO implement me
+	panic("implement me")
 }

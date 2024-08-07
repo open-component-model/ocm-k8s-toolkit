@@ -778,8 +778,8 @@ github.com/opencontainers/runtime-spec v1.2.0 h1:z97+pHb3uELt/yiAWD691HNHQIF07bE
 github.com/opencontainers/runtime-spec v1.2.0/go.mod h1:jwyrGlmzljRJv/Fgzds9SsS/C5hL+LL3ko9hs6T5lQ0=
 github.com/openfluxcd/artifact v0.0.0-20240731144814-1700a8a69770 h1:UGC98DXRIwBlc5LabHz/61pq9KWiUed9LjcMkvSeyKs=
 github.com/openfluxcd/artifact v0.0.0-20240731144814-1700a8a69770/go.mod h1:A+2bRh4vjyFK5A/mtfefqXA0weNSnazkkMJPJ4SMzm8=
-github.com/openfluxcd/controller-manager v0.0.0-20240731140102-be5c90b6cc4a h1:cj2vfpSwCG517bnokhc9owkXC7r8JZWAWfPeBoXisSY=
-github.com/openfluxcd/controller-manager v0.0.0-20240731140102-be5c90b6cc4a/go.mod h1:I/eY5R+5rNDkV1N37lVqshKRu1F6BF7x70qf9/TTJ28=
+github.com/openfluxcd/controller-manager v0.0.0-20240807083929-b60c9a8182de h1:eMbZkYw4Q9+f/bH3XOQmC8gBBU6gQWR7giB++yL7oy4=
+github.com/openfluxcd/controller-manager v0.0.0-20240807083929-b60c9a8182de/go.mod h1:I/eY5R+5rNDkV1N37lVqshKRu1F6BF7x70qf9/TTJ28=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/opentracing/opentracing-go v1.2.0 h1:uEJPy/1a5RIPAJ0Ov+OIO8OxWu77jEv+1B0VhjKrZUs=
 github.com/opentracing/opentracing-go v1.2.0/go.mod h1:GxEUsuufX4nBwe+T+Wl9TAgYrxe9dPLANfrWvHYVTgc=
