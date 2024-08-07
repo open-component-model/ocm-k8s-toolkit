@@ -17,10 +17,14 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
 	"context"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/fluxcd/pkg/tar"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	"github.com/stretchr/testify/assert"
@@ -44,6 +48,7 @@ func TestComponentReconciler_Reconcile(t *testing.T) {
 		OCMClient     func(client client.Client) *ocmfakes.MockOcmClient
 		assertError   func(t *testing.T, got error)
 		assertOutcome func(t *testing.T, client client.Client, ocmClient *ocmfakes.MockOcmClient)
+		assertStore   func(t *testing.T, store *storage.Storage, client client.Client)
 	}
 	type args struct {
 		ctx context.Context
@@ -98,8 +103,101 @@ func TestComponentReconciler_Reconcile(t *testing.T) {
 
 					artifact := &artifactv1.Artifact{}
 					require.NoError(t, client.Get(context.Background(), types.NamespacedName{Name: cv.Status.ArtifactRef.Name, Namespace: "default"}, artifact))
-					assert.Equal(t, "sha256:86241027b9788e59e3fdb8a096e4e18c1854beef184b58c2f1133c62ce7e386b", artifact.Spec.Digest)
+					assert.Equal(t, "sha256:c775ceef9ac1cad66fe992725684385dcdc44f85a8cef35ec1a3fe8577360993", artifact.Spec.Digest)
 				},
+				assertStore: func(t *testing.T, store *storage.Storage, client client.Client) {
+					//TODO: Extract this into a function like compareArchiveContentWithExpected()
+					artifact := &artifactv1.Artifact{}
+					require.NoError(t, client.Get(context.Background(), types.NamespacedName{Name: "component-default-test-component", Namespace: "default"}, artifact))
+
+					url := strings.TrimPrefix(artifact.Spec.URL, "http://"+store.Hostname)
+					path := filepath.Join(store.BasePath, url)
+					content, err := os.ReadFile(path)
+					require.NoError(t, err)
+					require.NoError(t, tar.Untar(bytes.NewReader(content), store.BasePath))
+
+					archiveContent, err := os.ReadFile(filepath.Join(store.BasePath, "component-descriptor.yaml"))
+					require.NoError(t, err)
+
+					goldenContent, err := os.ReadFile(filepath.Join("testdata", "normal_reconciliation_golden.yaml"))
+					require.NoError(t, err)
+					assert.Equal(t, goldenContent, archiveContent)
+				},
+			},
+			args: args{
+				ctx: context.Background(),
+				req: controllerruntime.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: "default",
+						Name:      "test-component",
+					},
+				},
+			},
+		},
+		{
+			name: "normal reconciliation with component references",
+			fields: fields{
+				Client: func(scheme *runtime.Scheme) client.Client {
+					cv := DefaultComponent.DeepCopy()
+					cv.Namespace = "default"
+					cv.Name = "test-component"
+
+					repo := &v1alpha1.OCMRepository{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "test-repository",
+							Namespace: cv.Namespace,
+						},
+						Spec: v1alpha1.OCMRepositorySpec{
+							RepositorySpec: &apiextensionsv1.JSON{
+								Raw: []byte(`{"baseUrl": "ghcr.io/open-component-model", "type": "OCIRegistry"}`),
+							},
+						},
+					}
+
+					return env.FakeKubeClient(WithObjects(cv, repo))
+				},
+				Storage: func(c client.Client, scheme *runtime.Scheme, tmp string) *storage.Storage {
+					s, _ := storage.NewStorage(c, scheme, tmp, "hostname", 0, 0)
+
+					return s
+				},
+				OCMClient: func(client client.Client) *ocmfakes.MockOcmClient {
+					c := &ocmfakes.MockOcmClient{}
+					c.GetComponentVersionReturnsForName(
+						"github.com/open-component-model/test-component",
+						getMockComponentWithReference(
+							"github.com/open-component-model/test-component",
+							"v0.1.0",
+							"github.com/open-component-model/embedded",
+							"v0.2.0",
+						),
+						nil,
+					)
+					c.GetComponentVersionReturnsForName(
+						"github.com/open-component-model/embedded",
+						getMockComponent(
+							"github.com/open-component-model/embedded",
+							"v0.2.0",
+						),
+						nil,
+					)
+					c.GetLatestComponentVersionReturns("v0.1.0", nil)
+
+					return c
+				},
+				assertError: func(t *testing.T, got error) {
+					require.NoError(t, got)
+				},
+				assertOutcome: func(t *testing.T, client client.Client, ocmClient *ocmfakes.MockOcmClient) {
+					cv := &v1alpha1.Component{}
+					require.NoError(t, client.Get(context.Background(), types.NamespacedName{Name: "test-component", Namespace: "default"}, cv))
+					assert.Equal(t, "component-default-test-component", cv.Status.ArtifactRef.Name)
+
+					artifact := &artifactv1.Artifact{}
+					require.NoError(t, client.Get(context.Background(), types.NamespacedName{Name: cv.Status.ArtifactRef.Name, Namespace: "default"}, artifact))
+					assert.Equal(t, "sha256:653102ef9cc7e596baa1aa2e7fdcc7be8cf82c8efa1b59b699ed803a32979bec", artifact.Spec.Digest)
+				},
+				assertStore: func(t *testing.T, store *storage.Storage, client client.Client) {},
 			},
 			args: args{
 				ctx: context.Background(),
@@ -161,6 +259,7 @@ func TestComponentReconciler_Reconcile(t *testing.T) {
 
 					assert.True(t, ocmClient.GetComponentVersionWasNotCalled())
 				},
+				assertStore: func(t *testing.T, store *storage.Storage, client client.Client) {},
 			},
 			args: args{
 				ctx: context.Background(),
@@ -193,7 +292,7 @@ func TestComponentReconciler_Reconcile(t *testing.T) {
 						},
 						Spec: artifactv1.ArtifactSpec{
 							Revision: "github.com-open-component-model-test-component-v0.1.0",
-							Digest:   "sha256:86241027b9788e59e3fdb8a096e4e18c1854beef184b58c2f1133c62ce7e386b",
+							Digest:   "sha256:bdd6f8e2801d4167464bf49d612c6f12e78fd2a5485d0ebac75c31b8ce71833f",
 						},
 					}
 
@@ -219,7 +318,14 @@ func TestComponentReconciler_Reconcile(t *testing.T) {
 				OCMClient: func(client client.Client) *ocmfakes.MockOcmClient {
 					c := &ocmfakes.MockOcmClient{}
 					c.GetLatestComponentVersionReturns("v0.2.0", nil)
-					c.GetComponentVersionReturnsForName("github.com/open-component-model/test-component", getMockComponent("github.com/open-component-model/test-component", "v0.2.0"), nil)
+					c.GetComponentVersionReturnsForName(
+						"github.com/open-component-model/test-component",
+						getMockComponent(
+							"github.com/open-component-model/test-component",
+							"v0.2.0",
+						),
+						nil,
+					)
 
 					return c
 				},
@@ -233,9 +339,10 @@ func TestComponentReconciler_Reconcile(t *testing.T) {
 
 					artifact := &artifactv1.Artifact{}
 					require.NoError(t, client.Get(context.Background(), types.NamespacedName{Name: cv.Status.ArtifactRef.Name, Namespace: "default"}, artifact))
-					assert.Equal(t, "sha256:86241027b9788e59e3fdb8a096e4e18c1854beef184b58c2f1133c62ce7e386b", artifact.Spec.Digest)
+					assert.Equal(t, "sha256:bdd6f8e2801d4167464bf49d612c6f12e78fd2a5485d0ebac75c31b8ce71833f", artifact.Spec.Digest)
 					assert.Equal(t, "github.com-open-component-model-test-component-v0.2.0", artifact.Spec.Revision)
 				},
+				assertStore: func(t *testing.T, store *storage.Storage, client client.Client) {},
 			},
 			args: args{
 				ctx: context.Background(),
@@ -255,21 +362,23 @@ func TestComponentReconciler_Reconcile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tmp, err := os.MkdirTemp("", "test"+tt.name)
+			tmp, err := os.MkdirTemp("", "")
 			require.NoError(t, err)
 
 			c := tt.fields.Client(scheme)
 			ocmClient := tt.fields.OCMClient(c)
 
+			store := tt.fields.Storage(c, scheme, tmp)
 			r := &ComponentReconciler{
 				Client:    c,
 				Scheme:    scheme,
-				Storage:   tt.fields.Storage(c, scheme, tmp),
+				Storage:   store,
 				OCMClient: ocmClient,
 			}
 			_, err = r.Reconcile(tt.args.ctx, tt.args.req)
 			tt.fields.assertError(t, err)
 			tt.fields.assertOutcome(t, c, ocmClient)
+			tt.fields.assertStore(t, store, c)
 		})
 	}
 }

@@ -49,9 +49,9 @@ func (m *MockOcmClient) CreateAuthenticatedOCMContext(ctx context.Context, obj *
 	return ocm.New(), nil
 }
 
-func (m *MockOcmClient) GetComponentVersion(ctx context.Context, octx ocm.Context, component *v1alpha1.Component, version string, repoConfig []byte) (cpi.ComponentVersionAccess, error) {
-	m.getComponentVersionCalledWith = append(m.getComponentVersionCalledWith, []any{component, version, repoConfig})
-	return m.getComponentVersionMap[component.Spec.Component], m.getComponentVersionErr
+func (m *MockOcmClient) GetComponentVersion(ctx context.Context, octx ocm.Context, name, version string, repoConfig []byte) (cpi.ComponentVersionAccess, error) {
+	m.getComponentVersionCalledWith = append(m.getComponentVersionCalledWith, []any{name, version, repoConfig})
+	return m.getComponentVersionMap[name], m.getComponentVersionErr
 }
 
 func (m *MockOcmClient) GetComponentVersionReturnsForName(name string, cva ocm.ComponentVersionAccess, err error) {

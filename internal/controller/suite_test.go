@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	fakedynamic "k8s.io/client-go/dynamic/fake"
 	"ocm.software/ocm/api/ocm"
+	"ocm.software/ocm/api/ocm/compdesc"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -138,6 +139,39 @@ func getMockComponent(
 		Resources: []*fakes.Resource[*ocm.ResourceMeta]{res},
 	}
 	res.Component = comp
+	comp.ComponentDescriptor = fakes.ConstructComponentDescriptor(comp)
+
+	return comp
+}
+
+func getMockComponentWithReference(
+	name, version string,
+	refName, refVersion string,
+	opts ...fakes.AccessOptionFunc,
+) ocm.ComponentVersionAccess {
+	res := &fakes.Resource[*ocm.ResourceMeta]{
+		Name:          "introspect-image",
+		Version:       "1.0.0",
+		Type:          "ociImage",
+		Relation:      "local",
+		AccessOptions: opts,
+	}
+	comp := &fakes.Component{
+		Name:      name,
+		Version:   version,
+		Resources: []*fakes.Resource[*ocm.ResourceMeta]{res},
+		References: map[string]ocm.ComponentReference{
+			"embedded": {
+				ElementMeta: compdesc.ElementMeta{
+					Name:    refName,
+					Version: refVersion,
+				},
+				ComponentName: refName,
+			},
+		},
+	}
+	res.Component = comp
+	comp.ComponentDescriptor = fakes.ConstructComponentDescriptor(comp)
 
 	return comp
 }
