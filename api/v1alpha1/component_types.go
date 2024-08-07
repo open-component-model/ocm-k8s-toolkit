@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"time"
+
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -49,6 +51,12 @@ type ComponentSpec struct {
 	Interval metav1.Duration `json:"interval"`
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
+}
+
+// GetRequeueAfter returns the duration after which the ComponentVersion must be
+// reconciled again.
+func (in Component) GetRequeueAfter() time.Duration {
+	return in.Spec.Interval.Duration
 }
 
 // ComponentStatus defines the observed state of Component.

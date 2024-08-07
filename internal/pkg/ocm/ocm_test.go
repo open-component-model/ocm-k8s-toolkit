@@ -28,7 +28,7 @@ import (
 	fakeocm "github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/fakes"
 )
 
-func TestClient_GetComponentVersion(t *testing.T) {
+func TestClientGetComponentVersion(t *testing.T) {
 	component := "github.com/open-component-model/ocm-demo-index"
 	octx := fakeocm.NewFakeOCMContext()
 	comp := &fakeocm.Component{
@@ -60,4 +60,38 @@ func TestClient_GetComponentVersion(t *testing.T) {
 	cva, err := ocmClient.GetComponentVersion(context.Background(), octx, cv, "v0.0.1", repoConfig)
 	assert.NoError(t, err)
 	assert.Equal(t, cv.Spec.Component, cva.GetName())
+}
+
+func TestClientGetLatestValidComponentVersion(t *testing.T) {
+	component := "github.com/open-component-model/ocm-demo-index"
+	octx := fakeocm.NewFakeOCMContext()
+	comp := &fakeocm.Component{
+		Name:    component,
+		Version: "v0.0.2",
+	}
+
+	require.NoError(t, octx.AddComponent(comp))
+
+	fakeKubeClient := env.FakeKubeClient()
+	ocmClient := NewClient(fakeKubeClient)
+
+	cv := &v1alpha1.Component{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-name",
+			Namespace: "default",
+		},
+		Spec: v1alpha1.ComponentSpec{
+			Component: component,
+			Semver:    "v0.0.1",
+		},
+	}
+
+	repoConfig := []byte(`
+    baseUrl: ghcr.io/open-component-model
+    type: OCIRegistry
+`)
+
+	version, err := ocmClient.GetLatestValidComponentVersion(context.Background(), octx, cv, repoConfig)
+	require.EqualError(t, err, "no matching versions found for constraint 'v0.0.1'")
+	assert.Empty(t, version)
 }
