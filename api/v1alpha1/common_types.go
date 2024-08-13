@@ -34,6 +34,7 @@ type Verification struct {
 	Signature string `json:"signature,omitempty"`
 	// +optional
 	SecretRef string `json:"secretRef,omitempty"`
+	// Value defines a PEM/base64 encoded public key value.
 	// +optional
 	Value string `json:"value,omitempty"`
 }

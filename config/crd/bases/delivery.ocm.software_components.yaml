@@ -111,6 +111,7 @@ spec:
                     signature:
                       type: string
                     value:
+                      description: Value defines a PEM/base64 encoded public key value.
                       type: string
                   type: object
                 type: array
