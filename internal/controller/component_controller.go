@@ -34,8 +34,10 @@ import (
 	ocmctx "ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/compdesc"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/yaml"
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
@@ -49,6 +51,13 @@ type ComponentReconciler struct {
 
 	Storage   *storage.Storage
 	OCMClient ocm.Contract
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *ComponentReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&deliveryv1alpha1.Component{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Complete(r)
 }
 
 type Components struct {
@@ -128,91 +137,11 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	logger.Info("start reconciling new version", "version", version)
-
-	cv, err := r.OCMClient.GetComponentVersion(ctx, octx, obj.Spec.Component, version, repositoryObject.Spec.RepositorySpec.Raw)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to retrieve component: %w", err)
+	if err := r.reconcile(ctx, octx, obj, repositoryObject, version); err != nil {
+		return ctrl.Result{}, err
 	}
-	defer cv.Close()
-
-	desc := cv.GetDescriptor()
-	descriptors := []*compdesc.ComponentDescriptor{desc}
-	if desc != nil {
-		if err := r.traversReferences(ctx, octx, &descriptors, desc.References, repositoryObject.Spec.RepositorySpec.Raw); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to travers references: %w", err)
-		}
-	}
-
-	list := &Components{
-		List: descriptors,
-	}
-
-	// Reconcile the storage to create the main location and prepare the server.
-	if err := r.Storage.ReconcileStorage(ctx, obj); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to reconcile storage: %w", err)
-	}
-
-	// Create temp working dir
-	tmpDir, err := os.MkdirTemp("", fmt.Sprintf("%s-%s-%s-", obj.Kind, obj.Namespace, obj.Name))
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to create temporary working directory: %w", err)
-	}
-	defer func() {
-		if err = os.RemoveAll(tmpDir); err != nil {
-			ctrl.LoggerFrom(ctx).Error(err, "failed to remove temporary working directory")
-		}
-	}()
-
-	content, err := yaml.Marshal(list)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to marshal content: %w", err)
-	}
-
-	const perm = 0o655
-	if err := os.WriteFile(filepath.Join(tmpDir, "component-descriptor.yaml"), content, perm); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to write file: %w", err)
-	}
-
-	revision := r.normalizeComponentVersionName(cv.GetName()) + "-" + cv.GetVersion()
-	if err := r.Storage.ReconcileArtifact(
-		ctx,
-		obj,
-		revision,
-		tmpDir,
-		revision+".tar.gz",
-		func(art *artifactv1.Artifact, _ string) error {
-			// Archive directory to storage
-			if err := r.Storage.Archive(art, tmpDir, nil); err != nil {
-				return fmt.Errorf("unable to archive artifact to storage: %w", err)
-			}
-
-			obj.Status.ArtifactRef = v1.LocalObjectReference{
-				Name: art.Name,
-			}
-
-			return nil
-		},
-	); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to reconcile artifact: %w", err)
-	}
-
-	// Update status
-	obj.Status.Component = deliveryv1alpha1.ComponentInfo{
-		RepositorySpec: repositoryObject.Spec.RepositorySpec,
-		Component:      obj.Spec.Component,
-		Version:        cv.GetVersion(),
-	}
-
-	// Return done.
 
 	return ctrl.Result{}, nil
-}
-
-// SetupWithManager sets up the controller with the Manager.
-func (r *ComponentReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&deliveryv1alpha1.Component{}).
-		Complete(r)
 }
 
 func (r *ComponentReconciler) normalizeComponentVersionName(name string) string {
@@ -226,6 +155,7 @@ func (r *ComponentReconciler) checkVersion(
 	repoConfig []byte,
 ) (bool, string, error) {
 	logger := log.FromContext(ctx).WithName("version-reconcile")
+	logger.Info("checking for latest version")
 
 	latest, err := r.OCMClient.GetLatestValidComponentVersion(ctx, octx, obj, repoConfig)
 	if err != nil {
@@ -282,6 +212,106 @@ func (r *ComponentReconciler) traversReferences(
 			}
 		}
 	}
+
+	return nil
+}
+
+// reconcile perform the rest of the reconciliation routine after the component has been verified and checked for new
+// versions.
+func (r *ComponentReconciler) reconcile(
+	ctx context.Context,
+	octx ocmctx.Context,
+	obj *deliveryv1alpha1.Component,
+	repositoryObject *deliveryv1alpha1.OCMRepository,
+	version string,
+) error {
+	logger := log.FromContext(ctx)
+
+	if err := r.OCMClient.VerifyComponent(ctx, octx, obj, version, repositoryObject.Spec.RepositorySpec.Raw); err != nil {
+		return fmt.Errorf("failed to verify component: %w", err)
+	}
+
+	logger.V(deliveryv1alpha1.LevelDebug).Info("component successfully verified", "version", version, "component", obj.Spec.Component)
+
+	cv, err := r.OCMClient.GetComponentVersion(ctx, octx, obj.Spec.Component, version, repositoryObject.Spec.RepositorySpec.Raw)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve component: %w", err)
+	}
+	defer func() {
+		if err := cv.Close(); err != nil {
+			logger.Error(err, "failed to close component version")
+		}
+	}()
+
+	desc := cv.GetDescriptor()
+	descriptors := []*compdesc.ComponentDescriptor{desc}
+	if desc != nil {
+		if err := r.traversReferences(ctx, octx, &descriptors, desc.References, repositoryObject.Spec.RepositorySpec.Raw); err != nil {
+			return fmt.Errorf("failed to travers references: %w", err)
+		}
+	}
+
+	list := &Components{
+		List: descriptors,
+	}
+
+	// Reconcile the storage to create the main location and prepare the server.
+	if err := r.Storage.ReconcileStorage(ctx, obj); err != nil {
+		return fmt.Errorf("failed to reconcile storage: %w", err)
+	}
+
+	// Create temp working dir
+	tmpDir, err := os.MkdirTemp("", fmt.Sprintf("%s-%s-%s-", obj.Kind, obj.Namespace, obj.Name))
+	if err != nil {
+		return fmt.Errorf("failed to create temporary working directory: %w", err)
+	}
+	defer func() {
+		if err = os.RemoveAll(tmpDir); err != nil {
+			ctrl.LoggerFrom(ctx).Error(err, "failed to remove temporary working directory")
+		}
+	}()
+
+	content, err := yaml.Marshal(list)
+	if err != nil {
+		return fmt.Errorf("failed to marshal content: %w", err)
+	}
+
+	const perm = 0o655
+	if err := os.WriteFile(filepath.Join(tmpDir, "component-descriptor.yaml"), content, perm); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	revision := r.normalizeComponentVersionName(cv.GetName()) + "-" + cv.GetVersion()
+	if err := r.Storage.ReconcileArtifact(
+		ctx,
+		obj,
+		revision,
+		tmpDir,
+		revision+".tar.gz",
+		func(art *artifactv1.Artifact, _ string) error {
+			// Archive directory to storage
+			if err := r.Storage.Archive(art, tmpDir, nil); err != nil {
+				return fmt.Errorf("unable to archive artifact to storage: %w", err)
+			}
+
+			obj.Status.ArtifactRef = v1.LocalObjectReference{
+				Name: art.Name,
+			}
+
+			return nil
+		},
+	); err != nil {
+		return fmt.Errorf("failed to reconcile artifact: %w", err)
+	}
+
+	// Update status
+	obj.Status.Component = deliveryv1alpha1.ComponentInfo{
+		RepositorySpec: repositoryObject.Spec.RepositorySpec,
+		Component:      obj.Spec.Component,
+		Version:        version,
+	}
+
+	logger.Info("successfully reconciled component", "name", obj.Name)
 
 	return nil
 }

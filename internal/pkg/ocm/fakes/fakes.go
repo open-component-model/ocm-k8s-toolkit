@@ -41,6 +41,8 @@ type MockOcmClient struct {
 	listComponentVersionsVersions       []ocmctrl.Version
 	listComponentVersionsErr            error
 	listComponentVersionsCalledWith     [][]any
+	verifyComponentErr                  error
+	verifyComponentCalledWith           [][]any
 }
 
 var _ ocmctrl.Contract = &MockOcmClient{}
@@ -104,4 +106,21 @@ func (m *MockOcmClient) ListComponentVersionsCallingArgumentsOnCall(i int) []any
 
 func (m *MockOcmClient) ListComponentVersionsWasNotCalled() bool {
 	return len(m.listComponentVersionsCalledWith) == 0
+}
+
+func (m *MockOcmClient) VerifyComponent(_ context.Context, _ ocm.Context, obj *v1alpha1.Component, version string, _ []byte) error {
+	m.verifyComponentCalledWith = append(m.verifyComponentCalledWith, []any{obj, version})
+	return m.verifyComponentErr
+}
+
+func (m *MockOcmClient) VerifyComponentReturns(err error) {
+	m.verifyComponentErr = err
+}
+
+func (m *MockOcmClient) VerifyComponentCallingArgumentsOnCall(i int) []any {
+	return m.verifyComponentCalledWith[i]
+}
+
+func (m *MockOcmClient) VerifyComponentWasNotCalled() bool {
+	return len(m.verifyComponentCalledWith) == 0
 }
