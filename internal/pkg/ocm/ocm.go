@@ -104,13 +104,7 @@ func (c *Client) GetComponentVersion(
 	}
 	defer repo.Close()
 
-	comp, err := repo.LookupComponent(name)
-	if err != nil {
-		return nil, fmt.Errorf("ocm component configuration error: %w", err)
-	}
-	defer comp.Close()
-
-	cv, err := comp.LookupVersion(version)
+	cv, err := repo.LookupComponentVersion(name, version)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find version for component %s, %s: %w", name, version, err)
 	}
