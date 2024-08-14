@@ -255,7 +255,7 @@ func TestClient_VerifyComponentWithValueKeyFailsIfValueIsEmpty(t *testing.T) {
 	}
 
 	err = ocmClient.VerifyComponent(context.Background(), octx, cv, "v0.0.1", []byte(`baseUrl: https://example.com`))
-	assert.EqualError(t, err, "kubernetes secret reference not provided")
+	assert.EqualError(t, err, "either signature value or secret reference are required")
 }
 
 func TestClient_VerifyComponentDifferentPublicKey(t *testing.T) {
