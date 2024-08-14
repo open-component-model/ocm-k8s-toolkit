@@ -61,7 +61,7 @@ func (r *OCMRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}()
 
-	status.MarkReady(r.EventRecorder, obj, "Successfully Reconciled")
+	status.MarkReady(r.EventRecorder, obj, "Successfully reconciled")
 
 	return ctrl.Result{}, nil
 }
