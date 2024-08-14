@@ -116,20 +116,21 @@ func (c *Client) VerifyComponent(ctx context.Context, octx ocm.Context, obj *v1a
 			cert []byte
 			err  error
 		)
-		if signature.Value != "" {
-			cert, err = base64.StdEncoding.DecodeString(signature.Value)
-		} else {
-			if signature.SecretRef == "" {
-				return fmt.Errorf("kubernetes secret reference not provided")
-			}
 
+		switch {
+		case signature.Value != "":
+			cert, err = base64.StdEncoding.DecodeString(signature.Value)
+		case signature.SecretRef != "":
 			cert, err = c.getPublicKey(
 				ctx,
 				obj.Namespace,
 				signature.SecretRef, // name of the secret to find.
 				signature.Signature, // the key in the Data Map which holds the right public key for this signature.
 			)
+		default:
+			return fmt.Errorf("either signature value or secret reference are required")
 		}
+
 		if err != nil {
 			return fmt.Errorf("failed to get public key for verification: %w", err)
 		}
