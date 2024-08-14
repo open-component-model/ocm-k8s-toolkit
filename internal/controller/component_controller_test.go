@@ -19,6 +19,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -343,6 +344,68 @@ func TestComponentReconciler_Reconcile(t *testing.T) {
 					assert.Equal(t, "github.com-open-component-model-test-component-v0.2.0", artifact.Spec.Revision)
 				},
 				assertStore: func(t *testing.T, store *storage.Storage, client client.Client) {},
+			},
+			args: args{
+				ctx: context.Background(),
+				req: controllerruntime.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: "default",
+						Name:      "test-component",
+					},
+				},
+			},
+		},
+		{
+			name: "should fail if verification fails",
+			fields: fields{
+				Client: func(scheme *runtime.Scheme) client.Client {
+					cv := DefaultComponent.DeepCopy()
+					cv.Namespace = "default"
+					cv.Name = "test-component"
+					cv.Status.Component = v1alpha1.ComponentInfo{
+						Version:   "v0.1.0",
+						Component: "github.com/open-component-model/test-component",
+					}
+					repo := &v1alpha1.OCMRepository{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "test-repository",
+							Namespace: cv.Namespace,
+						},
+						Spec: v1alpha1.OCMRepositorySpec{
+							RepositorySpec: &apiextensionsv1.JSON{
+								Raw: []byte(`{"baseUrl": "ghcr.io/open-component-model", "type": "OCIRegistry"}`),
+							},
+						},
+					}
+
+					return env.FakeKubeClient(WithObjects(cv, repo))
+				},
+				Storage: func(c client.Client, scheme *runtime.Scheme, tmp string) *storage.Storage {
+					s, _ := storage.NewStorage(c, scheme, tmp, "hostname", 0, 0)
+
+					return s
+
+				},
+				OCMClient: func(client client.Client) *ocmfakes.MockOcmClient {
+					c := &ocmfakes.MockOcmClient{}
+					c.GetLatestComponentVersionReturns("v0.2.0", nil)
+					c.GetComponentVersionReturnsForName(
+						"github.com/open-component-model/test-component",
+						getMockComponent(
+							"github.com/open-component-model/test-component",
+							"v0.2.0",
+						),
+						nil,
+					)
+					c.VerifyComponentReturns(errors.New("nope"))
+
+					return c
+				},
+				assertError: func(t *testing.T, got error) {
+					assert.ErrorContains(t, got, "failed to verify component: nope")
+				},
+				assertOutcome: func(t *testing.T, client client.Client, ocmClient *ocmfakes.MockOcmClient) {},
+				assertStore:   func(t *testing.T, store *storage.Storage, client client.Client) {},
 			},
 			args: args{
 				ctx: context.Background(),
