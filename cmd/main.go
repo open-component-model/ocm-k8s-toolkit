@@ -143,9 +143,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	var eventsRecorder *events.Recorder
+	if eventsRecorder, err = events.NewRecorder(mgr, ctrl.Log, eventsAddr, "ocm-k8s-toolkit"); err != nil {
+		setupLog.Error(err, "unable to create event recorder")
+		os.Exit(1)
+	}
+
 	if err = (&controller.OCMRepositoryReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		EventRecorder: eventsRecorder,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OCMRepository")
 		os.Exit(1)
@@ -164,11 +171,6 @@ func main() {
 		os.Exit(1)
 	}
 	ocmClient := ocm.NewClient(mgr.GetClient())
-	var eventsRecorder *events.Recorder
-	if eventsRecorder, err = events.NewRecorder(mgr, ctrl.Log, eventsAddr, "ocm-k8s-toolkit"); err != nil {
-		setupLog.Error(err, "unable to create event recorder")
-		os.Exit(1)
-	}
 
 	if err = (&controller.ComponentReconciler{
 		Client:        mgr.GetClient(),
@@ -180,6 +182,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Component")
 		os.Exit(1)
 	}
+
 	if err = (&controller.ResourceReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
