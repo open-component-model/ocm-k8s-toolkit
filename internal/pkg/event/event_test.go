@@ -57,7 +57,7 @@ func TestNewEvent(t *testing.T) {
 
 			close(recorder.Events)
 			for e := range recorder.Events {
-				assert.Contains(t, e, "CheckVersionFailedReason")
+				assert.Contains(t, e, "CheckVersionFailed")
 				assert.Contains(t, e, tt.expected)
 			}
 		})
