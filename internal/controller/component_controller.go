@@ -25,12 +25,15 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/status"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	kuberecorder "k8s.io/client-go/tools/record"
 	ocmctx "ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/compdesc"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -48,6 +51,7 @@ import (
 type ComponentReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	kuberecorder.EventRecorder
 
 	Storage   *storage.Storage
 	OCMClient ocm.Contract
@@ -101,7 +105,7 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Always attempt to patch the object and status after each reconciliation.
 	defer func() {
-		if perr := patchHelper.Patch(ctx, obj); perr != nil {
+		if perr := status.UpdateStatus(ctx, patchHelper, obj, r.EventRecorder, obj.GetRequeueAfter(), retErr); perr != nil {
 			retErr = errors.Join(retErr, perr)
 		}
 	}()
@@ -114,14 +118,25 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, fmt.Errorf("failed to get repository: %w", err)
 	}
 
+	if !conditions.IsReady(repositoryObject) {
+		logger.Info("repository is not ready", "name", obj.Spec.RepositoryRef.Name)
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.RepositoryIsNotReadyReason, "Repository is not ready yet")
+
+		return ctrl.Result{RequeueAfter: obj.GetRequeueAfter()}, nil
+	}
+
 	octx, err := r.OCMClient.CreateAuthenticatedOCMContext(ctx, repositoryObject)
 	if err != nil {
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.AuthenticatedContextCreationFailedReason, err.Error())
+
 		return ctrl.Result{}, fmt.Errorf("failed to create authenticated OCM context: %w", err)
 	}
 
 	// reconcile the version before calling reconcile func
 	update, version, err := r.checkVersion(ctx, octx, obj, repositoryObject.Spec.RepositorySpec.Raw)
 	if err != nil {
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.CheckVersionFailedReason, err.Error())
+
 		// The component might not be there yet. We don't fail but keep polling instead.
 		return ctrl.Result{
 			RequeueAfter: obj.GetRequeueAfter(),
@@ -129,6 +144,7 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if !update {
+		status.MarkReady(r.EventRecorder, obj, "No update required")
 		logger.Info("reconciliation skipped, no update needed")
 
 		return ctrl.Result{
@@ -138,8 +154,11 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	logger.Info("start reconciling new version", "version", version)
 	if err := r.reconcile(ctx, octx, obj, repositoryObject, version); err != nil {
+		// We don't MarkAs* here because the `reconcile` function marks the specific status.
 		return ctrl.Result{}, err
 	}
+
+	status.MarkReady(r.EventRecorder, obj, "Applied version %s", version)
 
 	return ctrl.Result{}, nil
 }
@@ -228,6 +247,8 @@ func (r *ComponentReconciler) reconcile(
 	logger := log.FromContext(ctx)
 
 	if err := r.OCMClient.VerifyComponent(ctx, octx, obj, version, repositoryObject.Spec.RepositorySpec.Raw); err != nil {
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.VerificationFailedReason, err.Error())
+
 		return fmt.Errorf("failed to verify component: %w", err)
 	}
 
@@ -235,6 +256,8 @@ func (r *ComponentReconciler) reconcile(
 
 	cv, err := r.OCMClient.GetComponentVersion(ctx, octx, obj.Spec.Component, version, repositoryObject.Spec.RepositorySpec.Raw)
 	if err != nil {
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.GetComponentFailedReason, err.Error())
+
 		return fmt.Errorf("failed to retrieve component: %w", err)
 	}
 	defer func() {
@@ -247,6 +270,8 @@ func (r *ComponentReconciler) reconcile(
 	descriptors := []*compdesc.ComponentDescriptor{desc}
 	if desc != nil {
 		if err := r.traversReferences(ctx, octx, &descriptors, desc.References, repositoryObject.Spec.RepositorySpec.Raw); err != nil {
+			status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.ComponentTraversalFailedReason, err.Error())
+
 			return fmt.Errorf("failed to travers references: %w", err)
 		}
 	}
@@ -257,12 +282,16 @@ func (r *ComponentReconciler) reconcile(
 
 	// Reconcile the storage to create the main location and prepare the server.
 	if err := r.Storage.ReconcileStorage(ctx, obj); err != nil {
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.StorageReconcileFailedReason, err.Error())
+
 		return fmt.Errorf("failed to reconcile storage: %w", err)
 	}
 
 	// Create temp working dir
 	tmpDir, err := os.MkdirTemp("", fmt.Sprintf("%s-%s-%s-", obj.Kind, obj.Namespace, obj.Name))
 	if err != nil {
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.TemporaryFolderCreationFailedReason, err.Error())
+
 		return fmt.Errorf("failed to create temporary working directory: %w", err)
 	}
 	defer func() {
@@ -273,11 +302,15 @@ func (r *ComponentReconciler) reconcile(
 
 	content, err := yaml.Marshal(list)
 	if err != nil {
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.MarshallingComponentDescriptorsFailedReason, err.Error())
+
 		return fmt.Errorf("failed to marshal content: %w", err)
 	}
 
 	const perm = 0o655
 	if err := os.WriteFile(filepath.Join(tmpDir, "component-descriptor.yaml"), content, perm); err != nil {
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.WritingComponentFileFailedReason, err.Error())
+
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 
@@ -301,6 +334,8 @@ func (r *ComponentReconciler) reconcile(
 			return nil
 		},
 	); err != nil {
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.ReconcileArtifactFailedReason, err.Error())
+
 		return fmt.Errorf("failed to reconcile artifact: %w", err)
 	}
 

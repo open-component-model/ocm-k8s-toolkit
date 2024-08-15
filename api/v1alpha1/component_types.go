@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt"
 	"time"
 
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
@@ -51,12 +52,6 @@ type ComponentSpec struct {
 	Interval metav1.Duration `json:"interval"`
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
-}
-
-// GetRequeueAfter returns the duration after which the ComponentVersion must be
-// reconciled again.
-func (in Component) GetRequeueAfter() time.Duration {
-	return in.Spec.Interval.Duration
 }
 
 // ComponentStatus defines the observed state of Component.
@@ -101,12 +96,41 @@ type Component struct {
 	Status ComponentStatus `json:"status,omitempty"`
 }
 
+// GetConditions returns the conditions of the Component.
+func (in *Component) GetConditions() []metav1.Condition {
+	return in.Status.Conditions
+}
+
+// SetConditions sets the conditions of the Component.
+func (in *Component) SetConditions(conditions []metav1.Condition) {
+	in.Status.Conditions = conditions
+}
+
+// GetVID unique identifier of the object.
+func (in *Component) GetVID() map[string]string {
+	vid := fmt.Sprintf("%s:%s", in.Status.Component.Component, in.Status.Component.Version)
+	metadata := make(map[string]string)
+	metadata[GroupVersion.Group+"/component_version"] = vid
+
+	return metadata
+}
+
+func (in *Component) SetObservedGeneration(v int64) {
+	in.Status.ObservedGeneration = v
+}
+
 func (in *Component) GetObjectMeta() *metav1.ObjectMeta {
 	return &in.ObjectMeta
 }
 
 func (in *Component) GetKind() string {
 	return "Component"
+}
+
+// GetRequeueAfter returns the duration after which the ComponentVersion must be
+// reconciled again.
+func (in Component) GetRequeueAfter() time.Duration {
+	return in.Spec.Interval.Duration
 }
 
 // +kubebuilder:object:root=true

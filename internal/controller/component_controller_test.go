@@ -25,6 +25,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fluxcd/pkg/apis/meta"
+	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/tar"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
@@ -35,6 +37,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	controllerruntime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -79,6 +82,7 @@ func TestComponentReconciler_Reconcile(t *testing.T) {
 							},
 						},
 					}
+					conditions.MarkTrue(repo, meta.ReadyCondition, meta.SucceededReason, "test")
 
 					return env.FakeKubeClient(WithObjects(cv, repo))
 				},
@@ -154,6 +158,7 @@ func TestComponentReconciler_Reconcile(t *testing.T) {
 							},
 						},
 					}
+					conditions.MarkTrue(repo, meta.ReadyCondition, meta.SucceededReason, "test")
 
 					return env.FakeKubeClient(WithObjects(cv, repo))
 				},
@@ -233,6 +238,7 @@ func TestComponentReconciler_Reconcile(t *testing.T) {
 							},
 						},
 					}
+					conditions.MarkTrue(repo, meta.ReadyCondition, meta.SucceededReason, "test")
 
 					return env.FakeKubeClient(WithObjects(cv, repo))
 				},
@@ -308,6 +314,7 @@ func TestComponentReconciler_Reconcile(t *testing.T) {
 							},
 						},
 					}
+					conditions.MarkTrue(repo, meta.ReadyCondition, meta.SucceededReason, "test")
 
 					return env.FakeKubeClient(WithObjects(cv, repo, artifact))
 				},
@@ -377,6 +384,7 @@ func TestComponentReconciler_Reconcile(t *testing.T) {
 							},
 						},
 					}
+					conditions.MarkTrue(repo, meta.ReadyCondition, meta.SucceededReason, "test")
 
 					return env.FakeKubeClient(WithObjects(cv, repo))
 				},
@@ -425,6 +433,10 @@ func TestComponentReconciler_Reconcile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			recorder := &record.FakeRecorder{
+				Events:        make(chan string, 32),
+				IncludeObject: true,
+			}
 			tmp, err := os.MkdirTemp("", "")
 			require.NoError(t, err)
 
@@ -433,13 +445,16 @@ func TestComponentReconciler_Reconcile(t *testing.T) {
 
 			store := tt.fields.Storage(c, scheme, tmp)
 			r := &ComponentReconciler{
-				Client:    c,
-				Scheme:    scheme,
-				Storage:   store,
-				OCMClient: ocmClient,
+				Client:        c,
+				Scheme:        scheme,
+				Storage:       store,
+				OCMClient:     ocmClient,
+				EventRecorder: recorder,
 			}
 			_, err = r.Reconcile(tt.args.ctx, tt.args.req)
 			tt.fields.assertError(t, err)
+			close(recorder.Events)
+
 			tt.fields.assertOutcome(t, c, ocmClient)
 			tt.fields.assertStore(t, store, c)
 		})
