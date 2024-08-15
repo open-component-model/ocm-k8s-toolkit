@@ -38,14 +38,29 @@ type ComponentSpec struct {
 	SemverFilter string `json:"semverFilter,omitempty"`
 	// +optional
 	Verify []Verification `json:"verify,omitempty"`
+	// TODO: What's the purpose of this compared to the list of secrets? Can't we just loop through the secrets
+	// below even if it only has a single value?
 	// +optional
 	SecretRef v1.LocalObjectReference `json:"secretRef,omitempty"`
+	// TODO 1: The config can also contain creds, do we just apply it as is?
+	// TODO 2: Do we parse a ConfigFile and figure out the sets ourselves or is there something existing already?
+	// TODO 3: What's the data key for a ConfigFile? Propose: .ocmconfig
+	// TODO 4: ConfigFiles should live in their own SecretRefs type like ConfigFileRefs instead of munging it together
+	// with other secrets. Having it separate makes it more user and code friendly, since for specific config files
+	// we also need to consider any ConfigSet values. And it makes it easier for the user to keep them apart and for the
+	// code to handle them separately.
+	// _NOTE_: internal/pkg/ocm/credentials.go already fetches configurations from Secrets by using the key .ocmconfig.
+	// Then proceeds with using ApplyConfig for whatever implements this method in the OCM library.
+	// Therefore some of this functionality is already implemented in the credentials section.
+	// TODO 6: This about separating that out? It makes no different in the light of the context. The only thing missing
+	// is looping through all of the secrets.
 	// +optional
 	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
 	// The secrets referred to by SecretRef (or SecretRefs) may contain ocm config data. The ocm config allows to
 	// specify sets of configuration data (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
 	// SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be
 	// effective.
+	// TODO 5: There can be several secrets with ocm configuration in it, which one would this refer to?
 	// +optional
 	ConfigSet string `json:"configSet,omitempty"`
 	// +required
@@ -72,10 +87,12 @@ type ComponentStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// +optional
 	Component ComponentInfo `json:"component,omitempty"`
+	// TODO 6: What's the purpose of replicating secrets that are already defined in the spec in the Status?
 	// Propagate its effective secrets. Other controllers (e.g. Resource controller) may use this as default
 	// if they do not explicitly refer a secret.
 	// +optional
 	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
+	// TODO 7: Same here.
 	// The secrets referred to by SecretRef (or SecretRefs) may contain ocm config data. The ocm config allows to
 	// specify sets of configuration data (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
 	// SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be

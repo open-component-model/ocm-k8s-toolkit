@@ -134,7 +134,6 @@ func (in *ComponentSpec) DeepCopyInto(out *ComponentSpec) {
 		*out = make([]Verification, len(*in))
 		copy(*out, *in)
 	}
-	out.SecretRef = in.SecretRef
 	if in.SecretRefs != nil {
 		in, out := &in.SecretRefs, &out.SecretRefs
 		*out = make([]corev1.LocalObjectReference, len(*in))

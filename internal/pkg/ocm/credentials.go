@@ -21,7 +21,6 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
-	"ocm.software/ocm/api/credentials/config"
 	"ocm.software/ocm/api/credentials/extensions/repositories/dockerconfig"
 	"ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/utils/runtime"
@@ -49,8 +48,8 @@ func ConfigureCredentials(ctx context.Context, ocmCtx ocm.Context, c client.Clie
 		return nil
 	}
 
-	if ocmConfigBytes, ok := secret.Data[v1alpha1.OCMCredentialConfigKey]; ok {
-		if err := configureOcmConfigCredentials(ocmCtx, ocmConfigBytes, secret); err != nil {
+	if ocmConfigBytes, ok := secret.Data[v1alpha1.OCMConfigKey]; ok {
+		if err := configureOcmConfig(ocmCtx, ocmConfigBytes, secret); err != nil {
 			return err
 		}
 
@@ -60,16 +59,14 @@ func ConfigureCredentials(ctx context.Context, ocmCtx ocm.Context, c client.Clie
 	return nil
 }
 
-func configureOcmConfigCredentials(ocmCtx ocm.Context, ocmConfigBytes []byte, secret corev1.Secret) error {
+func configureOcmConfig(ocmCtx ocm.Context, ocmConfigBytes []byte, secret corev1.Secret) error {
 	cfg, err := ocmCtx.ConfigContext().GetConfigForData(ocmConfigBytes, runtime.DefaultYAMLEncoding)
 	if err != nil {
 		return err
 	}
 
-	if cfg.GetKind() == config.ConfigType {
-		if err := ocmCtx.ConfigContext().ApplyConfig(cfg, fmt.Sprintf("ocm config secret: %s/%s", secret.Namespace, secret.Name)); err != nil {
-			return err
-		}
+	if err := ocmCtx.ConfigContext().ApplyConfig(cfg, fmt.Sprintf("ocm config secret: %s/%s", secret.Namespace, secret.Name)); err != nil {
+		return err
 	}
 
 	return nil
