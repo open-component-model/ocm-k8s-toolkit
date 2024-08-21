@@ -90,6 +90,12 @@ func (c *Client) CreateAuthenticatedOCMContext(ctx context.Context, obj *v1alpha
 		return nil, fmt.Errorf("failed to configure credentials for component: %w", err)
 	}
 
+	if obj.Spec.ConfigSet != "" {
+		if err := octx.ConfigContext().ApplyConfigSet(obj.Spec.ConfigSet); err != nil {
+			return nil, fmt.Errorf("failed to apply config: %w", err)
+		}
+	}
+
 	logger.V(v1alpha1.LevelDebug).Info("credentials configured")
 
 	return octx, nil
