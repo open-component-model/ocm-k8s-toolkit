@@ -17,13 +17,13 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
 	"time"
 
 	"github.com/fluxcd/pkg/runtime/events"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/server"
 
@@ -158,7 +158,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	starter, storage, err := server.InitializeStorage(
+	ctx := context.Background()
+	storage, err := server.NewStorage(
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		storagePath,
@@ -170,13 +171,16 @@ func main() {
 		setupLog.Error(err, "unable to initialize storage")
 		os.Exit(1)
 	}
-	ocmClient := ocm.NewClient(mgr.GetClient())
+	artifactServer, err := server.NewArtifactServer(storagePath, storageAdvAddr, time.Minute)
+	if err != nil {
+		setupLog.Error(err, "unable to initialize storage")
+		os.Exit(1)
+	}
 
 	if err = (&controller.ComponentReconciler{
 		Client:        mgr.GetClient(),
 		Scheme:        mgr.GetScheme(),
 		Storage:       storage,
-		OCMClient:     ocmClient,
 		EventRecorder: eventsRecorder,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Component")
@@ -207,8 +211,8 @@ func main() {
 		// to handle that.
 		<-mgr.Elected()
 
-		if err := starter(storagePath, storageAddr); err != nil {
-			setupLog.Error(err, "unable to start storage server")
+		if err := artifactServer.Start(ctx); err != nil {
+			setupLog.Error(err, "unable to start artifact server")
 		}
 	}()
 

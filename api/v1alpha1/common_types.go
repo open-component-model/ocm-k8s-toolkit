@@ -17,8 +17,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"encoding/json"
-
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
 
@@ -66,7 +64,5 @@ type ResourceInfo struct {
 	// +optional
 	ExtraIdentity map[string]string `json:"extraIdentity,omitempty"`
 	// +required
-	Access Access `json:"access,omitempty"`
+	Access apiextensionsv1.JSON `json:"access,omitempty"`
 }
-
-type Access json.RawMessage

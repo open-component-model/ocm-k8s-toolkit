@@ -21,7 +21,7 @@ import (
 	"time"
 
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -31,6 +31,8 @@ type ComponentSpec struct {
 	RepositoryRef ObjectKey `json:"repositoryRef"`
 	// +required
 	Component string `json:"component"`
+	// +optional
+	EnforceDowngradability bool `json:"enforceDowngradability,omitempty"`
 	// Semver defines the constraint of the fetched version. '>=v0.1'.
 	// +required
 	Semver string `json:"semver"`
@@ -39,15 +41,19 @@ type ComponentSpec struct {
 	// +optional
 	Verify []Verification `json:"verify,omitempty"`
 	// +optional
-	SecretRef v1.LocalObjectReference `json:"secretRef,omitempty"`
+	SecretRef *corev1.LocalObjectReference `json:"secretRef,omitempty"`
 	// +optional
-	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
-	// The secrets referred to by SecretRef (or SecretRefs) may contain ocm config data. The ocm config allows to
-	// specify sets of configuration data (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
-	// SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be
-	// effective.
+	SecretRefs []corev1.LocalObjectReference `json:"secretRefs,omitempty"`
 	// +optional
-	ConfigSet string `json:"configSet,omitempty"`
+	ConfigRef *corev1.LocalObjectReference `json:"configRef,omitempty"`
+	// +optional
+	ConfigRefs []corev1.LocalObjectReference `json:"configRefs,omitempty"`
+	// The secrets and configs referred to by SecretRef (or SecretRefs) and Config (or ConfigRefs) may contain ocm
+	// config data. The  ocm config allows to specify sets of configuration data
+	// (s. https://ocm.software/docs/cli-reference/help/configfile/). If the SecretRef (or SecretRefs) and ConfigRef and
+	// ConfigRefs contain ocm config sets, the user may specify which config set he wants to be effective.
+	// +optional
+	ConfigSet *string `json:"configSet"`
 	// +required
 	Interval metav1.Duration `json:"interval"`
 	// +optional
@@ -65,7 +71,7 @@ type ComponentStatus struct {
 	// The component controller generates an artifact which is a list of component descriptors. If the components were
 	// verified, other controllers (e.g. Resource controller) can use this without having to verify the signature again
 	// +optional
-	ArtifactRef v1.LocalObjectReference `json:"artifactRef,omitempty"`
+	ArtifactRef corev1.LocalObjectReference `json:"artifactRef,omitempty"`
 	// +optional
 	Artifact artifactv1.ArtifactSpec `json:"artifact,omitempty"`
 	// +optional
@@ -75,7 +81,11 @@ type ComponentStatus struct {
 	// Propagate its effective secrets. Other controllers (e.g. Resource controller) may use this as default
 	// if they do not explicitly refer a secret.
 	// +optional
-	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
+	SecretRefs []corev1.LocalObjectReference `json:"secretRefs,omitempty"`
+	// Propagate its effective configs. Other controllers (e.g. Component or Resource controller) may use this as default
+	// if they do not explicitly refer a config.
+	// +optional
+	ConfigRefs []corev1.LocalObjectReference `json:"configRefs,omitempty"`
 	// The secrets referred to by SecretRef (or SecretRefs) may contain ocm config data. The ocm config allows to
 	// specify sets of configuration data (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
 	// SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be
@@ -131,6 +141,36 @@ func (in *Component) GetKind() string {
 // reconciled again.
 func (in Component) GetRequeueAfter() time.Duration {
 	return in.Spec.Interval.Duration
+}
+
+func (in *Component) GetSecretRefs() []corev1.LocalObjectReference {
+	if in.Spec.SecretRef != nil {
+		return append(in.Status.SecretRefs, *in.Spec.SecretRef)
+	}
+	return in.Spec.SecretRefs
+}
+
+func (in *Component) GetEffectiveSecretRefs() []corev1.LocalObjectReference {
+	return in.Status.SecretRefs
+}
+
+func (in *Component) GetConfigRefs() []corev1.LocalObjectReference {
+	if in.Spec.ConfigRef != nil {
+		return append(in.Spec.ConfigRefs, *in.Spec.ConfigRef)
+	}
+	return in.Spec.ConfigRefs
+}
+
+func (in *Component) GetEffectiveConfigRefs() []corev1.LocalObjectReference {
+	return in.Status.ConfigRefs
+}
+
+func (in *Component) GetConfigSet() *string {
+	return in.Spec.ConfigSet
+}
+
+func (in *Component) GetEffectiveConfigSet() string {
+	return in.Status.ConfigSet
 }
 
 // +kubebuilder:object:root=true

@@ -20,6 +20,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mandelsoft/goutils/general"
+	"github.com/mandelsoft/goutils/sliceutils"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/utils"
+	"ocm.software/ocm/api/datacontext"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,7 +34,7 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/status"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	kuberecorder "k8s.io/client-go/tools/record"
@@ -47,14 +51,17 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 )
 
+const (
+	Realm = "component-controller"
+)
+
 // ComponentReconciler reconciles a Component object.
 type ComponentReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	kuberecorder.EventRecorder
 
-	Storage   *storage.Storage
-	OCMClient ocm.Contract
+	Storage *storage.Storage
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -82,7 +89,21 @@ type Components struct {
 
 // Reconcile the component object.
 func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
-	logger := log.FromContext(ctx).WithName("component-controller")
+	// TODO: Discuss whether it would make sense to initialize the ocm context here and call a defer close. This way, we
+	//  can simply add stuff that we'd want to be closed to the close of the context.
+	//  FYI: DefaultContext is essentially the same as the extended context created here. The difference is, if we
+	//  register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
+	//  instance and not at the global default context variable.
+	octx := ocmctx.New(datacontext.MODE_EXTENDED)
+	defer func() {
+		retErr = errors.Join(retErr, octx.Finalize())
+	}()
+	octx.LoggingContext().SetBaseLogger(log.FromContext(ctx), true)
+	logger := octx.LoggingContext().Logger(Realm).WithName("component-controller")
+
+	session := ocmctx.NewSession(datacontext.NewSession())
+	// automatically close the session when the ocm context is closed in the above defer
+	octx.Finalizer().Close(session)
 
 	obj := &deliveryv1alpha1.Component{}
 	if err := r.Get(ctx, req.NamespacedName, obj); err != nil {
@@ -110,52 +131,137 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}()
 
-	repositoryObject := &deliveryv1alpha1.OCMRepository{}
+	repoObj := &deliveryv1alpha1.OCMRepository{}
 	if err := r.Get(ctx, types.NamespacedName{
 		Namespace: obj.Spec.RepositoryRef.Namespace,
 		Name:      obj.Spec.RepositoryRef.Name,
-	}, repositoryObject); err != nil {
+	}, repoObj); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get repository: %w", err)
 	}
 
-	if !conditions.IsReady(repositoryObject) {
+	if !conditions.IsReady(repoObj) {
 		logger.Info("repository is not ready", "name", obj.Spec.RepositoryRef.Name)
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.RepositoryIsNotReadyReason, "Repository is not ready yet")
 
 		return ctrl.Result{RequeueAfter: obj.GetRequeueAfter()}, nil
 	}
 
-	octx, err := r.OCMClient.CreateAuthenticatedOCMContext(ctx, repositoryObject)
+	// Configure ocm context
+	secrets, err := utils.GetSecrets(ctx, r.Client, append(utils.GetEffectiveSecretRefs(ctx, obj, repoObj),
+		sliceutils.Transform(
+			sliceutils.Filter(obj.Spec.Verify, func(v deliveryv1alpha1.Verification) bool {
+				return v.Value == "" && v.SecretRef != ""
+			}),
+			func(v deliveryv1alpha1.Verification) client.ObjectKey {
+				return client.ObjectKey{
+					Namespace: obj.Namespace,
+					Name:      v.SecretRef,
+				}
+			})...))
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.AuthenticatedContextCreationFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to create authenticated OCM context: %w", err)
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.SecretFetchFailedReason, err.Error())
+		return ctrl.Result{}, fmt.Errorf("failed to get secrets: %w", err)
 	}
 
-	// reconcile the version before calling reconcile func
-	update, version, err := r.checkVersion(ctx, octx, obj, repositoryObject.Spec.RepositorySpec.Raw)
+	configs, err := utils.GetConfigMaps(ctx, r.Client, utils.GetEffectiveConfigRefs(ctx, obj, repoObj))
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.ConfigFetchFailedReason, err.Error())
+		return ctrl.Result{}, fmt.Errorf("failed to get configmaps: %w", err)
+	}
+
+	set := utils.GetEffectiveConfigSet(ctx, obj, repoObj)
+
+	err = ocm.ConfigureContext(octx, obj, secrets, configs, set)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
+		return ctrl.Result{}, fmt.Errorf("failed to get configmaps: %w", err)
+	}
+
+	repo, err := session.LookupRepositoryForConfig(octx, repoObj.Spec.RepositorySpec.Raw)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.RepositorySpecInvalidReason, "RepositorySpec is invalid")
+
+		return ctrl.Result{}, fmt.Errorf("invalid repository spec: %w", err)
+	}
+
+	component, err := session.LookupComponent(repo, obj.Spec.Component)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.GetComponentFailedReason, "Component not found in repository")
+
+		return ctrl.Result{
+			// component just might be not there (or rather created) yet, requeue without backoff to avoid long wait
+			// times
+			RequeueAfter: obj.GetRequeueAfter(),
+		}, nil
+	}
+
+	// check version before calling reconcile func
+	filter, err := ocm.RegexpFilter(obj.Spec.SemverFilter)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.CheckVersionFailedReason, err.Error())
-
-		// The component might not be there yet. We don't fail but keep polling instead.
-		return ctrl.Result{
-			RequeueAfter: obj.GetRequeueAfter(),
-		}, nil
+		return ctrl.Result{}, fmt.Errorf("failed to parse regexp filter: %w", err)
+	}
+	latestSemver, err := ocm.GetLatestValidVersion(component, obj.Spec.Semver, filter)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.CheckVersionFailedReason, err.Error())
+		return ctrl.Result{}, fmt.Errorf("failed to check latest version: %w", err)
+	}
+	latestcv, err := session.LookupComponentVersion(repo, component.GetName(), latestSemver.String())
+	if err != nil {
+		// this version has to exist (since it was found in GetLatestVersion) and therefore, this is most likely a
+		// static error where requeueing does not make sense
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
+		return ctrl.Result{}, fmt.Errorf("failed to get component version: %w", err)
 	}
 
-	if !update {
-		status.MarkReady(r.EventRecorder, obj, "No update required")
-		logger.Info("reconciliation skipped, no update needed")
-
-		return ctrl.Result{
-			RequeueAfter: obj.GetRequeueAfter(),
-		}, nil
+	reconciledVersion := general.OptionalDefaulted(obj.Status.Component.Version, "0.0.0")
+	currentSemver, err := semver.NewVersion(reconciledVersion)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.CheckVersionFailedReason, err.Error())
+		return ctrl.Result{}, fmt.Errorf("failed to check reconciled version: %w", err)
 	}
+
+	if latestSemver.LessThan(currentSemver) && !obj.Spec.EnforceDowngradability {
+		downgradable := false
+		if reconciledVersion != "0.0.0" {
+			reconciledcv, err := session.LookupComponentVersion(repo, component.GetName(), reconciledVersion)
+			if err != nil {
+				// this version has to exist (since it was found in GetLatestVersion) and therefore, this is most likely a
+				// static error where requeueing does not make sense
+				status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
+				return ctrl.Result{}, fmt.Errorf("failed to get reconciled component version to check"+
+					"downgradability: %w", err)
+			}
+			downgradable, err = ocm.IsDowngradable(ctx, reconciledcv, latestcv)
+			if err != nil {
+				status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.CheckVersionFailedReason, err.Error())
+				return ctrl.Result{}, fmt.Errorf("failed to check downgradability: %w", err)
+			}
+		}
+
+		if !downgradable {
+			status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.CheckVersionFailedReason,
+				fmt.Sprintf("component version cannot be downgraded from version %s to version: %s",
+					currentSemver.String(), latestSemver.String()))
+			// keep requeueing, a greater component version could be published
+			return ctrl.Result{
+				RequeueAfter: obj.GetRequeueAfter(),
+			}, nil
+		}
+	}
+	version := latestSemver.String()
 
 	logger.Info("start reconciling new version", "version", version)
-	if err := r.reconcile(ctx, octx, obj, repositoryObject, version); err != nil {
+	if err := r.reconcile(ctx, octx, obj, latestcv); err != nil {
 		// We don't MarkAs* here because the `reconcile` function marks the specific status.
 		return ctrl.Result{}, err
+	}
+
+	// Update status
+	obj.Status.Component = deliveryv1alpha1.ComponentInfo{
+		RepositorySpec: repoObj.Spec.RepositorySpec,
+		Component:      obj.Spec.Component,
+		Version:        version,
 	}
 
 	status.MarkReady(r.EventRecorder, obj, "Applied version %s", version)
@@ -167,112 +273,35 @@ func (r *ComponentReconciler) normalizeComponentVersionName(name string) string 
 	return strings.ReplaceAll(name, "/", "-")
 }
 
-func (r *ComponentReconciler) checkVersion(
-	ctx context.Context,
-	octx ocmctx.Context,
-	obj *deliveryv1alpha1.Component,
-	repoConfig []byte,
-) (bool, string, error) {
-	logger := log.FromContext(ctx).WithName("version-reconcile")
-	logger.Info("checking for latest version")
-
-	latest, err := r.OCMClient.GetLatestValidComponentVersion(ctx, octx, obj, repoConfig)
-	if err != nil {
-		return false, "", fmt.Errorf("failed to get latest component version: %w", err)
-	}
-	logger.V(deliveryv1alpha1.LevelDebug).Info("got latest version of component", "version", latest)
-
-	latestSemver, err := semver.NewVersion(latest)
-	if err != nil {
-		return false, "", fmt.Errorf("failed to parse latest version: %w", err)
-	}
-
-	reconciledVersion := "0.0.0"
-	if obj.Status.Component.Version != "" {
-		reconciledVersion = obj.Status.Component.Version
-	}
-	current, err := semver.NewVersion(reconciledVersion)
-	if err != nil {
-		return false, "", fmt.Errorf("failed to parse reconciled version: %w", err)
-	}
-	logger.V(deliveryv1alpha1.LevelDebug).Info("current reconciled version is", "reconciled", current.String())
-
-	if latestSemver.Equal(current) || current.GreaterThan(latestSemver) {
-		logger.V(deliveryv1alpha1.LevelDebug).Info("Reconciled version equal to or greater than newest available version", "version", latestSemver)
-
-		return false, latest, nil
-	}
-
-	return true, latest, nil
-}
-
-func (r *ComponentReconciler) traversReferences(
-	ctx context.Context,
-	octx ocmctx.Context,
-	list *[]*compdesc.ComponentDescriptor,
-	references compdesc.References,
-	repoConfig []byte,
-) error {
-	logger := log.FromContext(ctx).WithName("travers-references")
-	for _, ref := range references {
-		logger.Info("fetching embedded component", "component", ref.ComponentName, "version", ref.Version)
-
-		cv, err := r.OCMClient.GetComponentVersion(ctx, octx, ref.ComponentName, ref.Version, repoConfig)
-		if err != nil {
-			return err
-		}
-
-		desc := cv.GetDescriptor()
-		*list = append(*list, desc)
-
-		if len(desc.References) > 0 {
-			if err := r.traversReferences(ctx, octx, list, desc.References, repoConfig); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
 // reconcile perform the rest of the reconciliation routine after the component has been verified and checked for new
 // versions.
 func (r *ComponentReconciler) reconcile(
 	ctx context.Context,
 	octx ocmctx.Context,
 	obj *deliveryv1alpha1.Component,
-	repositoryObject *deliveryv1alpha1.OCMRepository,
-	version string,
+	cv ocmctx.ComponentVersionAccess,
 ) error {
-	logger := log.FromContext(ctx)
+	logger := octx.Logger(Realm).WithName("reconcile")
 
-	if err := r.OCMClient.VerifyComponent(ctx, octx, obj, version, repositoryObject.Spec.RepositorySpec.Raw); err != nil {
+	logger.Info("reconciling component", "name", obj.Name)
+
+	descriptors, err := ocm.VerifyComponentVersion(cv, sliceutils.Transform(obj.Spec.Verify, func(verify deliveryv1alpha1.Verification) string {
+		return verify.Signature
+	}))
+	if err != nil {
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.VerificationFailedReason, err.Error())
 
 		return fmt.Errorf("failed to verify component: %w", err)
 	}
+	logger.Info("component successfully verified", "version", cv.GetVersion(), "component", cv.GetName())
 
-	logger.V(deliveryv1alpha1.LevelDebug).Info("component successfully verified", "version", version, "component", obj.Spec.Component)
+	// if the component descriptors were not collected during signature validation, collect them now
+	if len(descriptors) == 0 {
+		descriptors, err = ocm.ListComponentDescriptors(cv, ocmctx.NewCompoundResolver(cv.Repository(), octx.GetResolver()))
+		if err != nil {
+			status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.ListComponentDescriptorsFailedReason, err.Error())
 
-	cv, err := r.OCMClient.GetComponentVersion(ctx, octx, obj.Spec.Component, version, repositoryObject.Spec.RepositorySpec.Raw)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.GetComponentFailedReason, err.Error())
-
-		return fmt.Errorf("failed to retrieve component: %w", err)
-	}
-	defer func() {
-		if err := cv.Close(); err != nil {
-			logger.Error(err, "failed to close component version")
-		}
-	}()
-
-	desc := cv.GetDescriptor()
-	descriptors := []*compdesc.ComponentDescriptor{desc}
-	if desc != nil {
-		if err := r.traversReferences(ctx, octx, &descriptors, desc.References, repositoryObject.Spec.RepositorySpec.Raw); err != nil {
-			status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.ComponentTraversalFailedReason, err.Error())
-
-			return fmt.Errorf("failed to travers references: %w", err)
+			return fmt.Errorf("failed to reconcile storage: %w", err)
 		}
 	}
 
@@ -327,7 +356,7 @@ func (r *ComponentReconciler) reconcile(
 				return fmt.Errorf("unable to archive artifact to storage: %w", err)
 			}
 
-			obj.Status.ArtifactRef = v1.LocalObjectReference{
+			obj.Status.ArtifactRef = corev1.LocalObjectReference{
 				Name: art.Name,
 			}
 
@@ -337,13 +366,6 @@ func (r *ComponentReconciler) reconcile(
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.ReconcileArtifactFailedReason, err.Error())
 
 		return fmt.Errorf("failed to reconcile artifact: %w", err)
-	}
-
-	// Update status
-	obj.Status.Component = deliveryv1alpha1.ComponentInfo{
-		RepositorySpec: repositoryObject.Spec.RepositorySpec,
-		Component:      obj.Spec.Component,
-		Version:        version,
 	}
 
 	logger.Info("successfully reconciled component", "name", obj.Name)

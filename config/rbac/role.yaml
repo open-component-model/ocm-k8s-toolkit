@@ -31,57 +31,7 @@ rules:
   - delivery.ocm.software
   resources:
   - components
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - delivery.ocm.software
-  resources:
-  - components/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - delivery.ocm.software
-  resources:
-  - components/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - delivery.ocm.software
-  resources:
   - ocmrepositories
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - delivery.ocm.software
-  resources:
-  - ocmrepositories/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - delivery.ocm.software
-  resources:
-  - ocmrepositories/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - delivery.ocm.software
-  resources:
   - resources
   verbs:
   - create
@@ -94,12 +44,16 @@ rules:
 - apiGroups:
   - delivery.ocm.software
   resources:
+  - components/finalizers
+  - ocmrepositories/finalizers
   - resources/finalizers
   verbs:
   - update
 - apiGroups:
   - delivery.ocm.software
   resources:
+  - components/status
+  - ocmrepositories/status
   - resources/status
   verbs:
   - get
