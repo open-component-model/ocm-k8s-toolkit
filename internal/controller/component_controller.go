@@ -84,6 +84,17 @@ type Components struct {
 func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
 	logger := log.FromContext(ctx).WithName("component-controller")
 
+	// TODO: Discuss whether it would make sense to initialize the ocm context here and call a defer close. This way, we
+	//  can simply add stuff that we'd want to be closed to the close of the context.
+	//  FYI: DefaultContext is essentially the same as the extended context created here. The difference is, if we
+	//  register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
+	//  instance and not at the global default context variable.
+	//   octx := ocmctx.New(datacontext.MODE_EXTENDED)
+	//   defer func() {
+	//	 retErr = errors.Join(retErr, octx.Finalize())
+	//   }()
+	//   octx.Finalizer().Close(<something we want to be closed at the end of reconcilation>)
+
 	obj := &deliveryv1alpha1.Component{}
 	if err := r.Get(ctx, req.NamespacedName, obj); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -138,6 +149,8 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.CheckVersionFailedReason, err.Error())
 
 		// The component might not be there yet. We don't fail but keep polling instead.
+		// TODO: Not sure if this is solid. Assuming we fail because the semver cannot be parsed,  we will "crash loop",
+		//  wouldn't we?
 		return ctrl.Result{
 			RequeueAfter: obj.GetRequeueAfter(),
 		}, nil
@@ -197,7 +210,9 @@ func (r *ComponentReconciler) checkVersion(
 	}
 	logger.V(deliveryv1alpha1.LevelDebug).Info("current reconciled version is", "reconciled", current.String())
 
-	if latestSemver.Equal(current) || current.GreaterThan(latestSemver) {
+	// TODO: Does this mean downgrading a component version is not possible? If I set component.spec.version = 2.0.0, which is then reconciled and consequently component.status.component.version is set to 2.0.0 and then
+	//  go ahead and set component.spec.version = 1.0.0, current is 2.0.0 and latest will be 1.0.0 and consequently, we will do nothing?
+	if current.Equal(latestSemver) || current.GreaterThan(latestSemver) {
 		logger.V(deliveryv1alpha1.LevelDebug).Info("Reconciled version equal to or greater than newest available version", "version", latestSemver)
 
 		return false, latest, nil
@@ -206,14 +221,18 @@ func (r *ComponentReconciler) checkVersion(
 	return true, latest, nil
 }
 
-func (r *ComponentReconciler) traversReferences(
+// TODO: maybe we should add something like this to the ocm library
+//  (i guess if the recursion depth first search even gets close to a stack overflow, we have other problems)
+
+func (r *ComponentReconciler) traverseReferences(
 	ctx context.Context,
 	octx ocmctx.Context,
 	list *[]*compdesc.ComponentDescriptor,
 	references compdesc.References,
 	repoConfig []byte,
 ) error {
-	logger := log.FromContext(ctx).WithName("travers-references")
+	logger := log.FromContext(ctx).WithName("traverse-references")
+
 	for _, ref := range references {
 		logger.Info("fetching embedded component", "component", ref.ComponentName, "version", ref.Version)
 
@@ -226,7 +245,7 @@ func (r *ComponentReconciler) traversReferences(
 		*list = append(*list, desc)
 
 		if len(desc.References) > 0 {
-			if err := r.traversReferences(ctx, octx, list, desc.References, repoConfig); err != nil {
+			if err := r.traverseReferences(ctx, octx, list, desc.References, repoConfig); err != nil {
 				return err
 			}
 		}
@@ -269,7 +288,7 @@ func (r *ComponentReconciler) reconcile(
 	desc := cv.GetDescriptor()
 	descriptors := []*compdesc.ComponentDescriptor{desc}
 	if desc != nil {
-		if err := r.traversReferences(ctx, octx, &descriptors, desc.References, repositoryObject.Spec.RepositorySpec.Raw); err != nil {
+		if err := r.traverseReferences(ctx, octx, &descriptors, desc.References, repositoryObject.Spec.RepositorySpec.Raw); err != nil {
 			status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.ComponentTraversalFailedReason, err.Error())
 
 			return fmt.Errorf("failed to travers references: %w", err)

@@ -41,6 +41,22 @@ type Version struct {
 	Version string
 }
 
+// TODO: I don't think we really need this abstraction.
+//  1. I understand that it was implemented to mock ocm functionality for testing. But the ocm provides several utilities
+//     for testing itself. Since technically, we are the ocm team, we should utilize those capabilies and thereby also
+//     create an example of how to use them.
+//  2. I'm absolutely open to having something like an ocmutils package with corresponding helper function fine-tuned for
+//     our controllers. But for general functionality (e.g. GetLatestValidComponentVersion, which gets a component
+//     version based on semver), we should also discuss whether it might make sense to add the functionality to the ocm
+//     library. In this case, we could e.g. add an optional parameter (or an options parameter to stay extensible) to
+//     ComponentAccess.LookupVersion(opts ...Option) and ComponentAccess.ListVersions(opts ...Option) with
+//     type Options struct {
+//     semver semver.Version
+//     }
+
+// TODO: Even though the repository is always the same for one reconcilation, we unmarshal the repoConfig in almost
+//  every method
+
 type Contract interface {
 	CreateAuthenticatedOCMContext(ctx context.Context, obj *v1alpha1.OCMRepository) (ocm.Context, error)
 	GetComponentVersion(
@@ -55,8 +71,13 @@ type Contract interface {
 	VerifyComponent(ctx context.Context, octx ocm.Context, obj *v1alpha1.Component, version string, repoConfig []byte) error
 }
 
+// TODO: It might make sense to use an ocm session here.
+//  It transparently handles the caching of repositories, components and component versions as well as the closing of
+//  said objects (we could even add the close of the session itself to the ocm contexts finalizer).
+
 type Client struct {
 	client client.Client
+	// ocm.Session
 }
 
 func NewClient(client client.Client) *Client {
@@ -103,6 +124,7 @@ func (c *Client) VerifyComponent(ctx context.Context, octx ocm.Context, obj *v1a
 	if err != nil {
 		return fmt.Errorf("failed to get component version: %w", err)
 	}
+	// TODO: This seems redundant since the exact same code is already called in c.GetComponentVersion(...) above
 	repo, err := octx.RepositoryForConfig(repoConfig, nil)
 	if err != nil {
 		return fmt.Errorf("ocm repository configuration error: %w", err)
@@ -117,6 +139,8 @@ func (c *Client) VerifyComponent(ctx context.Context, octx ocm.Context, obj *v1a
 			err  error
 		)
 
+		// TODO: maybe, we should give a warning that secret ref will be ignored in case both values are set (for
+		//  whatever reason)
 		switch {
 		case signature.Value != "":
 			cert, err = base64.StdEncoding.DecodeString(signature.Value)
@@ -137,7 +161,11 @@ func (c *Client) VerifyComponent(ctx context.Context, octx ocm.Context, obj *v1a
 
 		logger.Info("retrieved certificate key")
 
-		resolver := ocm.NewCompoundResolver(repo)
+		// TODO: We should also consider the possibility that the user's component hierarchy spans multiple ocm
+		//  repositories. Since these would have to be configured in the ocm config as resolvers (at least for now, while
+		//  we do not provide a dedicated option in our crds), the ocm contexts resolvers should already cover this. So,
+		//  without ever having tested this myself in the context of signing, I is how it should look like.
+		resolver := ocm.NewCompoundResolver(repo, octx.GetResolver())
 		opts := signing.NewOptions(
 			signing.Resolver(resolver),
 			signing.PublicKey(signature.Signature, cert),
