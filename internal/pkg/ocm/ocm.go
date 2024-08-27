@@ -34,6 +34,9 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
+// TODO: In this Contract (OCM Client Implementation), the error returned by .Close() calls are mostly ignored. This
+//  should be changed.
+
 // Version has two values to be able to sort a list but still return the actual Version.
 // The Version might contain a `v`.
 type Version struct {
@@ -120,6 +123,7 @@ func (c *Client) VerifyComponent(ctx context.Context, octx ocm.Context, obj *v1a
 	logger := log.FromContext(ctx).WithName("VerifyComponent").V(v1alpha1.LevelDebug).WithValues("version", version, "component", obj.Spec.Component)
 
 	logger.Info("fetching component version")
+	// TODO: Is it possible that this component version is never closed?
 	cv, err := c.GetComponentVersion(ctx, octx, obj.Spec.Component, version, repoConfig)
 	if err != nil {
 		return fmt.Errorf("failed to get component version: %w", err)

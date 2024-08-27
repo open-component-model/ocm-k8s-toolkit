@@ -136,6 +136,7 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{RequeueAfter: obj.GetRequeueAfter()}, nil
 	}
 
+	// TODO: Is it possible that this ocm context is never closed?
 	octx, err := r.OCMClient.CreateAuthenticatedOCMContext(ctx, repositoryObject)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.AuthenticatedContextCreationFailedReason, err.Error())
@@ -236,6 +237,7 @@ func (r *ComponentReconciler) traverseReferences(
 	for _, ref := range references {
 		logger.Info("fetching embedded component", "component", ref.ComponentName, "version", ref.Version)
 
+		// TODO: Is it possible that the returned component version is never closed?
 		cv, err := r.OCMClient.GetComponentVersion(ctx, octx, ref.ComponentName, ref.Version, repoConfig)
 		if err != nil {
 			return err
