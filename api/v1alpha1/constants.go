@@ -24,6 +24,8 @@ const (
 	OCMConfigKey = ".ocmconfig"
 	// OCMLabelDowngradable defines the secret
 	OCMLabelDowngradable = "ocm.software/ocm-k8s-toolkit/downgradable"
+
+	OCMComponentDescriptorList = "component-descriptor-list.yaml"
 )
 
 // Log levels.

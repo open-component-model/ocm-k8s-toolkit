@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"ocm.software/ocm/api/ocm/resolvers"
 
 	"github.com/mandelsoft/logging"
 	"ocm.software/ocm/api/credentials"
@@ -136,7 +137,7 @@ func (c *Context) AddComponent(component *Component) error {
 	c.repo.cva = append(c.repo.cva, component)
 
 	if component.Sign != nil {
-		resolver := ocm.NewCompoundResolver(c.repo)
+		resolver := resolvers.NewCompoundResolver(c.repo)
 		opts := signing.NewOptions(
 			signing.Sign(
 				ocmsigning.DefaultHandlerRegistry().GetSigner(rsa.Algorithm),

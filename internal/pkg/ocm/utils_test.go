@@ -375,11 +375,11 @@ consumers:
 			MustBeSuccessful(env.Cleanup())
 		})
 		It("without filter", func() {
-			ver := Must(GetLatestValidVersion(c, "<2.5.0"))
+			ver := Must(GetLatestValidVersion(Must(c.ListVersions()), "<2.5.0"))
 			Expect(ver.Equal(Must(semver.NewVersion(VERSION2))))
 		})
 		It("with filter", func() {
-			ver := Must(GetLatestValidVersion(c, "<2.5.0", Must(RegexpFilter(".*-rc.*"))))
+			ver := Must(GetLatestValidVersion(Must(c.ListVersions()), "<2.5.0", Must(RegexpFilter(".*-rc.*"))))
 			Expect(ver.Equal(Must(semver.NewVersion(VERSION1))))
 		})
 	})
@@ -446,7 +446,7 @@ consumers:
 			descriptors := Must(VerifyComponentVersion(cv, []string{SIGNATURE1, SIGNATURE2, SIGNATURE3}))
 			Expect(descriptors).To(HaveLen(2))
 		})
-		FIt("list component versions without verification", func() {
+		It("list component versions without verification", func() {
 			descriptors := Must(ListComponentDescriptors(cv, repo))
 			Expect(descriptors).To(HaveLen(2))
 		})

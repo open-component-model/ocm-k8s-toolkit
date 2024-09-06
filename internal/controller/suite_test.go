@@ -45,6 +45,11 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
+const (
+	ARTIFACT_PATH   = "ocm-k8s-artifactstore--*"
+	ARTIFACT_SERVER = "localhost:8080"
+)
+
 var cfg *rest.Config
 var k8sClient client.Client
 var k8sManager ctrl.Manager
@@ -99,8 +104,8 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	tmpdir := Must(os.MkdirTemp("/tmp", "artifactstore-*"))
-	address := "localhost:8080"
+	tmpdir := Must(os.MkdirTemp("", ARTIFACT_PATH))
+	address := ARTIFACT_SERVER
 	storage := Must(server.NewStorage(k8sClient, testEnv.Scheme, tmpdir, address, 0, 0))
 	artifactServer := Must(server.NewArtifactServer(tmpdir, address, time.Millisecond))
 

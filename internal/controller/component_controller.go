@@ -24,6 +24,7 @@ import (
 	"github.com/mandelsoft/goutils/sliceutils"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/utils"
 	"ocm.software/ocm/api/datacontext"
+	"ocm.software/ocm/api/ocm/resolvers"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,7 +40,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	kuberecorder "k8s.io/client-go/tools/record"
 	ocmctx "ocm.software/ocm/api/ocm"
-	"ocm.software/ocm/api/ocm/compdesc"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -71,10 +71,6 @@ func (r *ComponentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-type Components struct {
-	List []*compdesc.ComponentDescriptor `json:"components"`
-}
-
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=components,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=components/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=components/finalizers,verbs=update
@@ -89,22 +85,9 @@ type Components struct {
 
 // Reconcile the component object.
 func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
-	// TODO: Discuss whether it would make sense to initialize the ocm context here and call a defer close. This way, we
-	//  can simply add stuff that we'd want to be closed to the close of the context.
-	//  FYI: DefaultContext is essentially the same as the extended context created here. The difference is, if we
-	//  register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
-	//  instance and not at the global default context variable.
-	octx := ocmctx.New(datacontext.MODE_EXTENDED)
-	defer func() {
-		retErr = errors.Join(retErr, octx.Finalize())
-	}()
-	octx.LoggingContext().SetBaseLogger(log.FromContext(ctx), true)
-	logger := octx.LoggingContext().Logger(Realm).WithName("component-controller")
+	logger := log.FromContext(ctx).WithName("component-controller")
 
-	session := ocmctx.NewSession(datacontext.NewSession())
-	// automatically close the session when the ocm context is closed in the above defer
-	octx.Finalizer().Close(session)
-
+	// start: prepare reconcile
 	obj := &deliveryv1alpha1.Component{}
 	if err := r.Get(ctx, req.NamespacedName, obj); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -170,11 +153,23 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	set := utils.GetEffectiveConfigSet(ctx, obj, repoObj)
+	// end: prepare reconcile
+
+	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
+	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
+	// instance and not at the global default context variable.
+	octx := ocmctx.New(datacontext.MODE_EXTENDED)
+	defer func() {
+		retErr = errors.Join(retErr, octx.Finalize())
+	}()
+	session := ocmctx.NewSession(datacontext.NewSession())
+	// automatically close the session when the ocm context is closed in the above defer
+	octx.Finalizer().Close(session)
 
 	err = ocm.ConfigureContext(octx, obj, secrets, configs, set)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
-		return ctrl.Result{}, fmt.Errorf("failed to get configmaps: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to configure ocm context: %w", err)
 	}
 
 	repo, err := session.LookupRepositoryForConfig(octx, repoObj.Spec.RepositorySpec.Raw)
@@ -186,6 +181,13 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	component, err := session.LookupComponent(repo, obj.Spec.Component)
 	if err != nil {
+		// implement
+		return
+	}
+	versions, err := component.ListVersions()
+	if err != nil || len(versions) == 0 {
+		// for most repository implementations (especially oci), there is no way to check whether a component exists but
+		// trying to list all versions
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.GetComponentFailedReason, "Component not found in repository")
 
 		return ctrl.Result{
@@ -201,7 +203,7 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.CheckVersionFailedReason, err.Error())
 		return ctrl.Result{}, fmt.Errorf("failed to parse regexp filter: %w", err)
 	}
-	latestSemver, err := ocm.GetLatestValidVersion(component, obj.Spec.Semver, filter)
+	latestSemver, err := ocm.GetLatestValidVersion(versions, obj.Spec.Semver, filter)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.CheckVersionFailedReason, err.Error())
 		return ctrl.Result{}, fmt.Errorf("failed to check latest version: %w", err)
@@ -226,8 +228,6 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if reconciledVersion != "0.0.0" {
 			reconciledcv, err := session.LookupComponentVersion(repo, component.GetName(), reconciledVersion)
 			if err != nil {
-				// this version has to exist (since it was found in GetLatestVersion) and therefore, this is most likely a
-				// static error where requeueing does not make sense
 				status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
 				return ctrl.Result{}, fmt.Errorf("failed to get reconciled component version to check"+
 					"downgradability: %w", err)
@@ -241,9 +241,12 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 		if !downgradable {
 			status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.CheckVersionFailedReason,
-				fmt.Sprintf("component version cannot be downgraded from version %s to version: %s",
+				fmt.Sprintf("component version cannot be downgraded from version %s to version %s",
 					currentSemver.String(), latestSemver.String()))
 			// keep requeueing, a greater component version could be published
+			// semver constraint may even describe older versions and non-existing newer versions, so you have to check
+			// for potential newer versions (current is downgradable to: > 1.0.3, latest is: < 1.1.0, but version 1.0.4
+			// does not exist yet, but will be created)
 			return ctrl.Result{
 				RequeueAfter: obj.GetRequeueAfter(),
 			}, nil
@@ -269,6 +272,8 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
+// github.com/my-component and github.com/my/component would collide
+// we should do this differently, e.g. replace - with -- and / with -
 func (r *ComponentReconciler) normalizeComponentVersionName(name string) string {
 	return strings.ReplaceAll(name, "/", "-")
 }
@@ -281,7 +286,7 @@ func (r *ComponentReconciler) reconcile(
 	obj *deliveryv1alpha1.Component,
 	cv ocmctx.ComponentVersionAccess,
 ) error {
-	logger := octx.Logger(Realm).WithName("reconcile")
+	logger := log.FromContext(ctx).WithName("reconcile")
 
 	logger.Info("reconciling component", "name", obj.Name)
 
@@ -297,7 +302,7 @@ func (r *ComponentReconciler) reconcile(
 
 	// if the component descriptors were not collected during signature validation, collect them now
 	if len(descriptors) == 0 {
-		descriptors, err = ocm.ListComponentDescriptors(cv, ocmctx.NewCompoundResolver(cv.Repository(), octx.GetResolver()))
+		descriptors, err = ocm.ListComponentDescriptors(cv, resolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver()))
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.ListComponentDescriptorsFailedReason, err.Error())
 
@@ -305,7 +310,7 @@ func (r *ComponentReconciler) reconcile(
 		}
 	}
 
-	list := &Components{
+	list := &ocm.Components{
 		List: descriptors,
 	}
 
@@ -329,6 +334,7 @@ func (r *ComponentReconciler) reconcile(
 		}
 	}()
 
+	// while list does not have a custom marshal function, this should not be done like this
 	content, err := yaml.Marshal(list)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.MarshallingComponentDescriptorsFailedReason, err.Error())
@@ -337,12 +343,13 @@ func (r *ComponentReconciler) reconcile(
 	}
 
 	const perm = 0o655
-	if err := os.WriteFile(filepath.Join(tmpDir, "component-descriptor.yaml"), content, perm); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, deliveryv1alpha1.OCMComponentDescriptorList), content, perm); err != nil {
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.WritingComponentFileFailedReason, err.Error())
 
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 
+	// why do we have to normalize at all? is it important that the directory structure is flat
 	revision := r.normalizeComponentVersionName(cv.GetName()) + "-" + cv.GetVersion()
 	if err := r.Storage.ReconcileArtifact(
 		ctx,

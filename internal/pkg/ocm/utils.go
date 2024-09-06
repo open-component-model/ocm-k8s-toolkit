@@ -16,6 +16,7 @@ import (
 	"ocm.software/ocm/api/ocm/compdesc"
 	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
 	utils "ocm.software/ocm/api/ocm/ocmutils"
+	"ocm.software/ocm/api/ocm/resolvers"
 	"ocm.software/ocm/api/ocm/tools/signing"
 	common "ocm.software/ocm/api/utils/misc"
 	"ocm.software/ocm/api/utils/runtime"
@@ -32,6 +33,9 @@ import (
 // known configuration types and applies them to the context.
 func ConfigureContext(octx ocm.Context, obj *deliveryv1alpha1.Component, secrets []corev1.Secret, configmaps []corev1.ConfigMap, configset ...string) error {
 	signinfo := signingattr.Get(octx)
+
+	// check that secrets are not contained twice within the slice
+	// wrap the k8s secrets with their purpose (config or verification) and only evaluate for that purpose
 
 	valueSigs := sliceutils.Filter(obj.Spec.Verify, func(signature deliveryv1alpha1.Verification) bool {
 		return signature.Value != ""
@@ -130,12 +134,8 @@ func RegexpFilter(regex string) (matcher.Matcher[string], error) {
 	}, nil
 }
 
-func GetLatestValidVersion(component ocm.ComponentAccess, semvers string, filter ...matcher.Matcher[string]) (*semver.Version, error) {
+func GetLatestValidVersion(versions []string, semvers string, filter ...matcher.Matcher[string]) (*semver.Version, error) {
 	constraint, err := semver.NewConstraint(semvers)
-	if err != nil {
-		return nil, err
-	}
-	versions, err := component.ListVersions()
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func VerifyComponentVersion(cv ocm.ComponentVersionAccess, sigs []string) ([]*co
 	//  repositories. Since these would have to be configured in the ocm config as resolvers (at least for now, while
 	//  we do not provide a dedicated option in our crds), the ocm contexts resolvers should already cover this. So,
 	//  without ever having tested this myself in the context of signing, I is how it should look like.
-	resolver := ocm.NewCompoundResolver(cv.Repository(), octx.GetResolver())
+	resolver := resolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver())
 	opts := signing.NewOptions(
 		signing.Resolver(resolver),
 		// do we really want to verify the digests here? isn't it sufficient to verify the signatures since
@@ -185,12 +185,12 @@ func VerifyComponentVersion(cv ocm.ComponentVersionAccess, sigs []string) ([]*co
 	}
 	logger.Info("successfully verified component signature")
 
-	return signing.ListComponentDescriptors(ws), nil
+	return signing.ListComponentDescriptors(cv, ws), nil
 }
 
 func ListComponentDescriptors(cv ocm.ComponentVersionAccess, r ocm.ComponentVersionResolver) ([]*compdesc.ComponentDescriptor, error) {
 	descriptors := []*compdesc.ComponentDescriptor{}
-	_, err := utils.Walk[*compdesc.ComponentDescriptor](nil, cv, r,
+	_, err := utils.Walk(nil, cv, r,
 		func(state common.WalkingState[*compdesc.ComponentDescriptor, ocm.ComponentVersionAccess], cv ocm.ComponentVersionAccess) (bool, error) {
 			descriptors = append(descriptors, cv.GetDescriptor())
 			return true, nil
