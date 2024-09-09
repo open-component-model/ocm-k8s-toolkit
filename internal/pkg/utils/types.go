@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -55,4 +56,14 @@ type ConfigSetProvider interface {
 type RefProvider interface {
 	SecretRefProvider
 	ConfigRefProvider
+}
+
+type VerificationProvider interface {
+	client.Object
+	GetVerifications() []v1alpha1.Verification
+}
+
+type Verification struct {
+	Signature string
+	PublicKey []byte
 }

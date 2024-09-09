@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	. "github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"ocm.software/ocm/api/credentials/builtin/maven/identity"
@@ -69,8 +70,9 @@ var _ = Describe("ocm utils", func() {
 
 			componentObj v1alpha1.Component
 
-			configs []corev1.ConfigMap
-			secrets []corev1.Secret
+			configs       []corev1.ConfigMap
+			secrets       []corev1.Secret
+			verifications []utils.Verification
 		)
 
 		BeforeEach(func() {
@@ -98,25 +100,11 @@ var _ = Describe("ocm utils", func() {
 			_ = Must(signing.SignComponentVersion(cv, SIGNATURE3, signing.PrivateKey(SIGNATURE3, privkey3)))
 
 			By("setup signsecrets")
-			signsecret1 := corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: SIGNSECRET1,
-				},
-				Data: map[string][]byte{
-					SIGNATURE2: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey2)),
-				},
-			}
-			secrets = append(secrets, signsecret1)
-
-			signsecret2 := corev1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: SIGNSECRET2,
-				},
-				Data: map[string][]byte{
-					SIGNATURE3: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey3)),
-				},
-			}
-			secrets = append(secrets, signsecret2)
+			verifications = append(verifications, []utils.Verification{
+				{Signature: SIGNATURE1, PublicKey: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey1))},
+				{Signature: SIGNATURE2, PublicKey: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey2))},
+				{Signature: SIGNATURE3, PublicKey: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey3))},
+			}...)
 
 			By("setup configs")
 			config1 := corev1.ConfigMap{
@@ -286,17 +274,17 @@ consumers:
 					Verify: []v1alpha1.Verification{
 						{
 							Signature: SIGNATURE1,
-							SecretRef: "",
+							SecretRef: corev1.LocalObjectReference{Name: ""},
 							Value:     base64.StdEncoding.EncodeToString(pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey1))),
 						},
 						{
 							Signature: SIGNATURE2,
-							SecretRef: SIGNSECRET1,
+							SecretRef: corev1.LocalObjectReference{Name: SIGNSECRET1},
 							Value:     "",
 						},
 						{
 							Signature: SIGNATURE3,
-							SecretRef: SIGNSECRET2,
+							SecretRef: corev1.LocalObjectReference{Name: SIGNSECRET2},
 							Value:     "",
 						},
 					},
@@ -312,7 +300,7 @@ consumers:
 
 		It("configure context", func() {
 			octx := ocmctx.New(datacontext.MODE_EXTENDED)
-			MustBeSuccessful(ConfigureContext(octx, &componentObj, secrets, configs))
+			MustBeSuccessful(ConfigureContext(octx, &componentObj, verifications, secrets, configs))
 
 			creds1 := Must(octx.CredentialsContext().GetCredentialsForConsumer(Must(identity.GetConsumerId("https://example.com/path1", "")), identity.IdentityMatcher))
 			creds2 := Must(octx.CredentialsContext().GetCredentialsForConsumer(Must(identity.GetConsumerId("https://example.com/path2", "")), identity.IdentityMatcher))

@@ -23,6 +23,9 @@ const (
 	// ConfigFetchFailedReason is used when the controller failed to fetch its configs.
 	ConfigFetchFailedReason = "ConfigFetchFailed"
 
+	// VerificationsInvalidReason is used when the controller failed to gather the verification information
+	VerificationsInvalidReason = "VerificationsInvalid"
+
 	// ConfigureContextFailedReason is used when the controller failed to create an authenticated context.
 	ConfigureContextFailedReason = "ConfigureContextFailed"
 

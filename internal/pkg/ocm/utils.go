@@ -2,13 +2,12 @@ package ocm
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/Masterminds/semver/v3"
 	"github.com/mandelsoft/goutils/matcher"
-	"github.com/mandelsoft/goutils/sliceutils"
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	k8sutils "github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	"ocm.software/ocm/api/credentials/config"
 	"ocm.software/ocm/api/credentials/extensions/repositories/dockerconfig"
@@ -22,7 +21,7 @@ import (
 	"ocm.software/ocm/api/utils/runtime"
 	"ocm.software/ocm/api/utils/semverutils"
 	"regexp"
-	"slices"
+	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 )
 
@@ -31,40 +30,15 @@ import (
 
 // ConfigureContext reads all the secrets and config maps, checks them for
 // known configuration types and applies them to the context.
-func ConfigureContext(octx ocm.Context, obj *deliveryv1alpha1.Component, secrets []corev1.Secret, configmaps []corev1.ConfigMap, configset ...string) error {
-	signinfo := signingattr.Get(octx)
-
-	// check that secrets are not contained twice within the slice
-	// wrap the k8s secrets with their purpose (config or verification) and only evaluate for that purpose
-
-	valueSigs := sliceutils.Filter(obj.Spec.Verify, func(signature deliveryv1alpha1.Verification) bool {
-		return signature.Value != ""
-	})
-	secretSigs := sliceutils.Filter(obj.Spec.Verify, func(signature deliveryv1alpha1.Verification) bool {
-		return signature.Value == "" && signature.SecretRef != ""
-	})
-
-	for _, sig := range valueSigs {
-		value, err := base64.StdEncoding.DecodeString(sig.Value)
-		if err != nil {
-			return err
-		}
-		signinfo.RegisterPublicKey(sig.Signature, value)
-	}
-
+func ConfigureContext(octx ocm.Context, obj *deliveryv1alpha1.Component, verifications []k8sutils.Verification, secrets []corev1.Secret, configmaps []corev1.ConfigMap, configset ...string) error {
+	history := map[ctrl.ObjectKey]struct{}{}
 	for _, secret := range secrets {
-		var signature string
-		if slices.ContainsFunc(secretSigs, func(sig deliveryv1alpha1.Verification) bool {
-			if sig.SecretRef == secret.Name {
-				signature = sig.Signature
-				return true
-			}
-			return false
-		}) {
-			if certBytes, ok := secret.Data[signature]; ok {
-				signinfo.RegisterPublicKey(signature, certBytes)
-			}
+		// track that the list does not contain the same secret twice as this could lead to unexpected behaviour
+		key := ctrl.ObjectKeyFromObject(&secret)
+		if _, ok := history[key]; ok {
+			return fmt.Errorf("the same secret cannot be referenced twice")
 		}
+		history[key] = struct{}{}
 
 		if dockerConfigBytes, ok := secret.Data[corev1.DockerConfigJsonKey]; ok {
 			spec := dockerconfig.NewRepositorySpecForConfig(dockerConfigBytes, true)
@@ -105,6 +79,7 @@ func ConfigureContext(octx ocm.Context, obj *deliveryv1alpha1.Component, secrets
 			}
 		}
 	}
+
 	var set string
 	if len(configset) > 0 {
 		set = configset[0]
@@ -115,6 +90,16 @@ func ConfigureContext(octx ocm.Context, obj *deliveryv1alpha1.Component, secrets
 			return fmt.Errorf("cannot apply ocm config set %s: %w", *obj.Spec.ConfigSet, err)
 		}
 	}
+
+	// If we were to introduce further functionality into the controller that have to use the signing registry we
+	// retrieve from the context here (e.g. signing), we would have to change the coding so that the signing operation
+	// and the verification operation use dedicated signing stores.
+	signinfo := signingattr.Get(octx)
+
+	for _, verification := range verifications {
+		signinfo.RegisterPublicKey(verification.Signature, verification.PublicKey)
+	}
+
 	return nil
 }
 

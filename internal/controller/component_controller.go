@@ -130,17 +130,7 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// Configure ocm context
-	secrets, err := utils.GetSecrets(ctx, r.Client, append(utils.GetEffectiveSecretRefs(ctx, obj, repoObj),
-		sliceutils.Transform(
-			sliceutils.Filter(obj.Spec.Verify, func(v deliveryv1alpha1.Verification) bool {
-				return v.Value == "" && v.SecretRef != ""
-			}),
-			func(v deliveryv1alpha1.Verification) client.ObjectKey {
-				return client.ObjectKey{
-					Namespace: obj.Namespace,
-					Name:      v.SecretRef,
-				}
-			})...))
+	secrets, err := utils.GetSecrets(ctx, r.Client, utils.GetEffectiveSecretRefs(ctx, obj, repoObj))
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.SecretFetchFailedReason, err.Error())
 		return ctrl.Result{}, fmt.Errorf("failed to get secrets: %w", err)
@@ -153,6 +143,12 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	set := utils.GetEffectiveConfigSet(ctx, obj, repoObj)
+
+	signingkeys, err := utils.GetVerifications(ctx, r.Client, obj)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.VerificationsInvalidReason, err.Error())
+		return ctrl.Result{}, fmt.Errorf("failed to get verifications: %w", err)
+	}
 	// end: prepare reconcile
 
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
@@ -166,7 +162,7 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
 
-	err = ocm.ConfigureContext(octx, obj, secrets, configs, set)
+	err = ocm.ConfigureContext(octx, obj, signingkeys, secrets, configs, set)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
 		return ctrl.Result{}, fmt.Errorf("failed to configure ocm context: %w", err)
@@ -181,9 +177,15 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	component, err := session.LookupComponent(repo, obj.Spec.Component)
 	if err != nil {
-		// implement
-		return
+		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.GetComponentFailedReason, "Component not found in repository")
+
+		return ctrl.Result{
+			// component just might be not there (or rather created) yet, requeue without backoff to avoid long wait
+			// times
+			RequeueAfter: obj.GetRequeueAfter(),
+		}, nil
 	}
+
 	versions, err := component.ListVersions()
 	if err != nil || len(versions) == 0 {
 		// for most repository implementations (especially oci), there is no way to check whether a component exists but
@@ -272,8 +274,10 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
-// github.com/my-component and github.com/my/component would collide
-// we should do this differently, e.g. replace - with -- and / with -
+// TODO: github.com/my-component and github.com/my/component would collide
+//	shouldn't do this differently, e.g. replace - with -- and / with -
+//	Why do we have to flatten this in the first place?
+
 func (r *ComponentReconciler) normalizeComponentVersionName(name string) string {
 	return strings.ReplaceAll(name, "/", "-")
 }
@@ -334,7 +338,6 @@ func (r *ComponentReconciler) reconcile(
 		}
 	}()
 
-	// while list does not have a custom marshal function, this should not be done like this
 	content, err := yaml.Marshal(list)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.MarshallingComponentDescriptorsFailedReason, err.Error())
@@ -349,7 +352,8 @@ func (r *ComponentReconciler) reconcile(
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 
-	// why do we have to normalize at all? is it important that the directory structure is flat
+	// TODO: why do we have to normalize at all? is it important that the directory structure is flat
+
 	revision := r.normalizeComponentVersionName(cv.GetName()) + "-" + cv.GetVersion()
 	if err := r.Storage.ReconcileArtifact(
 		ctx,

@@ -173,6 +173,10 @@ func (in *Component) GetEffectiveConfigSet() string {
 	return in.Status.ConfigSet
 }
 
+func (in *Component) GetVerifications() []Verification {
+	return in.Spec.Verify
+}
+
 // +kubebuilder:object:root=true
 
 // ComponentList contains a list of Component.
