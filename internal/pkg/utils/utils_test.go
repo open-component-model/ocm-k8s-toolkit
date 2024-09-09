@@ -12,20 +12,20 @@ import (
 )
 
 const (
-	SECRET_REF1 = "secret1"
-	SECRET_REF2 = "secret2"
-	SECRET_REF3 = "secret3"
+	SecretRef1 = "secret1"
+	SecretRef2 = "secret2"
+	SecretRef3 = "secret3"
 
-	CONFIG_REF1 = "config1"
-	CONFIG_REF2 = "config2"
-	CONFIG_REF3 = "config3"
+	ConfigRef1 = "config1"
+	ConfigRef2 = "config2"
+	ConfigRef3 = "config3"
 
-	NAMESPACE = "default"
+	Namespace = "default"
 )
 
 var (
-	CONFIG_SET1 = "set1"
-	CONFIG_SET2 = "set2"
+	ConfigSet1 = "set1"
+	ConfigSet2 = "set2"
 )
 
 var _ = Describe("k8s utils", func() {
@@ -44,59 +44,59 @@ var _ = Describe("k8s utils", func() {
 
 			repo = v1alpha1.OCMRepository{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: NAMESPACE,
+					Namespace: Namespace,
 				},
 				Spec: v1alpha1.OCMRepositorySpec{
 					SecretRef: &v1.LocalObjectReference{
-						Name: SECRET_REF1,
+						Name: SecretRef1,
 					},
 					SecretRefs: []v1.LocalObjectReference{
-						{Name: SECRET_REF2},
-						{Name: SECRET_REF3},
+						{Name: SecretRef2},
+						{Name: SecretRef3},
 					},
 					ConfigRef: &v1.LocalObjectReference{
-						Name: CONFIG_REF1,
+						Name: ConfigRef1,
 					},
 					ConfigRefs: []v1.LocalObjectReference{
-						{Name: CONFIG_REF2},
-						{Name: CONFIG_REF3},
+						{Name: ConfigRef2},
+						{Name: ConfigRef3},
 					},
-					ConfigSet: &CONFIG_SET1,
+					ConfigSet: &ConfigSet1,
 				},
 				Status: v1alpha1.OCMRepositoryStatus{
 					SecretRefs: []v1.LocalObjectReference{
-						{Name: SECRET_REF1},
-						{Name: SECRET_REF2},
-						{Name: SECRET_REF3},
+						{Name: SecretRef1},
+						{Name: SecretRef2},
+						{Name: SecretRef3},
 					},
 					ConfigRefs: []v1.LocalObjectReference{
-						{Name: CONFIG_REF1},
-						{Name: CONFIG_REF2},
-						{Name: CONFIG_REF3},
+						{Name: ConfigRef1},
+						{Name: ConfigRef2},
+						{Name: ConfigRef3},
 					},
-					ConfigSet: CONFIG_SET1,
+					ConfigSet: ConfigSet1,
 				},
 			}
 
 			defcomp = v1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: NAMESPACE,
+					Namespace: Namespace,
 				},
 				Spec: v1alpha1.ComponentSpec{},
 			}
 
 			nodefcomp = v1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: NAMESPACE,
+					Namespace: Namespace,
 				},
 				Spec: v1alpha1.ComponentSpec{
 					SecretRef: &v1.LocalObjectReference{
-						Name: SECRET_REF1,
+						Name: SecretRef1,
 					},
 					ConfigRef: &v1.LocalObjectReference{
-						Name: CONFIG_REF1,
+						Name: ConfigRef1,
 					},
-					ConfigSet: &CONFIG_SET2,
+					ConfigSet: &ConfigSet2,
 				},
 			}
 		})

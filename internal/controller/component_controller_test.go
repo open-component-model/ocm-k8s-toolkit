@@ -47,12 +47,12 @@ import (
 )
 
 const (
-	CTFPATH        = "ocm-k8s-ctfstore--*"
-	NAMESPACE      = "test-namespace"
-	REPOSITORY_OBJ = "test-repository"
-	COMPONENT      = "ocm.software/test-component"
-	COMPONENT_OBJ  = "test-component"
-	VERSION1       = "1.0.0"
+	CTFPath       = "ocm-k8s-ctfstore--*"
+	Namespace     = "test-namespace"
+	RepositoryObj = "test-repository"
+	Component     = "ocm.software/test-component"
+	ComponentObj  = "test-component"
+	Version1      = "1.0.0"
 )
 
 var _ = Describe("Component Controller", func() {
@@ -63,7 +63,7 @@ var _ = Describe("Component Controller", func() {
 		ctfpath string
 	)
 	BeforeEach(func() {
-		ctfpath = Must(os.MkdirTemp("", CTFPATH))
+		ctfpath = Must(os.MkdirTemp("", CTFPath))
 		DeferCleanup(func() error {
 			return os.RemoveAll(ctfpath)
 		})
@@ -78,15 +78,15 @@ var _ = Describe("Component Controller", func() {
 		It("reconcile a component", func() {
 			By("creating ocm repository with components")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
-				env.Component(COMPONENT, func() {
-					env.Version(VERSION1)
+				env.Component(Component, func() {
+					env.Version(Version1)
 				})
 			})
 
 			By("creating namespace object")
 			namespace := &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: NAMESPACE,
+					Name: Namespace,
 				},
 			}
 			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
@@ -96,8 +96,8 @@ var _ = Describe("Component Controller", func() {
 			specdata := Must(spec.MarshalJSON())
 			repository := &deliveryv1alpha1.OCMRepository{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: NAMESPACE,
-					Name:      REPOSITORY_OBJ,
+					Namespace: Namespace,
+					Name:      RepositoryObj,
 				},
 				Spec: deliveryv1alpha1.OCMRepositorySpec{
 					RepositorySpec: &apiextensionsv1.JSON{
@@ -116,15 +116,15 @@ var _ = Describe("Component Controller", func() {
 			By("creating a component object")
 			component := &deliveryv1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: NAMESPACE,
-					Name:      COMPONENT_OBJ,
+					Namespace: Namespace,
+					Name:      ComponentObj,
 				},
 				Spec: deliveryv1alpha1.ComponentSpec{
 					RepositoryRef: deliveryv1alpha1.ObjectKey{
-						Namespace: NAMESPACE,
-						Name:      REPOSITORY_OBJ,
+						Namespace: Namespace,
+						Name:      RepositoryObj,
 					},
-					Component:              COMPONENT,
+					Component:              Component,
 					EnforceDowngradability: false,
 					Semver:                 "1.0.0",
 					Interval:               metav1.Duration{Duration: time.Minute * 10},
@@ -154,7 +154,7 @@ var _ = Describe("Component Controller", func() {
 			MustBeSuccessful(tar.Untar(r.Body, tmpdir))
 
 			repo := Must(ctf.Open(env, accessobj.ACC_WRITABLE, ctfpath, vfs.FileMode(vfs.O_RDWR), env))
-			cv := Must(repo.LookupComponentVersion(COMPONENT, VERSION1))
+			cv := Must(repo.LookupComponentVersion(Component, Version1))
 			expecteddescs := &ocm.Components{List: Must(ocm.ListComponentDescriptors(cv, repo))}
 
 			data := Must(os.ReadFile(filepath.Join(tmpdir, deliveryv1alpha1.OCMComponentDescriptorList)))

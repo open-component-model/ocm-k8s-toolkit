@@ -32,29 +32,29 @@ import (
 )
 
 const (
-	CTFPATH       = "/ctf"
-	COMPONENT     = "ocm.software/test"
-	REFERENCE     = "referenced-test"
-	REF_COMPONENT = "ocm.software/referenced-test"
-	RESOURCE      = "testresource"
-	VERSION1      = "1.0.0-rc.1"
-	VERSION2      = "2.0.0"
-	VERSION3      = "3.0.0"
+	CTFPath      = "/ctf"
+	Component    = "ocm.software/test"
+	Reference    = "referenced-test"
+	RefComponent = "ocm.software/referenced-test"
+	Resource     = "testresource"
+	Version1     = "1.0.0-rc.1"
+	Version2     = "2.0.0"
+	Version3     = "3.0.0"
 
-	SIGNATURE1 = "signature1"
-	SIGNATURE2 = "signature2"
-	SIGNATURE3 = "signature3"
+	Signature1 = "signature1"
+	Signature2 = "signature2"
+	Signature3 = "signature3"
 
-	CONFIG1 = "config1"
-	CONFIG2 = "config2"
-	CONFIG3 = "config3"
+	Config1 = "config1"
+	Config2 = "config2"
+	Config3 = "config3"
 
-	SECRET1 = "secret1"
-	SECRET2 = "secret2"
-	SECRET3 = "secret3"
+	Secret1 = "secret1"
+	Secret2 = "secret2"
+	Secret3 = "secret3"
 
-	SIGNSECRET1 = "signsecret1"
-	SIGNSECRET2 = "signsecret2"
+	SignSecret1 = "signsecret1"
+	SignSecret2 = "signsecret2"
 )
 
 var _ = Describe("ocm utils", func() {
@@ -85,31 +85,31 @@ var _ = Describe("ocm utils", func() {
 			privkey2, pubkey2 := Must2(rsa.CreateKeyPair())
 			privkey3, pubkey3 := Must2(rsa.CreateKeyPair())
 
-			env.OCMCommonTransport(CTFPATH, accessio.FormatDirectory, func() {
-				env.Component(COMPONENT, func() {
-					env.Version(VERSION1, func() {
+			env.OCMCommonTransport(CTFPath, accessio.FormatDirectory, func() {
+				env.Component(Component, func() {
+					env.Version(Version1, func() {
 					})
 				})
 			})
 
-			repo = Must(ctf.Open(env, accessobj.ACC_WRITABLE, CTFPATH, vfs.FileMode(vfs.O_RDWR), env))
-			cv = Must(repo.LookupComponentVersion(COMPONENT, VERSION1))
+			repo = Must(ctf.Open(env, accessobj.ACC_WRITABLE, CTFPath, vfs.FileMode(vfs.O_RDWR), env))
+			cv = Must(repo.LookupComponentVersion(Component, Version1))
 
-			_ = Must(signing.SignComponentVersion(cv, SIGNATURE1, signing.PrivateKey(SIGNATURE1, privkey1)))
-			_ = Must(signing.SignComponentVersion(cv, SIGNATURE2, signing.PrivateKey(SIGNATURE2, privkey2)))
-			_ = Must(signing.SignComponentVersion(cv, SIGNATURE3, signing.PrivateKey(SIGNATURE3, privkey3)))
+			_ = Must(signing.SignComponentVersion(cv, Signature1, signing.PrivateKey(Signature1, privkey1)))
+			_ = Must(signing.SignComponentVersion(cv, Signature2, signing.PrivateKey(Signature2, privkey2)))
+			_ = Must(signing.SignComponentVersion(cv, Signature3, signing.PrivateKey(Signature3, privkey3)))
 
 			By("setup signsecrets")
 			verifications = append(verifications, []utils.Verification{
-				{Signature: SIGNATURE1, PublicKey: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey1))},
-				{Signature: SIGNATURE2, PublicKey: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey2))},
-				{Signature: SIGNATURE3, PublicKey: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey3))},
+				{Signature: Signature1, PublicKey: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey1))},
+				{Signature: Signature2, PublicKey: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey2))},
+				{Signature: Signature3, PublicKey: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey3))},
 			}...)
 
 			By("setup configs")
 			config1 := corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: CONFIG1,
+					Name: Config1,
 				},
 				Data: map[string]string{
 					v1alpha1.OCMConfigKey: `
@@ -136,7 +136,7 @@ sets:
 
 			config2 := corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: CONFIG2,
+					Name: Config2,
 				},
 				Data: map[string]string{
 					v1alpha1.OCMConfigKey: `
@@ -163,7 +163,7 @@ sets:
 
 			config3 := corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: CONFIG3,
+					Name: Config3,
 				},
 				Data: map[string]string{
 					v1alpha1.OCMConfigKey: `
@@ -191,7 +191,7 @@ sets:
 			By("setup secrets")
 			secret1 := corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: SECRET1,
+					Name: Secret1,
 				},
 				Data: map[string][]byte{
 					v1alpha1.OCMCredentialConfigKey: []byte(`
@@ -213,7 +213,7 @@ consumers:
 
 			secret2 := corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: SECRET2,
+					Name: Secret2,
 				},
 				Data: map[string][]byte{
 					v1alpha1.OCMCredentialConfigKey: []byte(`
@@ -235,7 +235,7 @@ consumers:
 
 			secret3 := corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: SECRET3,
+					Name: Secret3,
 				},
 				Data: map[string][]byte{
 					v1alpha1.OCMCredentialConfigKey: []byte(`
@@ -265,26 +265,26 @@ consumers:
 						{Name: "secret3"},
 					},
 					ConfigRef: &corev1.LocalObjectReference{
-						Name: CONFIG1,
+						Name: Config1,
 					},
 					ConfigRefs: []corev1.LocalObjectReference{
-						{Name: CONFIG2},
-						{Name: CONFIG3},
+						{Name: Config2},
+						{Name: Config3},
 					},
 					Verify: []v1alpha1.Verification{
 						{
-							Signature: SIGNATURE1,
+							Signature: Signature1,
 							SecretRef: corev1.LocalObjectReference{Name: ""},
 							Value:     base64.StdEncoding.EncodeToString(pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey1))),
 						},
 						{
-							Signature: SIGNATURE2,
-							SecretRef: corev1.LocalObjectReference{Name: SIGNSECRET1},
+							Signature: Signature2,
+							SecretRef: corev1.LocalObjectReference{Name: SignSecret1},
 							Value:     "",
 						},
 						{
-							Signature: SIGNATURE3,
-							SecretRef: corev1.LocalObjectReference{Name: SIGNSECRET2},
+							Signature: Signature3,
+							SecretRef: corev1.LocalObjectReference{Name: SignSecret2},
 							Value:     "",
 						},
 					},
@@ -319,9 +319,9 @@ consumers:
 			})).To(BeTrue())
 
 			signreg := signing.Registry(signingattr.Get(octx))
-			_ = Must(signing.VerifyComponentVersion(cv, SIGNATURE1, signing.NewOptions(signreg)))
-			_ = Must(signing.VerifyComponentVersion(cv, SIGNATURE2, signing.NewOptions(signreg)))
-			_ = Must(signing.VerifyComponentVersion(cv, SIGNATURE3, signing.NewOptions(signreg)))
+			_ = Must(signing.VerifyComponentVersion(cv, Signature1, signing.NewOptions(signreg)))
+			_ = Must(signing.VerifyComponentVersion(cv, Signature2, signing.NewOptions(signreg)))
+			_ = Must(signing.VerifyComponentVersion(cv, Signature3, signing.NewOptions(signreg)))
 
 			MustBeSuccessful(octx.ConfigContext().ApplyConfigSet("set1"))
 			MustBeSuccessful(octx.ConfigContext().ApplyConfigSet("set2"))
@@ -339,22 +339,22 @@ consumers:
 			_ = ctx
 			env = NewBuilder()
 
-			env.OCMCommonTransport(CTFPATH, accessio.FormatDirectory, func() {
-				env.Component(COMPONENT, func() {
-					env.Version(VERSION1, func() {
+			env.OCMCommonTransport(CTFPath, accessio.FormatDirectory, func() {
+				env.Component(Component, func() {
+					env.Version(Version1, func() {
 					})
 				})
-				env.Component(COMPONENT, func() {
-					env.Version(VERSION2, func() {
+				env.Component(Component, func() {
+					env.Version(Version2, func() {
 					})
 				})
-				env.Component(COMPONENT, func() {
-					env.Version(VERSION3, func() {
+				env.Component(Component, func() {
+					env.Version(Version3, func() {
 					})
 				})
 			})
-			repo = Must(ctf.Open(env, accessobj.ACC_WRITABLE, CTFPATH, vfs.FileMode(vfs.O_RDWR), env))
-			c = Must(repo.LookupComponent(COMPONENT))
+			repo = Must(ctf.Open(env, accessobj.ACC_WRITABLE, CTFPath, vfs.FileMode(vfs.O_RDWR), env))
+			c = Must(repo.LookupComponent(Component))
 		})
 
 		AfterEach(func() {
@@ -364,11 +364,11 @@ consumers:
 		})
 		It("without filter", func() {
 			ver := Must(GetLatestValidVersion(Must(c.ListVersions()), "<2.5.0"))
-			Expect(ver.Equal(Must(semver.NewVersion(VERSION2))))
+			Expect(ver.Equal(Must(semver.NewVersion(Version2))))
 		})
 		It("with filter", func() {
 			ver := Must(GetLatestValidVersion(Must(c.ListVersions()), "<2.5.0", Must(RegexpFilter(".*-rc.*"))))
-			Expect(ver.Equal(Must(semver.NewVersion(VERSION1))))
+			Expect(ver.Equal(Must(semver.NewVersion(Version1))))
 		})
 	})
 
@@ -389,36 +389,36 @@ consumers:
 			privkey2, pubkey2 := Must2(rsa.CreateKeyPair())
 			privkey3, pubkey3 := Must2(rsa.CreateKeyPair())
 
-			env.OCMCommonTransport(CTFPATH, accessio.FormatDirectory, func() {
-				env.Component(COMPONENT, func() {
-					env.Version(VERSION1, func() {
-						env.Resource(RESOURCE, VERSION1, resourcetypes.PLAIN_TEXT, v1.LocalRelation, func() {
+			env.OCMCommonTransport(CTFPath, accessio.FormatDirectory, func() {
+				env.Component(Component, func() {
+					env.Version(Version1, func() {
+						env.Resource(Resource, Version1, resourcetypes.PLAIN_TEXT, v1.LocalRelation, func() {
 							env.BlobData(mime.MIME_TEXT, []byte("testdata"))
 						})
-						env.Reference(REFERENCE, REF_COMPONENT, VERSION2, func() {
+						env.Reference(Reference, RefComponent, Version2, func() {
 						})
 					})
 				})
-				env.Component(REF_COMPONENT, func() {
-					env.Version(VERSION2, func() {
+				env.Component(RefComponent, func() {
+					env.Version(Version2, func() {
 					})
 				})
 			})
-			repo = Must(ctf.Open(env, accessobj.ACC_WRITABLE, CTFPATH, vfs.FileMode(vfs.O_RDWR), env))
-			cv = Must(repo.LookupComponentVersion(COMPONENT, VERSION1))
+			repo = Must(ctf.Open(env, accessobj.ACC_WRITABLE, CTFPath, vfs.FileMode(vfs.O_RDWR), env))
+			cv = Must(repo.LookupComponentVersion(Component, Version1))
 
 			opts := signing.NewOptions(
 				signing.Resolver(repo),
 			)
-			_ = Must(signing.SignComponentVersion(cv, SIGNATURE1, signing.PrivateKey(SIGNATURE1, privkey1), opts))
-			_ = Must(signing.SignComponentVersion(cv, SIGNATURE2, signing.PrivateKey(SIGNATURE2, privkey2), opts))
-			_ = Must(signing.SignComponentVersion(cv, SIGNATURE3, signing.PrivateKey(SIGNATURE3, privkey3), opts))
+			_ = Must(signing.SignComponentVersion(cv, Signature1, signing.PrivateKey(Signature1, privkey1), opts))
+			_ = Must(signing.SignComponentVersion(cv, Signature2, signing.PrivateKey(Signature2, privkey2), opts))
+			_ = Must(signing.SignComponentVersion(cv, Signature3, signing.PrivateKey(Signature3, privkey3), opts))
 
 			octx = env.OCMContext()
 			signreg := signingattr.Get(octx)
-			signreg.RegisterPublicKey(SIGNATURE1, pubkey1)
-			signreg.RegisterPublicKey(SIGNATURE2, pubkey2)
-			signreg.RegisterPublicKey(SIGNATURE3, pubkey3)
+			signreg.RegisterPublicKey(Signature1, pubkey1)
+			signreg.RegisterPublicKey(Signature2, pubkey2)
+			signreg.RegisterPublicKey(Signature3, pubkey3)
 		})
 
 		AfterEach(func() {
@@ -428,10 +428,10 @@ consumers:
 		})
 
 		It("without retrieving descriptors", func() {
-			MustBeSuccessful(VerifyComponentVersion(cv, []string{SIGNATURE1, SIGNATURE2, SIGNATURE3}))
+			MustBeSuccessful(VerifyComponentVersion(cv, []string{Signature1, Signature2, Signature3}))
 		})
 		It("with retrieving descriptors", func() {
-			descriptors := Must(VerifyComponentVersion(cv, []string{SIGNATURE1, SIGNATURE2, SIGNATURE3}))
+			descriptors := Must(VerifyComponentVersion(cv, []string{Signature1, Signature2, Signature3}))
 			Expect(descriptors).To(HaveLen(2))
 		})
 		It("list component versions without verification", func() {
@@ -458,26 +458,26 @@ consumers:
 			v1 := "2.0.0"
 			v2 := "1.1.0"
 			v3 := "0.9.0"
-			env.OCMCommonTransport(CTFPATH, accessio.FormatDirectory, func() {
-				env.Component(COMPONENT, func() {
+			env.OCMCommonTransport(CTFPath, accessio.FormatDirectory, func() {
+				env.Component(Component, func() {
 					env.Version(v1, func() {
 						env.Label(v1alpha1.OCMLabelDowngradable, `> 1.0.0`)
 					})
 				})
-				env.Component(COMPONENT, func() {
+				env.Component(Component, func() {
 					env.Version(v2, func() {
 					})
 				})
-				env.Component(COMPONENT, func() {
+				env.Component(Component, func() {
 					env.Version(v3, func() {
 					})
 				})
 			})
 
-			repo = Must(ctf.Open(env, accessobj.ACC_WRITABLE, CTFPATH, vfs.FileMode(vfs.O_RDWR), env))
-			cv1 = Must(repo.LookupComponentVersion(COMPONENT, v1))
-			cv2 = Must(repo.LookupComponentVersion(COMPONENT, v2))
-			cv3 = Must(repo.LookupComponentVersion(COMPONENT, v3))
+			repo = Must(ctf.Open(env, accessobj.ACC_WRITABLE, CTFPath, vfs.FileMode(vfs.O_RDWR), env))
+			cv1 = Must(repo.LookupComponentVersion(Component, v1))
+			cv2 = Must(repo.LookupComponentVersion(Component, v2))
+			cv3 = Must(repo.LookupComponentVersion(Component, v3))
 		})
 
 		AfterEach(func() {
