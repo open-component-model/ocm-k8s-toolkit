@@ -294,7 +294,7 @@ func (r *ComponentReconciler) reconcile(
 
 	logger.Info("reconciling component", "name", obj.Name)
 
-	descriptors, err := ocm.VerifyComponentVersion(cv, sliceutils.Transform(obj.Spec.Verify, func(verify deliveryv1alpha1.Verification) string {
+	descriptors, err := ocm.VerifyComponentVersion(ctx, cv, sliceutils.Transform(obj.Spec.Verify, func(verify deliveryv1alpha1.Verification) string {
 		return verify.Signature
 	}))
 	if err != nil {

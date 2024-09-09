@@ -428,10 +428,10 @@ consumers:
 		})
 
 		It("without retrieving descriptors", func() {
-			MustBeSuccessful(VerifyComponentVersion(cv, []string{Signature1, Signature2, Signature3}))
+			MustBeSuccessful(VerifyComponentVersion(ctx, cv, []string{Signature1, Signature2, Signature3}))
 		})
 		It("with retrieving descriptors", func() {
-			descriptors := Must(VerifyComponentVersion(cv, []string{Signature1, Signature2, Signature3}))
+			descriptors := Must(VerifyComponentVersion(ctx, cv, []string{Signature1, Signature2, Signature3}))
 			Expect(descriptors).To(HaveLen(2))
 		})
 		It("list component versions without verification", func() {

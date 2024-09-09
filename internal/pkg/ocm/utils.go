@@ -22,6 +22,7 @@ import (
 	"ocm.software/ocm/api/utils/semverutils"
 	"regexp"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"strings"
 )
 
@@ -142,12 +143,13 @@ func GetLatestValidVersion(versions []string, semvers string, filter ...matcher.
 	return vers[len(vers)-1], nil
 }
 
-func VerifyComponentVersion(cv ocm.ComponentVersionAccess, sigs []string) ([]*compdesc.ComponentDescriptor, error) {
+func VerifyComponentVersion(ctx context.Context, cv ocm.ComponentVersionAccess, sigs []string) ([]*compdesc.ComponentDescriptor, error) {
+	logger := log.FromContext(ctx).WithName("signature-validation")
+
 	if len(sigs) == 0 || cv == nil {
 		return nil, nil
 	}
 	octx := cv.GetContext()
-	logger := octx.Logger().WithName("signature-validation")
 
 	// TODO: We should also consider the possibility that the user's component hierarchy spans multiple ocm
 	//  repositories. Since these would have to be configured in the ocm config as resolvers (at least for now, while
