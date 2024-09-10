@@ -112,6 +112,7 @@ func (in *OCMRepository) GetSecretRefs() []v1.LocalObjectReference {
 	if in.Spec.SecretRef != nil {
 		return append(in.Spec.SecretRefs, *in.Spec.SecretRef)
 	}
+
 	return in.Spec.SecretRefs
 }
 
@@ -123,6 +124,7 @@ func (in *OCMRepository) GetConfigRefs() []v1.LocalObjectReference {
 	if in.Spec.ConfigRef != nil {
 		return append(in.Spec.ConfigRefs, *in.Spec.ConfigRef)
 	}
+
 	return in.Spec.ConfigRefs
 }
 

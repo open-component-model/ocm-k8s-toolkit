@@ -147,6 +147,7 @@ func (in *Component) GetSecretRefs() []corev1.LocalObjectReference {
 	if in.Spec.SecretRef != nil {
 		return append(in.Status.SecretRefs, *in.Spec.SecretRef)
 	}
+
 	return in.Spec.SecretRefs
 }
 
@@ -158,6 +159,7 @@ func (in *Component) GetConfigRefs() []corev1.LocalObjectReference {
 	if in.Spec.ConfigRef != nil {
 		return append(in.Spec.ConfigRefs, *in.Spec.ConfigRef)
 	}
+
 	return in.Spec.ConfigRefs
 }
 
