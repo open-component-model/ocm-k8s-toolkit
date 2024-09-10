@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -14,7 +15,7 @@ type Verification struct {
 }
 
 func GetVerifications(ctx context.Context, client ctrl.Client,
-	obj VerificationProvider,
+	obj v1alpha1.VerificationProvider,
 ) ([]Verification, error) {
 	verifications := obj.GetVerifications()
 

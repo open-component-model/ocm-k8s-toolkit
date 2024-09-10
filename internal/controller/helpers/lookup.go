@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/mandelsoft/goutils/sliceutils"
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -13,7 +14,7 @@ import (
 // GetEffectiveSecretRefs returns either the secrets from obj's spec or the effective secrets of the def (= default)
 // SecretRefProvider.
 func GetEffectiveSecretRefs(ctx context.Context,
-	obj SecretRefProvider, def ...SecretRefProvider,
+	obj v1alpha1.SecretRefProvider, def ...v1alpha1.SecretRefProvider,
 ) []ctrl.ObjectKey {
 	ns := obj.GetNamespace()
 	refs := obj.GetSecretRefs()
@@ -37,7 +38,7 @@ func GetEffectiveSecretRefs(ctx context.Context,
 // GetEffectiveConfigRefs returns either the configs from obj's spec or the effective configs of the def (= default)
 // ConfigRefProvider.
 func GetEffectiveConfigRefs(ctx context.Context,
-	obj ConfigRefProvider, def ...ConfigRefProvider,
+	obj v1alpha1.ConfigRefProvider, def ...v1alpha1.ConfigRefProvider,
 ) []ctrl.ObjectKey {
 	ns := obj.GetNamespace()
 	refs := obj.GetConfigRefs()
@@ -59,7 +60,7 @@ func GetEffectiveConfigRefs(ctx context.Context,
 }
 
 func GetEffectiveConfigSet(ctx context.Context,
-	obj ConfigSetProvider, def ConfigSetProvider,
+	obj v1alpha1.ConfigSetProvider, def v1alpha1.ConfigSetProvider,
 ) string {
 	set := obj.GetConfigSet()
 	if set != nil {
