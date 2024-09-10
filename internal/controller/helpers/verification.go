@@ -8,6 +8,11 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+type Verification struct {
+	Signature string
+	PublicKey []byte
+}
+
 func GetVerifications(ctx context.Context, client ctrl.Client,
 	obj VerificationProvider,
 ) ([]Verification, error) {

@@ -1,7 +1,6 @@
-package helpers
+package v1alpha1
 
 import (
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -20,6 +19,7 @@ import (
 // Each SecretRefProvider exposes its effective secrets in its status (see e.g. OCMRepository.Status). This way,
 // controllers such as the Resource controller does not have to backtrack the entire kubernetes object chain to
 // OCMRepository to read its defaults.
+// +kubebuilder:object:generate=false
 type SecretRefProvider interface {
 	client.Object
 
@@ -34,6 +34,7 @@ type SecretRefProvider interface {
 // function to retrieve its secrets.
 //
 // For a detailed explanation, see SecretRefProvider.
+// +kubebuilder:object:generate=false
 type ConfigRefProvider interface {
 	client.Object
 	GetConfigRefs() []corev1.LocalObjectReference
@@ -47,23 +48,17 @@ type ConfigRefProvider interface {
 // unset value to determine whether to use the default.
 //
 // For a detailed explanation, see SecretRefProvider.
+// +kubebuilder:object:generate=false
 type ConfigSetProvider interface {
 	client.Object
 	GetConfigSet() *string
 	GetEffectiveConfigSet() string
 }
 
-type RefProvider interface {
-	SecretRefProvider
-	ConfigRefProvider
-}
-
+// VerificationProvider are objects that may provide verification information. The interface allows all implementers to
+// use the same function to retrieve and parse the contained or referenced public keys.
+// +kubebuilder:object:generate=false
 type VerificationProvider interface {
 	client.Object
-	GetVerifications() []v1alpha1.Verification
-}
-
-type Verification struct {
-	Signature string
-	PublicKey []byte
+	GetVerifications() []Verification
 }
