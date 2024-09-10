@@ -69,7 +69,15 @@ func ConfigureContext(octx ocm.Context, obj *deliveryv1alpha1.Component, verific
 		}
 	}
 
+	history = map[ctrl.ObjectKey]struct{}{}
 	for _, configmap := range configmaps {
+		// track that the list does not contain the same configmap twice as this could lead to unexpected behavior
+		key := ctrl.ObjectKeyFromObject(&configmap)
+		if _, ok := history[key]; ok {
+			return fmt.Errorf("the same secret cannot be referenced twice")
+		}
+		history[key] = struct{}{}
+
 		ocmConfigData, ok := configmap.Data[deliveryv1alpha1.OCMConfigKey]
 		if !ok {
 			return fmt.Errorf("ocm configuration config map does not contain key \"%s\"",
