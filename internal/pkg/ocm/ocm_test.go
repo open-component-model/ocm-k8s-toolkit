@@ -10,8 +10,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/helpers"
 	. "github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"ocm.software/ocm/api/credentials/builtin/maven/identity"
@@ -72,7 +72,7 @@ var _ = Describe("ocm utils", func() {
 
 			configs       []corev1.ConfigMap
 			secrets       []corev1.Secret
-			verifications []utils.Verification
+			verifications []helpers.Verification
 		)
 
 		BeforeEach(func() {
@@ -100,7 +100,7 @@ var _ = Describe("ocm utils", func() {
 			_ = Must(signing.SignComponentVersion(cv, Signature3, signing.PrivateKey(Signature3, privkey3)))
 
 			By("setup signsecrets")
-			verifications = append(verifications, []utils.Verification{
+			verifications = append(verifications, []helpers.Verification{
 				{Signature: Signature1, PublicKey: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey1))},
 				{Signature: Signature2, PublicKey: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey2))},
 				{Signature: Signature3, PublicKey: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey3))},

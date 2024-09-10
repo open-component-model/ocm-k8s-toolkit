@@ -20,7 +20,7 @@ var _ = Describe("types test", func() {
 		cv := composition.NewComponentVersion(ocm.DefaultContext(), "acme.org/test", "1.0.0")
 		MustBeSuccessful(cv.SetResourceBlob(ocm.NewResourceMeta("test-resource", resourcetypes.PLAIN_TEXT, v1.LocalRelation), blobaccess.ForString(mime.MIME_TEXT, "this is a test"), "", nil))
 		descriptor := cv.GetDescriptor()
-		list := k8socm.Components{List: []*compdesc.ComponentDescriptor{descriptor}}
+		list := k8socm.Descriptors{List: []*compdesc.ComponentDescriptor{descriptor}}
 		data := Must(runtime.DefaultYAMLEncoding.Marshal(list))
 		Expect(data).To(YAMLEqual(`
 components:
@@ -47,7 +47,7 @@ components:
   meta:
     schemaVersion: v2
 `))
-		var decoded k8socm.Components
+		var decoded k8socm.Descriptors
 		MustBeSuccessful(runtime.DefaultYAMLEncoding.Unmarshal(data, &decoded))
 		Expect(decoded).To(YAMLEqual(list))
 	})

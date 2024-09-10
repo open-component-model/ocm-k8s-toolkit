@@ -2,15 +2,16 @@ package ocm
 
 import (
 	"encoding/json"
+
 	"ocm.software/ocm/api/ocm/compdesc"
 )
 
-type Components struct {
-	// compdesc.ComponentDescriptor is the internal representation. It should not be marshalled.
+type Descriptors struct {
+	// compdesc.ComponentDescriptor is the internal representation. It should not be marshaled.
 	List []*compdesc.ComponentDescriptor
 }
 
-func (c Components) MarshalJSON() ([]byte, error) {
+func (c Descriptors) MarshalJSON() ([]byte, error) {
 	list := `{"components":[`
 	for index, desc := range c.List {
 		data, err := compdesc.Encode(desc, compdesc.DefaultJSONCodec)
@@ -26,7 +27,7 @@ func (c Components) MarshalJSON() ([]byte, error) {
 	return []byte(list), nil
 }
 
-func (c *Components) UnmarshalJSON(data []byte) error {
+func (c *Descriptors) UnmarshalJSON(data []byte) error {
 	descriptors := struct {
 		List []json.RawMessage `json:"components"`
 	}{}

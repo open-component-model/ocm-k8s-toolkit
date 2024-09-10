@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	k8sutils "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/helpers"
+	"regexp"
+	"strings"
+
 	"github.com/Masterminds/semver/v3"
 	"github.com/mandelsoft/goutils/matcher"
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	k8sutils "github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	"ocm.software/ocm/api/credentials/config"
 	"ocm.software/ocm/api/credentials/extensions/repositories/dockerconfig"
@@ -20,10 +23,9 @@ import (
 	common "ocm.software/ocm/api/utils/misc"
 	"ocm.software/ocm/api/utils/runtime"
 	"ocm.software/ocm/api/utils/semverutils"
-	"regexp"
+
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"strings"
 )
 
 // TODO: This function should be almost entirely replaced by the ocm k8s secret
@@ -31,10 +33,12 @@ import (
 
 // ConfigureContext reads all the secrets and config maps, checks them for
 // known configuration types and applies them to the context.
-func ConfigureContext(octx ocm.Context, obj *deliveryv1alpha1.Component, verifications []k8sutils.Verification, secrets []corev1.Secret, configmaps []corev1.ConfigMap, configset ...string) error {
+func ConfigureContext(octx ocm.Context, obj *deliveryv1alpha1.Component, verifications []k8sutils.Verification,
+	secrets []corev1.Secret, configmaps []corev1.ConfigMap, configset ...string) error {
+
 	history := map[ctrl.ObjectKey]struct{}{}
 	for _, secret := range secrets {
-		// track that the list does not contain the same secret twice as this could lead to unexpected behaviour
+		// track that the list does not contain the same secret twice as this could lead to unexpected behavior
 		key := ctrl.ObjectKeyFromObject(&secret)
 		if _, ok := history[key]; ok {
 			return fmt.Errorf("the same secret cannot be referenced twice")
@@ -56,7 +60,9 @@ func ConfigureContext(octx ocm.Context, obj *deliveryv1alpha1.Component, verific
 			}
 
 			if cfg.GetKind() == config.ConfigType {
-				if err := octx.ConfigContext().ApplyConfig(cfg, fmt.Sprintf("ocm config secret: %s/%s", secret.Namespace, secret.Name)); err != nil {
+				err = octx.ConfigContext().ApplyConfig(cfg, fmt.Sprintf("ocm config secret: %s/%s",
+					secret.Namespace, secret.Name))
+				if err != nil {
 					return err
 				}
 			}
@@ -66,17 +72,20 @@ func ConfigureContext(octx ocm.Context, obj *deliveryv1alpha1.Component, verific
 	for _, configmap := range configmaps {
 		ocmConfigData, ok := configmap.Data[deliveryv1alpha1.OCMConfigKey]
 		if !ok {
-			return fmt.Errorf("ocm configuration config map does not contain key \"%s\"", deliveryv1alpha1.OCMConfigKey)
+			return fmt.Errorf("ocm configuration config map does not contain key \"%s\"",
+				deliveryv1alpha1.OCMConfigKey)
 		}
 		if len(ocmConfigData) > 0 {
 			cfg, err := octx.ConfigContext().GetConfigForData([]byte(ocmConfigData), nil)
 			if err != nil {
-				return fmt.Errorf("invalid ocm config in \"%s\" in namespace \"%s\": %w", configmap.Name, configmap.Namespace, err)
+				return fmt.Errorf("invalid ocm config in \"%s\" in namespace \"%s\": %w",
+					configmap.Name, configmap.Namespace, err)
 			}
-			err = octx.ConfigContext().ApplyConfig(cfg, fmt.Sprintf("%s/%s", configmap.Namespace, configmap.Name))
+			err = octx.ConfigContext().ApplyConfig(cfg, fmt.Sprintf("%s/%s",
+				configmap.Namespace, configmap.Name))
 			if err != nil {
-				return fmt.Errorf("cannot apply ocm config in \"%s\" in namespace \"%s\": %w", configmap.Name, configmap.Namespace, err)
-
+				return fmt.Errorf("cannot apply ocm config in \"%s\" in namespace \"%s\": %w",
+					configmap.Name, configmap.Namespace, err)
 			}
 		}
 	}

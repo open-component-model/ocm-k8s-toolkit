@@ -155,10 +155,10 @@ var _ = Describe("Component Controller", func() {
 
 			repo := Must(ctf.Open(env, accessobj.ACC_WRITABLE, ctfpath, vfs.FileMode(vfs.O_RDWR), env))
 			cv := Must(repo.LookupComponentVersion(Component, Version1))
-			expecteddescs := &ocm.Components{List: Must(ocm.ListComponentDescriptors(cv, repo))}
+			expecteddescs := &ocm.Descriptors{List: Must(ocm.ListComponentDescriptors(cv, repo))}
 
 			data := Must(os.ReadFile(filepath.Join(tmpdir, deliveryv1alpha1.OCMComponentDescriptorList)))
-			descs := &ocm.Components{}
+			descs := &ocm.Descriptors{}
 			MustBeSuccessful(yaml.Unmarshal(data, descs))
 			Expect(descs).To(YAMLEqual(expecteddescs))
 		})

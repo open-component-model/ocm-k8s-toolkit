@@ -22,9 +22,10 @@ const (
 	OCMCredentialConfigKey = ".ocmcredentialconfig" //nolint:gosec // it isn't a cred
 	// OCMConfigKey defines the secret or configmap key to look for in case a user provides an ocm config.
 	OCMConfigKey = ".ocmconfig"
-	// OCMLabelDowngradable defines the secret
+	// OCMLabelDowngradable defines the secret.
 	OCMLabelDowngradable = "ocm.software/ocm-k8s-toolkit/downgradable"
-
+	// OCMComponentDescriptorList defines the file name of the component descriptor list exposed as artifact by the
+	// component controller.
 	OCMComponentDescriptorList = "component-descriptor-list.yaml"
 )
 

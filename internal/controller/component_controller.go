@@ -20,14 +20,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/mandelsoft/goutils/general"
-	"github.com/mandelsoft/goutils/sliceutils"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/utils"
-	"ocm.software/ocm/api/datacontext"
-	"ocm.software/ocm/api/ocm/resolvers"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/helpers"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/mandelsoft/goutils/general"
+	"github.com/mandelsoft/goutils/sliceutils"
+	"ocm.software/ocm/api/datacontext"
+	"ocm.software/ocm/api/ocm/resolvers"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/fluxcd/pkg/runtime/conditions"
@@ -130,21 +131,21 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// Configure ocm context
-	secrets, err := utils.GetSecrets(ctx, r.Client, utils.GetEffectiveSecretRefs(ctx, obj, repoObj))
+	secrets, err := helpers.GetSecrets(ctx, r.Client, helpers.GetEffectiveSecretRefs(ctx, obj, repoObj))
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.SecretFetchFailedReason, err.Error())
 		return ctrl.Result{}, fmt.Errorf("failed to get secrets: %w", err)
 	}
 
-	configs, err := utils.GetConfigMaps(ctx, r.Client, utils.GetEffectiveConfigRefs(ctx, obj, repoObj))
+	configs, err := helpers.GetConfigMaps(ctx, r.Client, helpers.GetEffectiveConfigRefs(ctx, obj, repoObj))
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.ConfigFetchFailedReason, err.Error())
 		return ctrl.Result{}, fmt.Errorf("failed to get configmaps: %w", err)
 	}
 
-	set := utils.GetEffectiveConfigSet(ctx, obj, repoObj)
+	set := helpers.GetEffectiveConfigSet(ctx, obj, repoObj)
 
-	signingkeys, err := utils.GetVerifications(ctx, r.Client, obj)
+	signingkeys, err := helpers.GetVerifications(ctx, r.Client, obj)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, obj, deliveryv1alpha1.VerificationsInvalidReason, err.Error())
 		return ctrl.Result{}, fmt.Errorf("failed to get verifications: %w", err)
@@ -314,7 +315,7 @@ func (r *ComponentReconciler) reconcile(
 		}
 	}
 
-	list := &ocm.Components{
+	list := &ocm.Descriptors{
 		List: descriptors,
 	}
 

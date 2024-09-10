@@ -1,4 +1,4 @@
-package utils
+package helpers
 
 import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"

@@ -1,4 +1,4 @@
-package utils_test
+package helpers_test
 
 import (
 	"testing"
@@ -9,5 +9,5 @@ import (
 
 func TestConfig(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "OCIRegistry Test Suite")
+	RunSpecs(t, "Controller Helper Functions Test Suite")
 }

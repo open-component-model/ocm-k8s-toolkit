@@ -1,8 +1,7 @@
-package utils
+package helpers
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"github.com/mandelsoft/goutils/sliceutils"
 	corev1 "k8s.io/api/core/v1"
@@ -12,10 +11,10 @@ import (
 // TODO: this function can be used by ocm k8s secret management once it is ready
 
 // GetEffectiveSecretRefs returns either the secrets from obj's spec or the effective secrets of the def (= default)
-// SecretRefProvider
+// SecretRefProvider.
 func GetEffectiveSecretRefs(ctx context.Context,
-	obj SecretRefProvider, def ...SecretRefProvider) []ctrl.ObjectKey {
-
+	obj SecretRefProvider, def ...SecretRefProvider,
+) []ctrl.ObjectKey {
 	ns := obj.GetNamespace()
 	refs := obj.GetSecretRefs()
 
@@ -36,10 +35,10 @@ func GetEffectiveSecretRefs(ctx context.Context,
 }
 
 // GetEffectiveConfigRefs returns either the configs from obj's spec or the effective configs of the def (= default)
-// ConfigRefProvider
+// ConfigRefProvider.
 func GetEffectiveConfigRefs(ctx context.Context,
-	obj ConfigRefProvider, def ...ConfigRefProvider) []ctrl.ObjectKey {
-
+	obj ConfigRefProvider, def ...ConfigRefProvider,
+) []ctrl.ObjectKey {
 	ns := obj.GetNamespace()
 	refs := obj.GetConfigRefs()
 
@@ -60,8 +59,8 @@ func GetEffectiveConfigRefs(ctx context.Context,
 }
 
 func GetEffectiveConfigSet(ctx context.Context,
-	obj ConfigSetProvider, def ConfigSetProvider) string {
-
+	obj ConfigSetProvider, def ConfigSetProvider,
+) string {
 	set := obj.GetConfigSet()
 	if set != nil {
 		return *set
@@ -69,50 +68,12 @@ func GetEffectiveConfigSet(ctx context.Context,
 	return def.GetEffectiveConfigSet()
 }
 
-func GetVerifications(ctx context.Context, client ctrl.Client,
-	obj VerificationProvider) ([]Verification, error) {
-
-	verifications := obj.GetVerifications()
-
-	var err error
-	var secret corev1.Secret
-	v := make([]Verification, 0, len(verifications))
-	for index, verification := range verifications {
-		internal := Verification{
-			Signature: verification.Signature,
-		}
-		if verification.Value == "" && verification.SecretRef.Name == "" {
-			return nil, fmt.Errorf("value and secret ref cannot both be empty for signature: %s", verification.Signature)
-		}
-		if verification.Value != "" && verification.SecretRef.Name != "" {
-			return nil, fmt.Errorf("value and secret ref cannot both be set for signature: %s", verification.Signature)
-		}
-		if verification.Value != "" {
-			internal.PublicKey, err = base64.StdEncoding.DecodeString(verification.Value)
-			if err != nil {
-				return nil, err
-			}
-		}
-		if verification.SecretRef.Name != "" {
-			err = client.Get(ctx, ctrl.ObjectKey{Namespace: obj.GetNamespace(), Name: verification.SecretRef.Name}, &secret)
-			if err != nil {
-				return nil, err
-			}
-			if certBytes, ok := secret.Data[verification.Signature]; ok {
-				internal.PublicKey = certBytes
-			}
-		}
-		v[index] = internal
-	}
-	return v, nil
-}
-
 // TODO: this function should be obsolete once ocm k8s secret management is ready
 
-// GetSecrets returns the secrets referenced by the secretRefs
+// GetSecrets returns the secrets referenced by the secretRefs.
 func GetSecrets(ctx context.Context, client ctrl.Client,
-	secretRefs []ctrl.ObjectKey) ([]corev1.Secret, error) {
-
+	secretRefs []ctrl.ObjectKey,
+) ([]corev1.Secret, error) {
 	secrets, err := get[corev1.Secret](ctx, client, secretRefs)
 	if err != nil {
 		return nil, err
@@ -120,10 +81,10 @@ func GetSecrets(ctx context.Context, client ctrl.Client,
 	return secrets, nil
 }
 
-// GetConfigMaps returns the secrets referenced by the secretRefs
+// GetConfigMaps returns the secrets referenced by the secretRefs.
 func GetConfigMaps(ctx context.Context, client ctrl.Client,
-	configRefs []ctrl.ObjectKey) ([]corev1.ConfigMap, error) {
-
+	configRefs []ctrl.ObjectKey,
+) ([]corev1.ConfigMap, error) {
 	configs, err := get[corev1.ConfigMap](ctx, client, configRefs)
 	if err != nil {
 		return nil, err
@@ -137,8 +98,8 @@ type ObjectPointerType[T any] interface {
 }
 
 func get[T any, P ObjectPointerType[T]](ctx context.Context, client ctrl.Client,
-	refs []ctrl.ObjectKey) ([]T, error) {
-
+	refs []ctrl.ObjectKey,
+) ([]T, error) {
 	objs := make([]T, len(refs))
 	i := 0
 	for _, ref := range refs {
