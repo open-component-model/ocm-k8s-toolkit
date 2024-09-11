@@ -10,8 +10,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// TODO: this function can be used by ocm k8s secret management once it is ready
-
 // GetEffectiveSecretRefs returns either the secrets from obj's spec or the effective secrets of the def (= default)
 // SecretRefProvider.
 func GetEffectiveSecretRefs(_ context.Context,
@@ -72,8 +70,6 @@ func GetEffectiveConfigSet(_ context.Context,
 
 	return def.GetEffectiveConfigSet()
 }
-
-// TODO: this function should be obsolete once ocm k8s secret management is ready
 
 // GetSecrets returns the secrets referenced by the secretRefs.
 func GetSecrets(ctx context.Context, client ctrl.Client,

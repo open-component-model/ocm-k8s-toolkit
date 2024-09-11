@@ -26,9 +26,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// TODO: This function should be almost entirely replaced by the ocm k8s secret
-//  manager once it is ready!
-
+// Verification is an internal representation of v1alpha1.Verification where the public key is already extracted from
+// the value or secret.
 type Verification struct {
 	Signature string
 	PublicKey []byte
@@ -191,10 +190,6 @@ func VerifyComponentVersion(ctx context.Context, cv ocm.ComponentVersionAccess, 
 	}
 	octx := cv.GetContext()
 
-	// TODO: We should also consider the possibility that the user's component hierarchy spans multiple ocm
-	//  repositories. Since these would have to be configured in the ocm config as resolvers (at least for now, while
-	//  we do not provide a dedicated option in our crds), the ocm contexts resolvers should already cover this. So,
-	//  without ever having tested this myself in the context of signing, I is how it should look like.
 	resolver := resolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver())
 	opts := signing.NewOptions(
 		signing.Resolver(resolver),
