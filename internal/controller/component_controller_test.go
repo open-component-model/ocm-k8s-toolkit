@@ -75,7 +75,7 @@ var _ = Describe("Component Controller", func() {
 	})
 
 	Context("component controller", func() {
-		It("reconcile a component", func() {
+		It("reconcileComponent a component", func() {
 			By("creating ocm repository with components")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
 				env.Component(Component, func() {
@@ -155,7 +155,7 @@ var _ = Describe("Component Controller", func() {
 
 			repo := Must(ctf.Open(env, accessobj.ACC_WRITABLE, ctfpath, vfs.FileMode(vfs.O_RDWR), env))
 			cv := Must(repo.LookupComponentVersion(Component, Version1))
-			expecteddescs := &ocm.Descriptors{List: Must(ocm.ListComponentDescriptors(cv, repo))}
+			expecteddescs := Must(ocm.ListComponentDescriptors(ctx, cv, repo))
 
 			data := Must(os.ReadFile(filepath.Join(tmpdir, deliveryv1alpha1.OCMComponentDescriptorList)))
 			descs := &ocm.Descriptors{}

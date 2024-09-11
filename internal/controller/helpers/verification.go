@@ -4,26 +4,23 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type Verification struct {
-	Signature string
-	PublicKey []byte
-}
-
 func GetVerifications(ctx context.Context, client ctrl.Client,
 	obj v1alpha1.VerificationProvider,
-) ([]Verification, error) {
+) ([]ocm.Verification, error) {
 	verifications := obj.GetVerifications()
 
 	var err error
 	var secret corev1.Secret
-	v := make([]Verification, 0, len(verifications))
+	v := make([]ocm.Verification, 0, len(verifications))
 	for index, verification := range verifications {
-		internal := Verification{
+		internal := ocm.Verification{
 			Signature: verification.Signature,
 		}
 		if verification.Value == "" && verification.SecretRef.Name == "" {
@@ -49,5 +46,6 @@ func GetVerifications(ctx context.Context, client ctrl.Client,
 		}
 		v[index] = internal
 	}
+
 	return v, nil
 }

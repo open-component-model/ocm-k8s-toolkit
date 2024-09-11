@@ -2,7 +2,6 @@ package ocm_test
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/pem"
 	"github.com/Masterminds/semver/v3"
 	. "github.com/mandelsoft/goutils/testutils"
@@ -10,7 +9,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/helpers"
 	. "github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -68,11 +66,9 @@ var _ = Describe("ocm utils", func() {
 			repo ocmctx.Repository
 			cv   ocmctx.ComponentVersionAccess
 
-			componentObj v1alpha1.Component
-
-			configs       []corev1.ConfigMap
-			secrets       []corev1.Secret
-			verifications []helpers.Verification
+			configs       []*corev1.ConfigMap
+			secrets       []*corev1.Secret
+			verifications []Verification
 		)
 
 		BeforeEach(func() {
@@ -100,14 +96,14 @@ var _ = Describe("ocm utils", func() {
 			_ = Must(signing.SignComponentVersion(cv, Signature3, signing.PrivateKey(Signature3, privkey3)))
 
 			By("setup signsecrets")
-			verifications = append(verifications, []helpers.Verification{
+			verifications = append(verifications, []Verification{
 				{Signature: Signature1, PublicKey: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey1))},
 				{Signature: Signature2, PublicKey: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey2))},
 				{Signature: Signature3, PublicKey: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey3))},
 			}...)
 
 			By("setup configs")
-			config1 := corev1.ConfigMap{
+			config1 := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: Config1,
 				},
@@ -134,7 +130,7 @@ sets:
 			}
 			configs = append(configs, config1)
 
-			config2 := corev1.ConfigMap{
+			config2 := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: Config2,
 				},
@@ -161,7 +157,7 @@ sets:
 			}
 			configs = append(configs, config2)
 
-			config3 := corev1.ConfigMap{
+			config3 := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: Config3,
 				},
@@ -189,12 +185,12 @@ sets:
 			configs = append(configs, config3)
 
 			By("setup secrets")
-			secret1 := corev1.Secret{
+			secret1 := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: Secret1,
 				},
 				Data: map[string][]byte{
-					v1alpha1.OCMCredentialConfigKey: []byte(`
+					v1alpha1.OCMConfigKey: []byte(`
 type: credentials.config.ocm.software
 consumers:
 - identity:
@@ -211,12 +207,12 @@ consumers:
 			}
 			secrets = append(secrets, secret1)
 
-			secret2 := corev1.Secret{
+			secret2 := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: Secret2,
 				},
 				Data: map[string][]byte{
-					v1alpha1.OCMCredentialConfigKey: []byte(`
+					v1alpha1.OCMConfigKey: []byte(`
 type: credentials.config.ocm.software
 consumers:
 - identity:
@@ -238,7 +234,7 @@ consumers:
 					Name: Secret3,
 				},
 				Data: map[string][]byte{
-					v1alpha1.OCMCredentialConfigKey: []byte(`
+					v1alpha1.OCMConfigKey: []byte(`
 type: credentials.config.ocm.software
 consumers:
 - identity:
@@ -253,43 +249,7 @@ consumers:
 `),
 				},
 			}
-			secrets = append(secrets, secret3)
-
-			componentObj = v1alpha1.Component{
-				Spec: v1alpha1.ComponentSpec{
-					SecretRef: &corev1.LocalObjectReference{
-						Name: "secret1",
-					},
-					SecretRefs: []corev1.LocalObjectReference{
-						{Name: "secret2"},
-						{Name: "secret3"},
-					},
-					ConfigRef: &corev1.LocalObjectReference{
-						Name: Config1,
-					},
-					ConfigRefs: []corev1.LocalObjectReference{
-						{Name: Config2},
-						{Name: Config3},
-					},
-					Verify: []v1alpha1.Verification{
-						{
-							Signature: Signature1,
-							SecretRef: corev1.LocalObjectReference{Name: ""},
-							Value:     base64.StdEncoding.EncodeToString(pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey1))),
-						},
-						{
-							Signature: Signature2,
-							SecretRef: corev1.LocalObjectReference{Name: SignSecret1},
-							Value:     "",
-						},
-						{
-							Signature: Signature3,
-							SecretRef: corev1.LocalObjectReference{Name: SignSecret2},
-							Value:     "",
-						},
-					},
-				},
-			}
+			secrets = append(secrets, &secret3)
 		})
 
 		AfterEach(func() {
@@ -300,7 +260,7 @@ consumers:
 
 		It("configure context", func() {
 			octx := ocmctx.New(datacontext.MODE_EXTENDED)
-			MustBeSuccessful(ConfigureContext(octx, &componentObj, verifications, secrets, configs))
+			MustBeSuccessful(ConfigureContext(ctx, octx, verifications, secrets, configs))
 
 			creds1 := Must(octx.CredentialsContext().GetCredentialsForConsumer(Must(identity.GetConsumerId("https://example.com/path1", "")), identity.IdentityMatcher))
 			creds2 := Must(octx.CredentialsContext().GetCredentialsForConsumer(Must(identity.GetConsumerId("https://example.com/path2", "")), identity.IdentityMatcher))
@@ -363,11 +323,11 @@ consumers:
 			MustBeSuccessful(env.Cleanup())
 		})
 		It("without filter", func() {
-			ver := Must(GetLatestValidVersion(Must(c.ListVersions()), "<2.5.0"))
+			ver := Must(GetLatestValidVersion(ctx, Must(c.ListVersions()), "<2.5.0"))
 			Expect(ver.Equal(Must(semver.NewVersion(Version2))))
 		})
 		It("with filter", func() {
-			ver := Must(GetLatestValidVersion(Must(c.ListVersions()), "<2.5.0", Must(RegexpFilter(".*-rc.*"))))
+			ver := Must(GetLatestValidVersion(ctx, Must(c.ListVersions()), "<2.5.0", Must(RegexpFilter(".*-rc.*"))))
 			Expect(ver.Equal(Must(semver.NewVersion(Version1))))
 		})
 	})
@@ -432,11 +392,11 @@ consumers:
 		})
 		It("with retrieving descriptors", func() {
 			descriptors := Must(VerifyComponentVersion(ctx, cv, []string{Signature1, Signature2, Signature3}))
-			Expect(descriptors).To(HaveLen(2))
+			Expect(descriptors.List).To(HaveLen(2))
 		})
 		It("list component versions without verification", func() {
-			descriptors := Must(ListComponentDescriptors(cv, repo))
-			Expect(descriptors).To(HaveLen(2))
+			descriptors := Must(ListComponentDescriptors(ctx, cv, repo))
+			Expect(descriptors.List).To(HaveLen(2))
 		})
 	})
 

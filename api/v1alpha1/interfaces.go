@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	"github.com/fluxcd/pkg/runtime/conditions"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -53,6 +54,16 @@ type ConfigSetProvider interface {
 	client.Object
 	GetConfigSet() *string
 	GetEffectiveConfigSet() string
+}
+
+// OCMK8SObject is a composite interface that the ocm-k8s-toolkit resources implement which allows them to use
+// the same ocm context configuration function.
+// +kubebuilder:object:generate=false
+type OCMK8SObject interface {
+	conditions.Setter
+	SecretRefProvider
+	ConfigRefProvider
+	ConfigSetProvider
 }
 
 // VerificationProvider are objects that may provide verification information. The interface allows all implementers to

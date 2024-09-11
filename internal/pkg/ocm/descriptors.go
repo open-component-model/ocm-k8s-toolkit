@@ -24,6 +24,7 @@ func (c Descriptors) MarshalJSON() ([]byte, error) {
 		list += string(data)
 	}
 	list += `]}`
+
 	return []byte(list), nil
 }
 
@@ -46,5 +47,6 @@ func (c *Descriptors) UnmarshalJSON(data []byte) error {
 		}
 		c.List[i] = desc
 	}
+
 	return nil
 }

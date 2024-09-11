@@ -19,6 +19,7 @@ import (
 	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/helpers"
 	"github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/server"
 	"k8s.io/client-go/tools/record"
@@ -111,22 +112,24 @@ var _ = BeforeSuite(func() {
 
 	// Register reconcilers
 	//Expect((&OCMRepositoryReconciler{
-	//	Client: k8sClient,
+	//	GetClient: k8sClient,
 	//	Scheme: testEnv.Scheme,
 	//}).SetupWithManager(k8sManager)).To(Succeed())
 
 	Expect((&ComponentReconciler{
-		Client:  k8sClient,
-		Scheme:  testEnv.Scheme,
-		Storage: storage,
-		EventRecorder: &record.FakeRecorder{
-			Events:        make(chan string, 32),
-			IncludeObject: true,
+		OCMK8SBaseReconciler: &helpers.OCMK8SBaseReconciler{
+			Client: k8sClient,
+			Scheme: testEnv.Scheme,
+			EventRecorder: &record.FakeRecorder{
+				Events:        make(chan string, 32),
+				IncludeObject: true,
+			},
 		},
+		Storage: storage,
 	}).SetupWithManager(k8sManager)).To(Succeed())
 
 	//Expect((&ResourceReconciler{
-	//	Client: k8sClient,
+	//	GetClient: k8sClient,
 	//	Scheme: testEnv.Scheme,
 	//}).SetupWithManager(k8sManager)).To(Succeed())
 

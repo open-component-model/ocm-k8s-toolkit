@@ -3,6 +3,7 @@ package helpers
 import (
 	"context"
 	"fmt"
+
 	"github.com/mandelsoft/goutils/sliceutils"
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -13,7 +14,7 @@ import (
 
 // GetEffectiveSecretRefs returns either the secrets from obj's spec or the effective secrets of the def (= default)
 // SecretRefProvider.
-func GetEffectiveSecretRefs(ctx context.Context,
+func GetEffectiveSecretRefs(_ context.Context,
 	obj v1alpha1.SecretRefProvider, def ...v1alpha1.SecretRefProvider,
 ) []ctrl.ObjectKey {
 	ns := obj.GetNamespace()
@@ -32,12 +33,13 @@ func GetEffectiveSecretRefs(ctx context.Context,
 			Name:      ref.Name,
 		}
 	})
+
 	return secretRefs
 }
 
 // GetEffectiveConfigRefs returns either the configs from obj's spec or the effective configs of the def (= default)
 // ConfigRefProvider.
-func GetEffectiveConfigRefs(ctx context.Context,
+func GetEffectiveConfigRefs(_ context.Context,
 	obj v1alpha1.ConfigRefProvider, def ...v1alpha1.ConfigRefProvider,
 ) []ctrl.ObjectKey {
 	ns := obj.GetNamespace()
@@ -56,16 +58,18 @@ func GetEffectiveConfigRefs(ctx context.Context,
 			Name:      ref.Name,
 		}
 	})
+
 	return configRefs
 }
 
-func GetEffectiveConfigSet(ctx context.Context,
+func GetEffectiveConfigSet(_ context.Context,
 	obj v1alpha1.ConfigSetProvider, def v1alpha1.ConfigSetProvider,
 ) string {
 	set := obj.GetConfigSet()
 	if set != nil {
 		return *set
 	}
+
 	return def.GetEffectiveConfigSet()
 }
 
@@ -74,22 +78,24 @@ func GetEffectiveConfigSet(ctx context.Context,
 // GetSecrets returns the secrets referenced by the secretRefs.
 func GetSecrets(ctx context.Context, client ctrl.Client,
 	secretRefs []ctrl.ObjectKey,
-) ([]corev1.Secret, error) {
+) ([]*corev1.Secret, error) {
 	secrets, err := get[corev1.Secret](ctx, client, secretRefs)
 	if err != nil {
 		return nil, err
 	}
+
 	return secrets, nil
 }
 
 // GetConfigMaps returns the secrets referenced by the secretRefs.
 func GetConfigMaps(ctx context.Context, client ctrl.Client,
 	configRefs []ctrl.ObjectKey,
-) ([]corev1.ConfigMap, error) {
+) ([]*corev1.ConfigMap, error) {
 	configs, err := get[corev1.ConfigMap](ctx, client, configRefs)
 	if err != nil {
 		return nil, err
 	}
+
 	return configs, nil
 }
 
@@ -100,8 +106,8 @@ type ObjectPointerType[T any] interface {
 
 func get[T any, P ObjectPointerType[T]](ctx context.Context, client ctrl.Client,
 	refs []ctrl.ObjectKey,
-) ([]T, error) {
-	objs := make([]T, len(refs))
+) ([]P, error) {
+	objs := make([]P, len(refs))
 	i := 0
 	for _, ref := range refs {
 		var _obj T
@@ -110,7 +116,8 @@ func get[T any, P ObjectPointerType[T]](ctx context.Context, client ctrl.Client,
 		if err := client.Get(ctx, ref, obj); err != nil {
 			return nil, fmt.Errorf("failed to locate object: %w", err)
 		}
-		objs[i] = *obj
+		objs[i] = obj
 	}
+
 	return objs, nil
 }

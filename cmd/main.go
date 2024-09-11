@@ -23,6 +23,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/helpers"
+
 	"github.com/fluxcd/pkg/runtime/events"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/server"
@@ -148,6 +150,7 @@ func main() {
 		setupLog.Error(err, "unable to create event recorder")
 		os.Exit(1)
 	}
+	ctx := context.Background()
 
 	if err = (&controller.OCMRepositoryReconciler{
 		Client:        mgr.GetClient(),
@@ -158,30 +161,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
-	storage, err := server.NewStorage(
-		mgr.GetClient(),
-		mgr.GetScheme(),
-		storagePath,
-		storageAdvAddr,
-		artifactRetentionTTL,
-		artifactRetentionRecords,
-	)
-	if err != nil {
-		setupLog.Error(err, "unable to initialize storage")
-		os.Exit(1)
-	}
-	artifactServer, err := server.NewArtifactServer(storagePath, storageAdvAddr, time.Minute)
+	storage, artifactServer, err := server.NewArtifactStore(mgr.GetClient(), mgr.GetScheme(),
+		storagePath, storageAdvAddr, artifactRetentionTTL, artifactRetentionRecords)
 	if err != nil {
 		setupLog.Error(err, "unable to initialize storage")
 		os.Exit(1)
 	}
 
 	if err = (&controller.ComponentReconciler{
-		Client:        mgr.GetClient(),
-		Scheme:        mgr.GetScheme(),
-		Storage:       storage,
-		EventRecorder: eventsRecorder,
+		OCMK8SBaseReconciler: &helpers.OCMK8SBaseReconciler{
+			Client:        mgr.GetClient(),
+			Scheme:        mgr.GetScheme(),
+			EventRecorder: eventsRecorder,
+		},
+		Storage: storage,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Component")
 		os.Exit(1)
