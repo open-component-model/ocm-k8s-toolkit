@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/rerror"
+
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/status"
@@ -12,19 +14,19 @@ import (
 
 func ConfigureOCMContext(ctx context.Context, r OCMK8SReconciler, octx ocmctx.Context,
 	obj deliveryv1alpha1.OCMK8SObject, def deliveryv1alpha1.OCMK8SObject,
-) error {
+) rerror.ReconcileError {
 	secrets, err := GetSecrets(ctx, r.GetClient(), GetEffectiveSecretRefs(ctx, obj, def))
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), obj, deliveryv1alpha1.SecretFetchFailedReason, err.Error())
 
-		return fmt.Errorf("failed to get secrets: %w", err)
+		return rerror.AsRetryableError(fmt.Errorf("failed to get secrets: %w", err))
 	}
 
 	configs, err := GetConfigMaps(ctx, r.GetClient(), GetEffectiveConfigRefs(ctx, obj, def))
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), obj, deliveryv1alpha1.ConfigFetchFailedReason, err.Error())
 
-		return fmt.Errorf("failed to get configmaps: %w", err)
+		return rerror.AsRetryableError(fmt.Errorf("failed to get configmaps: %w", err))
 	}
 
 	set := GetEffectiveConfigSet(ctx, obj, def)
@@ -35,7 +37,7 @@ func ConfigureOCMContext(ctx context.Context, r OCMK8SReconciler, octx ocmctx.Co
 		if err != nil {
 			status.MarkNotReady(r.GetEventRecorder(), obj, deliveryv1alpha1.VerificationsInvalidReason, err.Error())
 
-			return fmt.Errorf("failed to get verifications: %w", err)
+			return rerror.AsRetryableError(fmt.Errorf("failed to get verifications: %w", err))
 		}
 	}
 
@@ -43,7 +45,7 @@ func ConfigureOCMContext(ctx context.Context, r OCMK8SReconciler, octx ocmctx.Co
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), obj, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
 
-		return fmt.Errorf("failed to configure ocm context: %w", err)
+		return rerror.AsNonRetryableError(fmt.Errorf("failed to configure ocm context: %w", err))
 	}
 
 	return nil

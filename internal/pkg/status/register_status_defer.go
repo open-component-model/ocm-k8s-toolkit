@@ -34,12 +34,15 @@ func UpdateStatus(
 		reconciling := conditions.Get(obj, meta.ReconcilingCondition)
 		reconciling.Reason = meta.ProgressingWithRetryReason
 		conditions.Set(obj, reconciling)
-		event.New(recorder, obj, obj.GetVID(), eventv1.EventSeverityError, "Reconciliation did not succeed, retrying in %s", requeue)
+		event.New(recorder, obj, obj.GetVID(), eventv1.EventSeverityError, "Reconciliation did not succeed, keep retrying")
 	}
 
 	// Set status observed generation option if the component is ready.
 	if conditions.IsReady(obj) {
 		obj.SetObservedGeneration(obj.GetGeneration())
+		// Theoretically, the requeue here is not completely accurate either. If we actually update the status, this
+		// will trigger another reconciliation rather immediately (or if err somehow is not nil although the condition
+		// is ready, we will requeue after exponential backoff). But I guess, we can ignore these edge cases for now!
 		event.New(recorder, obj, obj.GetVID(), eventv1.EventSeverityInfo, "Reconciliation finished, next run in %s", requeue)
 	}
 

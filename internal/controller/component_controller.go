@@ -91,10 +91,10 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	return r.reconcileExists(ctx, component)
+	return rerror.EvaluateReconcileError(r.reconcileExists(ctx, component))
 }
 
-func (r *ComponentReconciler) reconcileExists(ctx context.Context, component *deliveryv1alpha1.Component) (_ ctrl.Result, retErr error) {
+func (r *ComponentReconciler) reconcileExists(ctx context.Context, component *deliveryv1alpha1.Component) (_ ctrl.Result, retErr rerror.ReconcileError) {
 	logger := log.FromContext(ctx)
 	if component.GetDeletionTimestamp() != nil {
 		logger.Info("deleting component", "name", component.Name)
@@ -111,7 +111,7 @@ func (r *ComponentReconciler) reconcileExists(ctx context.Context, component *de
 	return r.reconcilePrepare(ctx, component)
 }
 
-func (r *ComponentReconciler) reconcilePrepare(ctx context.Context, component *deliveryv1alpha1.Component) (_ ctrl.Result, retErr error) {
+func (r *ComponentReconciler) reconcilePrepare(ctx context.Context, component *deliveryv1alpha1.Component) (_ ctrl.Result, retErr rerror.ReconcileError) {
 	logger := log.FromContext(ctx)
 
 	patchHelper := patch.NewSerialPatcher(component, r.Client)
@@ -119,7 +119,7 @@ func (r *ComponentReconciler) reconcilePrepare(ctx context.Context, component *d
 	// Always attempt to patch the object and status after each reconciliation.
 	defer func() {
 		if perr := status.UpdateStatus(ctx, patchHelper, component, r.EventRecorder, component.GetRequeueAfter(), retErr); perr != nil {
-			retErr = errors.Join(retErr, perr)
+			retErr = rerror.AsRetryableError(errors.Join(retErr, perr))
 		}
 	}()
 
@@ -128,63 +128,60 @@ func (r *ComponentReconciler) reconcilePrepare(ctx context.Context, component *d
 		Namespace: component.Spec.RepositoryRef.Namespace,
 		Name:      component.Spec.RepositoryRef.Name,
 	}, repo); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get repository: %w", err)
+		logger.Info("failed to get repository")
+
+		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to get repository: %w", err))
 	}
 
 	if !conditions.IsReady(repo) {
 		logger.Info("repository is not ready", "name", component.Spec.RepositoryRef.Name)
 		status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.RepositoryIsNotReadyReason, "Repository is not ready yet")
 
-		return ctrl.Result{RequeueAfter: component.GetRequeueAfter()}, nil
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	return r.reconcile(ctx, component, repo)
 }
 
-func (r *ComponentReconciler) reconcile(ctx context.Context, component *deliveryv1alpha1.Component, repository *deliveryv1alpha1.OCMRepository) (_ ctrl.Result, retErr error) {
+func (r *ComponentReconciler) reconcile(ctx context.Context, component *deliveryv1alpha1.Component, repository *deliveryv1alpha1.OCMRepository) (_ ctrl.Result, retErr rerror.ReconcileError) {
+	var err error
+	var rerr rerror.ReconcileError
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
 	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
 	// instance and not at the global default context variable.
 	octx := ocmctx.New(datacontext.MODE_EXTENDED)
 	defer func() {
-		retErr = errors.Join(retErr, octx.Finalize())
+		err = octx.Finalize()
+		if err != nil {
+			retErr = rerror.AsNonRetryableError(errors.Join(retErr, err))
+		}
 	}()
 	session := ocmctx.NewSession(datacontext.NewSession())
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
 
-	err := helpers.ConfigureOCMContext(ctx, r, octx, component, repository)
+	rerr = helpers.ConfigureOCMContext(ctx, r, octx, component, repository)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, rerr
 	}
 
 	repo, err := session.LookupRepositoryForConfig(octx, repository.Spec.RepositorySpec.Raw)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.RepositorySpecInvalidReason, "RepositorySpec is invalid")
 
-		return ctrl.Result{}, fmt.Errorf("invalid repository spec: %w", err)
+		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("invalid repository spec: %w", err))
 	}
 
 	c, err := session.LookupComponent(repo, component.Spec.Component)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.GetComponentFailedReason, "Component not found in repository")
 
-		return ctrl.Result{
-			// component just might be not there (or rather created) yet, requeue without backoff to avoid long wait
-			// times
-			RequeueAfter: component.GetRequeueAfter(),
-		}, nil
+		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed looking up component: %w", err))
 	}
 
 	version, rerr := r.determineEffectiveVersion(ctx, component, session, repo, c)
 	if rerr != nil {
-		if rerr.Retryable() {
-			return ctrl.Result{
-				RequeueAfter: component.GetRequeueAfter(),
-			}, err
-		}
-
-		return ctrl.Result{}, err
+		return ctrl.Result{}, rerr
 	}
 
 	cv, err := session.LookupComponentVersion(repo, c.GetName(), version)
@@ -193,35 +190,24 @@ func (r *ComponentReconciler) reconcile(ctx context.Context, component *delivery
 		// static error where requeueing does not make sense
 		status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to get component version: %w", err)
+		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("failed to get component version: %w", err))
 	}
 
 	descriptors, rerr := r.verifyComponentVersionAndListDescriptors(ctx, octx, component, cv)
 	if rerr != nil {
-		if rerr.Retryable() {
-			return ctrl.Result{
-				RequeueAfter: component.GetRequeueAfter(),
-			}, err
-		}
-
-		return ctrl.Result{}, err
+		return ctrl.Result{}, rerr
 	}
 
-	if err := r.Storage.ReconcileStorage(ctx, component); err != nil {
+	err = r.Storage.ReconcileStorage(ctx, component)
+	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.StorageReconcileFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to reconcileComponent storage: %w", err)
+		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to reconcileComponent storage: %w", err))
 	}
 
 	rerr = r.createArtifactForDescriptors(ctx, octx, component, cv, descriptors)
 	if rerr != nil {
-		if rerr.Retryable() {
-			return ctrl.Result{
-				RequeueAfter: component.GetRequeueAfter(),
-			}, err
-		}
-
-		return ctrl.Result{}, err
+		return ctrl.Result{}, rerr
 	}
 
 	// Update status
@@ -232,7 +218,7 @@ func (r *ComponentReconciler) reconcile(ctx context.Context, component *delivery
 	}
 	status.MarkReady(r.EventRecorder, component, "Applied version %s", version)
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: component.GetRequeueAfter()}, nil
 }
 
 func (r *ComponentReconciler) determineEffectiveVersion(ctx context.Context, component *deliveryv1alpha1.Component,

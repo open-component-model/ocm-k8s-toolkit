@@ -1,5 +1,10 @@
 package rerror
 
+import (
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+)
+
 type ReconcileError interface {
 	error
 	Retryable() bool
@@ -27,4 +32,15 @@ func (e *NonRetryableError) Retryable() bool {
 
 func AsNonRetryableError(err error) ReconcileError {
 	return &NonRetryableError{err}
+}
+
+func EvaluateReconcileError(result ctrl.Result, err ReconcileError) (ctrl.Result, error) {
+	if err == nil {
+		return result, nil
+	}
+	if err.Retryable() {
+		return result, err
+	}
+
+	return result, reconcile.TerminalError(err)
 }
