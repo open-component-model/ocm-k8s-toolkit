@@ -25,8 +25,6 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/utils/helpers"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/utils/helpers"
-
 	"github.com/fluxcd/pkg/runtime/events"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/server"

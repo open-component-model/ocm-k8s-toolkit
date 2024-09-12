@@ -13,7 +13,7 @@ require (
 	github.com/fluxcd/pkg/runtime v0.47.1
 	github.com/fluxcd/pkg/tar v0.7.0
 	github.com/mandelsoft/filepath v0.0.0-20240223090642-3e2777258aa3
-	github.com/mandelsoft/goutils v0.0.0-20240830173009-db6f8a58747d
+	github.com/mandelsoft/goutils v0.0.0-20240910114310-fc2a9de4c494
 	github.com/mandelsoft/vfs v0.4.3
 	github.com/onsi/ginkgo/v2 v2.20.2
 	github.com/onsi/gomega v1.34.2
@@ -24,7 +24,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.31.0
 	k8s.io/apimachinery v0.31.0
 	k8s.io/client-go v0.31.0
-	ocm.software/ocm v0.14.1-0.20240903144454-90f15d24acb0
+	ocm.software/ocm v0.14.1-0.20240912152121-7c14e9d135e0
 	sigs.k8s.io/controller-runtime v0.19.0
 	sigs.k8s.io/yaml v1.4.0
 )
@@ -65,26 +65,26 @@ require (
 	github.com/alibabacloud-go/tea-xml v1.1.3 // indirect
 	github.com/aliyun/credentials-go v1.3.4 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.30.4 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.30.5 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.4 // indirect
-	github.com/aws/aws-sdk-go-v2/config v1.27.31 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.17.30 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.12 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.16 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.16 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.16 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.27.33 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.17.32 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.13 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.17.18 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.17 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.17 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.1 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.3.16 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ecr v1.32.2 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.3.17 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ecr v1.32.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.23.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.11.4 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.3.18 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.11.18 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.17.16 // indirect
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.61.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.22.5 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.26.5 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.30.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.3.19 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.11.19 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.17.17 // indirect
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.61.2 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.22.7 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.26.7 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.30.7 // indirect
 	github.com/aws/smithy-go v1.20.4 // indirect
 	github.com/awslabs/amazon-ecr-credential-helper/ecr-login v0.0.0-20240605144053-e9736b52ea9c // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -177,7 +177,7 @@ require (
 	github.com/google/certificate-transparency-go v1.2.1 // indirect
 	github.com/google/gnostic-models v0.6.9-0.20230804172637-c7be7c783f49 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
-	github.com/google/go-containerregistry v0.20.1 // indirect
+	github.com/google/go-containerregistry v0.20.2 // indirect
 	github.com/google/go-github/v45 v45.2.0 // indirect
 	github.com/google/go-github/v55 v55.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
@@ -268,7 +268,7 @@ require (
 	github.com/sigstore/fulcio v1.5.1 // indirect
 	github.com/sigstore/protobuf-specs v0.3.2 // indirect
 	github.com/sigstore/rekor v1.3.6 // indirect
-	github.com/sigstore/sigstore v1.8.8 // indirect
+	github.com/sigstore/sigstore v1.8.9 // indirect
 	github.com/sigstore/timestamp-authority v1.2.2 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966 // indirect
@@ -320,15 +320,15 @@ require (
 	go.step.sm/crypto v0.51.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/crypto v0.26.0 // indirect
+	golang.org/x/crypto v0.27.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/mod v0.20.0 // indirect
-	golang.org/x/net v0.28.0 // indirect
-	golang.org/x/oauth2 v0.22.0 // indirect
+	golang.org/x/net v0.29.0 // indirect
+	golang.org/x/oauth2 v0.23.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
-	golang.org/x/sys v0.24.0 // indirect
-	golang.org/x/term v0.23.0 // indirect
-	golang.org/x/text v0.17.0 // indirect
+	golang.org/x/sys v0.25.0 // indirect
+	golang.org/x/term v0.24.0 // indirect
+	golang.org/x/text v0.18.0 // indirect
 	golang.org/x/time v0.6.0 // indirect
 	golang.org/x/tools v0.24.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
