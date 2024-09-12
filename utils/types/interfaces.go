@@ -1,7 +1,8 @@
-package v1alpha1
+package types
 
 import (
 	"github.com/fluxcd/pkg/runtime/conditions"
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -71,5 +72,5 @@ type OCMK8SObject interface {
 // +kubebuilder:object:generate=false
 type VerificationProvider interface {
 	client.Object
-	GetVerifications() []Verification
+	GetVerifications() []v1alpha1.Verification
 }

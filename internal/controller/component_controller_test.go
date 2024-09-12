@@ -25,7 +25,7 @@ import (
 	"github.com/mandelsoft/vfs/pkg/osfs"
 	"github.com/mandelsoft/vfs/pkg/vfs"
 	. "github.com/onsi/gomega"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/utils/ocm"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"

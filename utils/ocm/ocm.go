@@ -225,8 +225,6 @@ func ListComponentDescriptors(_ context.Context, cv ocm.ComponentVersionAccess, 
 	return descriptors, nil
 }
 
-// TODO: discuss whether latestcv should be able to also have a label that enforces downgradability
-
 // IsDowngradable checks whether a component version (currentcv) is downgrabale to another component version (latestcv).
 func IsDowngradable(_ context.Context, currentcv ocm.ComponentVersionAccess, latestcv ocm.ComponentVersionAccess) (bool, error) {
 	data, ok := currentcv.GetDescriptor().GetLabels().Get(deliveryv1alpha1.OCMLabelDowngradable)

@@ -19,7 +19,7 @@ import (
 	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/helpers"
+	"github.com/open-component-model/ocm-k8s-toolkit/utils/helpers"
 	"github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/server"
 	"k8s.io/client-go/tools/record"

@@ -9,7 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	. "github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
+	. "github.com/open-component-model/ocm-k8s-toolkit/utils/ocm"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"ocm.software/ocm/api/credentials/builtin/maven/identity"

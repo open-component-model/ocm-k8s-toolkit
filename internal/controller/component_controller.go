@@ -24,10 +24,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/openfluxcd/controller-manager/storage"
+	"github.com/open-component-model/ocm-k8s-toolkit/utils/helpers"
+	"github.com/open-component-model/ocm-k8s-toolkit/utils/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/utils/rerror"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/helpers"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/rerror"
+	"github.com/openfluxcd/controller-manager/storage"
 
 	"github.com/mandelsoft/goutils/general"
 	"github.com/mandelsoft/goutils/sliceutils"
@@ -50,7 +51,6 @@ import (
 	"sigs.k8s.io/yaml"
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 )
 
 const (
@@ -169,7 +169,7 @@ func (r *ComponentReconciler) reconcile(ctx context.Context, component *delivery
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.RepositorySpecInvalidReason, "RepositorySpec is invalid")
 
-		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("invalid repository spec: %w", err))
+		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("invalid repository spec: %w", err))
 	}
 
 	c, err := session.LookupComponent(repo, component.Spec.Component)
@@ -190,7 +190,7 @@ func (r *ComponentReconciler) reconcile(ctx context.Context, component *delivery
 		// static error where requeueing does not make sense
 		status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
 
-		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("failed to get component version: %w", err))
+		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to get component version: %w", err))
 	}
 
 	descriptors, rerr := r.verifyComponentVersionAndListDescriptors(ctx, octx, component, cv)
@@ -230,7 +230,7 @@ func (r *ComponentReconciler) determineEffectiveVersion(ctx context.Context, com
 		// trying to list all versions
 		status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.GetComponentFailedReason, "Component not found in repository")
 
-		return "", rerror.AsNonRetryableError(fmt.Errorf("component %s not found in repository", c.GetName()))
+		return "", rerror.AsRetryableError(fmt.Errorf("component %s not found in repository", c.GetName()))
 	}
 	filter, err := ocm.RegexpFilter(component.Spec.SemverFilter)
 	if err != nil {
@@ -250,7 +250,7 @@ func (r *ComponentReconciler) determineEffectiveVersion(ctx context.Context, com
 		// static error where requeueing does not make sense
 		status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
 
-		return "", rerror.AsNonRetryableError(fmt.Errorf("failed to get component version: %w", err))
+		return "", rerror.AsRetryableError(fmt.Errorf("failed to get component version: %w", err))
 	}
 
 	reconciledVersion := general.OptionalDefaulted(component.Status.Component.Version, "0.0.0")
@@ -268,7 +268,7 @@ func (r *ComponentReconciler) determineEffectiveVersion(ctx context.Context, com
 			if err != nil {
 				status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
 
-				return "", rerror.AsNonRetryableError(fmt.Errorf("failed to get reconciled component version to check"+
+				return "", rerror.AsRetryableError(fmt.Errorf("failed to get reconciled component version to check"+
 					"downgradability: %w", err))
 			}
 			downgradable, err = ocm.IsDowngradable(ctx, reconciledcv, latestcv)
@@ -305,7 +305,7 @@ func (r *ComponentReconciler) verifyComponentVersionAndListDescriptors(ctx conte
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.VerificationFailedReason, err.Error())
 
-		return nil, rerror.AsNonRetryableError(fmt.Errorf("failed to verify component: %w", err))
+		return nil, rerror.AsRetryableError(fmt.Errorf("failed to verify component: %w", err))
 	}
 	logger.Info("component successfully verified", "version", cv.GetVersion(), "component", cv.GetName())
 
@@ -356,8 +356,6 @@ func (r *ComponentReconciler) createArtifactForDescriptors(ctx context.Context, 
 		return rerror.AsNonRetryableError(fmt.Errorf("failed to write file: %w", err))
 	}
 
-	// TODO: why do we have to normalize at all? is it important that the directory structure is flat
-
 	revision := r.normalizeComponentVersionName(cv.GetName()) + "-" + cv.GetVersion()
 	if err := r.Storage.ReconcileArtifact(
 		ctx,
@@ -380,17 +378,13 @@ func (r *ComponentReconciler) createArtifactForDescriptors(ctx context.Context, 
 	); err != nil {
 		status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.ReconcileArtifactFailedReason, err.Error())
 
-		return rerror.AsNonRetryableError(fmt.Errorf("failed to reconcileComponent artifact: %w", err))
+		return rerror.AsRetryableError(fmt.Errorf("failed to reconcileComponent artifact: %w", err))
 	}
 
 	logger.Info("successfully reconciled component", "name", component.Name)
 
 	return nil
 }
-
-// TODO: github.com/my-component and github.com/my/component would collide
-//	shouldn't do this differently, e.g. replace - with -- and / with -
-//	Why do we have to flatten this in the first place?
 
 func (r *ComponentReconciler) normalizeComponentVersionName(name string) string {
 	return strings.ReplaceAll(name, "/", "-")
