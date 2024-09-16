@@ -18,32 +18,32 @@ package controller
 
 import (
 	"context"
+	"net/http"
+	"os"
+	"time"
+
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/tar"
 	"github.com/mandelsoft/filepath/pkg/filepath"
 	. "github.com/mandelsoft/goutils/testutils"
 	"github.com/mandelsoft/vfs/pkg/osfs"
 	"github.com/mandelsoft/vfs/pkg/vfs"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/open-component-model/ocm-k8s-toolkit/utils/ocm"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	"net/http"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	. "ocm.software/ocm/api/helper/builder"
 	environment "ocm.software/ocm/api/helper/env"
 	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
 	"ocm.software/ocm/api/utils/accessio"
 	"ocm.software/ocm/api/utils/accessobj"
-	"os"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 	"sigs.k8s.io/yaml"
-	"time"
 
-	. "github.com/onsi/ginkgo/v2"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 )
 
 const (
@@ -94,12 +94,12 @@ var _ = Describe("Component Controller", func() {
 			By("creating a repository object")
 			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
 			specdata := Must(spec.MarshalJSON())
-			repository := &deliveryv1alpha1.OCMRepository{
+			repository := &v1alpha1.OCMRepository{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: Namespace,
 					Name:      RepositoryObj,
 				},
-				Spec: deliveryv1alpha1.OCMRepositorySpec{
+				Spec: v1alpha1.OCMRepositorySpec{
 					RepositorySpec: &apiextensionsv1.JSON{
 						Raw: specdata,
 					},
@@ -114,13 +114,13 @@ var _ = Describe("Component Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, baseRepo)).To(Succeed())
 
 			By("creating a component object")
-			component := &deliveryv1alpha1.Component{
+			component := &v1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: Namespace,
 					Name:      ComponentObj,
 				},
-				Spec: deliveryv1alpha1.ComponentSpec{
-					RepositoryRef: deliveryv1alpha1.ObjectKey{
+				Spec: v1alpha1.ComponentSpec{
+					RepositoryRef: v1alpha1.ObjectKey{
 						Namespace: Namespace,
 						Name:      RepositoryObj,
 					},
@@ -129,7 +129,7 @@ var _ = Describe("Component Controller", func() {
 					Semver:                 "1.0.0",
 					Interval:               metav1.Duration{Duration: time.Minute * 10},
 				},
-				Status: deliveryv1alpha1.ComponentStatus{},
+				Status: v1alpha1.ComponentStatus{},
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
@@ -157,7 +157,7 @@ var _ = Describe("Component Controller", func() {
 			cv := Must(repo.LookupComponentVersion(Component, Version1))
 			expecteddescs := Must(ocm.ListComponentDescriptors(ctx, cv, repo))
 
-			data := Must(os.ReadFile(filepath.Join(tmpdir, deliveryv1alpha1.OCMComponentDescriptorList)))
+			data := Must(os.ReadFile(filepath.Join(tmpdir, v1alpha1.OCMComponentDescriptorList)))
 			descs := &ocm.Descriptors{}
 			MustBeSuccessful(yaml.Unmarshal(data, descs))
 			Expect(descs).To(YAMLEqual(expecteddescs))

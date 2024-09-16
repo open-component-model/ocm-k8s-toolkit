@@ -4,7 +4,6 @@ import (
 	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	k8socm "github.com/open-component-model/ocm-k8s-toolkit/utils/ocm"
 	"ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/compdesc"
 	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
@@ -13,6 +12,8 @@ import (
 	"ocm.software/ocm/api/utils/blobaccess"
 	"ocm.software/ocm/api/utils/mime"
 	"ocm.software/ocm/api/utils/runtime"
+
+	k8socm "github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 )
 
 var _ = Describe("types test", func() {
