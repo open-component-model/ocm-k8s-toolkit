@@ -43,7 +43,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	k8socm "github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 )
 
 const (
@@ -155,10 +155,10 @@ var _ = Describe("Component Controller", func() {
 
 			repo := Must(ctf.Open(env, accessobj.ACC_WRITABLE, ctfpath, vfs.FileMode(vfs.O_RDWR), env))
 			cv := Must(repo.LookupComponentVersion(Component, Version1))
-			expecteddescs := Must(k8socm.ListComponentDescriptors(ctx, cv, repo))
+			expecteddescs := Must(ocm.ListComponentDescriptors(ctx, cv, repo))
 
 			data := Must(os.ReadFile(filepath.Join(tmpdir, deliveryv1alpha1.OCMComponentDescriptorList)))
-			descs := &k8socm.Descriptors{}
+			descs := &ocm.Descriptors{}
 			MustBeSuccessful(yaml.Unmarshal(data, descs))
 			Expect(descs).To(YAMLEqual(expecteddescs))
 		})

@@ -7,7 +7,7 @@ import (
 	"github.com/mandelsoft/goutils/sliceutils"
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
-	
+
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
