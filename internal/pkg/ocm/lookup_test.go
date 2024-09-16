@@ -6,10 +6,11 @@ import (
 	"github.com/mandelsoft/goutils/sliceutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
 const (

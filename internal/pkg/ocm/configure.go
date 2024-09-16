@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	ocmctx "ocm.software/ocm/api/ocm"
+
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/rerror"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/status"
-	ocmctx "ocm.software/ocm/api/ocm"
 )
 
 func ConfigureOCMContext(ctx context.Context, r Reconciler, octx ocmctx.Context,

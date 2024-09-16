@@ -29,7 +29,6 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/goutils/general"
 	"github.com/mandelsoft/goutils/sliceutils"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/rerror"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	corev1 "k8s.io/api/core/v1"
@@ -46,6 +45,7 @@ import (
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	k8socm "github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/rerror"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/status"
 )
 

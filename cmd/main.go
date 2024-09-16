@@ -23,15 +23,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/fluxcd/pkg/runtime/events"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
-	"github.com/openfluxcd/controller-manager/server"
-
-	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"github.com/fluxcd/pkg/runtime/events"
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
+	"github.com/openfluxcd/controller-manager/server"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -43,6 +41,7 @@ import (
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 	// +kubebuilder:scaffold:imports
 )
 

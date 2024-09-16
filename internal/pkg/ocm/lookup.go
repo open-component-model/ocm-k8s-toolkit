@@ -5,9 +5,10 @@ import (
 	"fmt"
 
 	"github.com/mandelsoft/goutils/sliceutils"
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
+	
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
 // GetEffectiveSecretRefs returns either the secrets from obj's spec or the effective secrets of the def (= default)

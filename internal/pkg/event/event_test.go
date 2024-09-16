@@ -22,11 +22,11 @@ import (
 
 	eventv1 "github.com/fluxcd/pkg/apis/event/v1beta1"
 	"github.com/fluxcd/pkg/apis/meta"
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/client-go/tools/record"
+
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
 func TestNewEvent(t *testing.T) {

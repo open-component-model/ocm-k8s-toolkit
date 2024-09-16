@@ -5,10 +5,11 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/rerror"
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/rerror"
 )
 
 func GetVerifications(ctx context.Context, client ctrl.Client,
