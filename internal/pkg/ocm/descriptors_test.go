@@ -4,7 +4,7 @@ import (
 	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	k8socm "github.com/open-component-model/ocm-k8s-toolkit/utils/ocm"
+	k8socm "github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 	"ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/compdesc"
 	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"

@@ -24,25 +24,19 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/utils/helpers"
-	"github.com/open-component-model/ocm-k8s-toolkit/utils/ocm"
-	"github.com/open-component-model/ocm-k8s-toolkit/utils/rerror"
-
-	"github.com/openfluxcd/controller-manager/storage"
-
-	"github.com/mandelsoft/goutils/general"
-	"github.com/mandelsoft/goutils/sliceutils"
-	"ocm.software/ocm/api/datacontext"
-	"ocm.software/ocm/api/ocm/resolvers"
-
 	"github.com/Masterminds/semver/v3"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/status"
+	"github.com/mandelsoft/goutils/general"
+	"github.com/mandelsoft/goutils/sliceutils"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/rerror"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
+	"github.com/openfluxcd/controller-manager/storage"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"ocm.software/ocm/api/datacontext"
 	ocmctx "ocm.software/ocm/api/ocm"
+	"ocm.software/ocm/api/ocm/resolvers"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -51,19 +45,17 @@ import (
 	"sigs.k8s.io/yaml"
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-)
-
-const (
-	Realm = "component-controller"
+	k8socm "github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/status"
 )
 
 // ComponentReconciler reconciles a Component object.
 type ComponentReconciler struct {
-	*helpers.OCMK8SBaseReconciler
+	*k8socm.BaseReconciler
 	Storage *storage.Storage
 }
 
-var _ helpers.OCMK8SReconciler = (*ComponentReconciler)(nil)
+var _ k8socm.Reconciler = (*ComponentReconciler)(nil)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ComponentReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -160,7 +152,7 @@ func (r *ComponentReconciler) reconcile(ctx context.Context, component *delivery
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
 
-	rerr = helpers.ConfigureOCMContext(ctx, r, octx, component, repository)
+	rerr = k8socm.ConfigureOCMContext(ctx, r, octx, component, repository)
 	if err != nil {
 		return ctrl.Result{}, rerr
 	}
@@ -232,13 +224,13 @@ func (r *ComponentReconciler) determineEffectiveVersion(ctx context.Context, com
 
 		return "", rerror.AsRetryableError(fmt.Errorf("component %s not found in repository", c.GetName()))
 	}
-	filter, err := ocm.RegexpFilter(component.Spec.SemverFilter)
+	filter, err := k8socm.RegexpFilter(component.Spec.SemverFilter)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.CheckVersionFailedReason, err.Error())
 
 		return "", rerror.AsNonRetryableError(fmt.Errorf("failed to parse regexp filter: %w", err))
 	}
-	latestSemver, err := ocm.GetLatestValidVersion(ctx, versions, component.Spec.Semver, filter)
+	latestSemver, err := k8socm.GetLatestValidVersion(ctx, versions, component.Spec.Semver, filter)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.CheckVersionFailedReason, err.Error())
 
@@ -271,7 +263,7 @@ func (r *ComponentReconciler) determineEffectiveVersion(ctx context.Context, com
 				return "", rerror.AsRetryableError(fmt.Errorf("failed to get reconciled component version to check"+
 					"downgradability: %w", err))
 			}
-			downgradable, err = ocm.IsDowngradable(ctx, reconciledcv, latestcv)
+			downgradable, err = k8socm.IsDowngradable(ctx, reconciledcv, latestcv)
 			if err != nil {
 				status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.CheckVersionFailedReason, err.Error())
 
@@ -297,9 +289,9 @@ func (r *ComponentReconciler) determineEffectiveVersion(ctx context.Context, com
 
 func (r *ComponentReconciler) verifyComponentVersionAndListDescriptors(ctx context.Context, octx ocmctx.Context,
 	component *deliveryv1alpha1.Component, cv ocmctx.ComponentVersionAccess,
-) (*ocm.Descriptors, rerror.ReconcileError) {
+) (*k8socm.Descriptors, rerror.ReconcileError) {
 	logger := log.FromContext(ctx)
-	descriptors, err := ocm.VerifyComponentVersion(ctx, cv, sliceutils.Transform(component.Spec.Verify, func(verify deliveryv1alpha1.Verification) string {
+	descriptors, err := k8socm.VerifyComponentVersion(ctx, cv, sliceutils.Transform(component.Spec.Verify, func(verify deliveryv1alpha1.Verification) string {
 		return verify.Signature
 	}))
 	if err != nil {
@@ -311,7 +303,7 @@ func (r *ComponentReconciler) verifyComponentVersionAndListDescriptors(ctx conte
 
 	// if the component descriptors were not collected during signature validation, collect them now
 	if descriptors == nil || len(descriptors.List) == 0 {
-		descriptors, err = ocm.ListComponentDescriptors(ctx, cv, resolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver()))
+		descriptors, err = k8socm.ListComponentDescriptors(ctx, cv, resolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver()))
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.ListComponentDescriptorsFailedReason, err.Error())
 
@@ -323,7 +315,7 @@ func (r *ComponentReconciler) verifyComponentVersionAndListDescriptors(ctx conte
 }
 
 func (r *ComponentReconciler) createArtifactForDescriptors(ctx context.Context, octx ocmctx.Context,
-	component *deliveryv1alpha1.Component, cv ocmctx.ComponentVersionAccess, descriptors *ocm.Descriptors,
+	component *deliveryv1alpha1.Component, cv ocmctx.ComponentVersionAccess, descriptors *k8socm.Descriptors,
 ) rerror.ReconcileError {
 	logger := log.FromContext(ctx)
 

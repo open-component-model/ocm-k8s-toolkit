@@ -23,9 +23,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/utils/helpers"
-
 	"github.com/fluxcd/pkg/runtime/events"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/server"
 
@@ -169,7 +168,7 @@ func main() {
 	}
 
 	if err = (&controller.ComponentReconciler{
-		OCMK8SBaseReconciler: &helpers.OCMK8SBaseReconciler{
+		BaseReconciler: &ocm.BaseReconciler{
 			Client:        mgr.GetClient(),
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,

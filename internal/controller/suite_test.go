@@ -16,19 +16,20 @@ package controller
 import (
 	"context"
 	"fmt"
-	. "github.com/mandelsoft/goutils/testutils"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"github.com/open-component-model/ocm-k8s-toolkit/utils/helpers"
-	"github.com/openfluxcd/artifact/api/v1alpha1"
-	"github.com/openfluxcd/controller-manager/server"
-	"k8s.io/client-go/tools/record"
 	"os"
 	"path/filepath"
 	"runtime"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 	"testing"
 	"time"
+
+	. "github.com/mandelsoft/goutils/testutils"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
+	"github.com/openfluxcd/artifact/api/v1alpha1"
+	"github.com/openfluxcd/controller-manager/server"
+	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -117,7 +118,7 @@ var _ = BeforeSuite(func() {
 	//}).SetupWithManager(k8sManager)).To(Succeed())
 
 	Expect((&ComponentReconciler{
-		OCMK8SBaseReconciler: &helpers.OCMK8SBaseReconciler{
+		BaseReconciler: &ocm.BaseReconciler{
 			Client: k8sClient,
 			Scheme: testEnv.Scheme,
 			EventRecorder: &record.FakeRecorder{
