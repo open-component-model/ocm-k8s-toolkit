@@ -10,7 +10,7 @@ import (
 	"github.com/fluxcd/pkg/runtime/conditions"
 	kuberecorder "k8s.io/client-go/tools/record"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/event"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/event"
 )
 
 // MarkNotReady sets the condition status of an Object to `Not Ready`.

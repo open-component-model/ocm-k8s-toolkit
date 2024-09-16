@@ -13,7 +13,7 @@ import (
 	"ocm.software/ocm/api/utils/mime"
 	"ocm.software/ocm/api/utils/runtime"
 
-	k8socm "github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
+	k8socm "github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 )
 
 var _ = Describe("types test", func() {

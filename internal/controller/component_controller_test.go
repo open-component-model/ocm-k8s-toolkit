@@ -42,8 +42,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 	"sigs.k8s.io/yaml"
 
-	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 )
 
 const (
@@ -94,12 +94,12 @@ var _ = Describe("Component Controller", func() {
 			By("creating a repository object")
 			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
 			specdata := Must(spec.MarshalJSON())
-			repository := &deliveryv1alpha1.OCMRepository{
+			repository := &v1alpha1.OCMRepository{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: Namespace,
 					Name:      RepositoryObj,
 				},
-				Spec: deliveryv1alpha1.OCMRepositorySpec{
+				Spec: v1alpha1.OCMRepositorySpec{
 					RepositorySpec: &apiextensionsv1.JSON{
 						Raw: specdata,
 					},
@@ -114,13 +114,13 @@ var _ = Describe("Component Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, baseRepo)).To(Succeed())
 
 			By("creating a component object")
-			component := &deliveryv1alpha1.Component{
+			component := &v1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: Namespace,
 					Name:      ComponentObj,
 				},
-				Spec: deliveryv1alpha1.ComponentSpec{
-					RepositoryRef: deliveryv1alpha1.ObjectKey{
+				Spec: v1alpha1.ComponentSpec{
+					RepositoryRef: v1alpha1.ObjectKey{
 						Namespace: Namespace,
 						Name:      RepositoryObj,
 					},
@@ -129,7 +129,7 @@ var _ = Describe("Component Controller", func() {
 					Semver:                 "1.0.0",
 					Interval:               metav1.Duration{Duration: time.Minute * 10},
 				},
-				Status: deliveryv1alpha1.ComponentStatus{},
+				Status: v1alpha1.ComponentStatus{},
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
@@ -157,7 +157,7 @@ var _ = Describe("Component Controller", func() {
 			cv := Must(repo.LookupComponentVersion(Component, Version1))
 			expecteddescs := Must(ocm.ListComponentDescriptors(ctx, cv, repo))
 
-			data := Must(os.ReadFile(filepath.Join(tmpdir, deliveryv1alpha1.OCMComponentDescriptorList)))
+			data := Must(os.ReadFile(filepath.Join(tmpdir, v1alpha1.OCMComponentDescriptorList)))
 			descs := &ocm.Descriptors{}
 			MustBeSuccessful(yaml.Unmarshal(data, descs))
 			Expect(descs).To(YAMLEqual(expecteddescs))

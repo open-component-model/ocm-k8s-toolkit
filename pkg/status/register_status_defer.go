@@ -14,7 +14,7 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	kuberecorder "k8s.io/client-go/tools/record"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/event"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/event"
 )
 
 // UpdateStatus takes an object which can identify itself and updates its status including ObservedGeneration.

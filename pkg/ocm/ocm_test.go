@@ -26,9 +26,9 @@ import (
 	"ocm.software/ocm/api/utils/accessobj"
 	"ocm.software/ocm/api/utils/mime"
 	common "ocm.software/ocm/api/utils/misc"
-	
+
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	. "github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
+	. "github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 )
 
 const (

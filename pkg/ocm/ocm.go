@@ -23,7 +23,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
 // Verification is an internal representation of v1alpha1.Verification where the public key is already extracted from
@@ -90,7 +90,7 @@ func ConfigureContextForSecrets(_ context.Context, octx ocm.Context, secrets []*
 			}
 		}
 
-		if ocmConfigBytes, ok := secret.Data[deliveryv1alpha1.OCMConfigKey]; ok {
+		if ocmConfigBytes, ok := secret.Data[v1alpha1.OCMConfigKey]; ok {
 			if len(ocmConfigBytes) > 0 {
 				cfg, err := octx.ConfigContext().GetConfigForData(ocmConfigBytes, runtime.DefaultYAMLEncoding)
 				if err != nil {
@@ -119,10 +119,10 @@ func ConfigureContextForConfigMaps(_ context.Context, octx ocm.Context, configma
 		}
 		history[key] = struct{}{}
 
-		ocmConfigData, ok := configmap.Data[deliveryv1alpha1.OCMConfigKey]
+		ocmConfigData, ok := configmap.Data[v1alpha1.OCMConfigKey]
 		if !ok {
 			return fmt.Errorf("ocm configuration config map does not contain key \"%s\"",
-				deliveryv1alpha1.OCMConfigKey)
+				v1alpha1.OCMConfigKey)
 		}
 		if len(ocmConfigData) > 0 {
 			cfg, err := octx.ConfigContext().GetConfigForData([]byte(ocmConfigData), nil)
@@ -227,7 +227,7 @@ func ListComponentDescriptors(_ context.Context, cv ocm.ComponentVersionAccess, 
 
 // IsDowngradable checks whether a component version (currentcv) is downgrabale to another component version (latestcv).
 func IsDowngradable(_ context.Context, currentcv ocm.ComponentVersionAccess, latestcv ocm.ComponentVersionAccess) (bool, error) {
-	data, ok := currentcv.GetDescriptor().GetLabels().Get(deliveryv1alpha1.OCMLabelDowngradable)
+	data, ok := currentcv.GetDescriptor().GetLabels().Get(v1alpha1.OCMLabelDowngradable)
 	if !ok {
 		return false, nil
 	}

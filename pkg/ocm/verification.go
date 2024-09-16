@@ -9,7 +9,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/rerror"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/rerror"
 )
 
 func GetVerifications(ctx context.Context, client ctrl.Client,

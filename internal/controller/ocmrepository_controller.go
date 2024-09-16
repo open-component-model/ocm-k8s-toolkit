@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/status"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
 // OCMRepositoryReconciler reconciles a OCMRepository object.

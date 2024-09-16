@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
 // ResourceReconciler reconciles a Resource object.
@@ -52,6 +52,6 @@ func (r *ResourceReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctr
 // SetupWithManager sets up the controller with the Manager.
 func (r *ResourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&deliveryv1alpha1.Resource{}).
+		For(&v1alpha1.Resource{}).
 		Complete(r)
 }
