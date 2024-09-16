@@ -20,6 +20,8 @@ linters-settings:
     allow-unused: false
     require-explanation: true
     require-specific: false
+  nestif:
+    min-complexity: 7
   varnamelen:
     ignore-names:
       - err

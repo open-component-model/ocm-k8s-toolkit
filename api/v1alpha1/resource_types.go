@@ -37,15 +37,19 @@ type ResourceSpec struct {
 	// +optional
 	ResourceSelector *apiextensionsv1.JSON `json:"resourceSelector"`
 	// +optional
-	SecretRef v1.LocalObjectReference `json:"secretRef,omitempty"`
+	SecretRef *v1.LocalObjectReference `json:"secretRef,omitempty"`
 	// +optional
 	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
-	// The secrets referred to by SecretRef (or SecretRefs) may contain ocm config data. The ocm config allows to
-	// specify sets of configuration data (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
-	// SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be
-	// effective.
 	// +optional
-	ConfigSet string `json:"configSet,omitempty"`
+	ConfigRef *v1.LocalObjectReference `json:"configRef,omitempty"`
+	// +optional
+	ConfigRefs []v1.LocalObjectReference `json:"configRefs,omitempty"`
+	// The secrets and configs referred to by SecretRef (or SecretRefs) and Config (or ConfigRefs) may contain ocm
+	// config data. The  ocm config allows to specify sets of configuration data
+	// (s. https://ocm.software/docs/cli-reference/help/configfile/). If the SecretRef (or SecretRefs) and ConfigRef and
+	// ConfigRefs contain ocm config sets, the user may specify which config set he wants to be effective.
+	// +optional
+	ConfigSet *string `json:"configSet,omitempty"`
 	// +required
 	Interval metav1.Duration `json:"interval"`
 	// +optional
@@ -76,12 +80,48 @@ type ResourceStatus struct {
 	// if they do not explicitly refer a secret.
 	// +optional
 	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
+	// Propagate its effective configs. Other controllers (e.g. Component or Resource controller) may use this as default
+	// if they do not explicitly refer a config.
+	// +optional
+	ConfigRefs []v1.LocalObjectReference `json:"configRefs,omitempty"`
 	// The secrets referred to by SecretRef (or SecretRefs) may contain ocm config data. The ocm config allows to
 	// specify sets of configuration data (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
 	// SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be
 	// effective.
 	// +optional
 	ConfigSet string `json:"configSet,omitempty"`
+}
+
+func (in *Resource) GetSecretRefs() []v1.LocalObjectReference {
+	if in.Spec.SecretRef != nil {
+		return append(in.Spec.SecretRefs, *in.Spec.SecretRef)
+	}
+
+	return in.Spec.SecretRefs
+}
+
+func (in *Resource) GetEffectiveSecretRefs() []v1.LocalObjectReference {
+	return in.Status.SecretRefs
+}
+
+func (in *Resource) GetConfigRefs() []v1.LocalObjectReference {
+	if in.Spec.ConfigRef != nil {
+		return append(in.Spec.ConfigRefs, *in.Spec.ConfigRef)
+	}
+
+	return in.Spec.ConfigRefs
+}
+
+func (in *Resource) GetEffectiveConfigRefs() []v1.LocalObjectReference {
+	return in.Status.ConfigRefs
+}
+
+func (in *Resource) GetConfigSet() *string {
+	return in.Spec.ConfigSet
+}
+
+func (in *Resource) GetEffectiveConfigSet() string {
+	return in.Status.ConfigSet
 }
 
 // +kubebuilder:object:root=true

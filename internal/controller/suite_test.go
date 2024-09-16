@@ -1,12 +1,9 @@
 /*
 Copyright 2024.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,175 +14,133 @@ limitations under the License.
 package controller
 
 import (
+	"context"
+	"fmt"
+	. "github.com/mandelsoft/goutils/testutils"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"github.com/open-component-model/ocm-k8s-toolkit/utils/helpers"
+	"github.com/openfluxcd/artifact/api/v1alpha1"
+	"github.com/openfluxcd/controller-manager/server"
+	"k8s.io/client-go/tools/record"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 	"testing"
 	"time"
 
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	fakedynamic "k8s.io/client-go/dynamic/fake"
-	"ocm.software/ocm/api/ocm"
-	"ocm.software/ocm/api/ocm/compdesc"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/fakes"
+	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	metricserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	// +kubebuilder:scaffold:imports
 )
 
-type testEnv struct {
-	scheme *runtime.Scheme
-	obj    []client.Object
-}
+// These tests use Ginkgo (BDD-style Go testing framework). Refer to
+// http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
-// FakeKubeClientOption defines options to construct a fake kube client. There are some defaults involved.
-// Scheme gets corev1 and v1alpha1 schemes by default. Anything that is passed in will override current
-// defaults.
-type FakeKubeClientOption func(testEnv *testEnv)
-
-// WithAddToScheme adds the scheme.
-func WithAddToScheme(addToScheme func(s *runtime.Scheme) error) FakeKubeClientOption {
-	return func(testEnv *testEnv) {
-		if err := addToScheme(testEnv.scheme); err != nil {
-			panic(err)
-		}
-	}
-}
-
-// WithObjects provides an option to set objects for the fake client.
-func WithObjects(obj ...client.Object) FakeKubeClientOption {
-	return func(testEnv *testEnv) {
-		testEnv.obj = obj
-	}
-}
-
-// FakeKubeClient creates a fake kube client with some defaults and optional arguments.
-func (t *testEnv) FakeKubeClient(opts ...FakeKubeClientOption) client.Client {
-	for _, o := range opts {
-		o(t)
-	}
-	return fake.NewClientBuilder().
-		WithScheme(t.scheme).
-		WithObjects(t.obj...).
-		WithStatusSubresource(t.obj...).
-		Build()
-}
-
-// FakeKubeClient creates a fake kube client with some defaults and optional arguments.
-func (t *testEnv) FakeDynamicKubeClient(
-	opts ...FakeKubeClientOption,
-) *fakedynamic.FakeDynamicClient {
-	for _, o := range opts {
-		o(t)
-	}
-	var objs []runtime.Object
-	for _, t := range t.obj {
-		objs = append(objs, t)
-	}
-	return fakedynamic.NewSimpleDynamicClient(t.scheme, objs...)
-}
-
-var (
-	DefaultComponent = &v1alpha1.Component{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ComponentVersion",
-			APIVersion: v1alpha1.GroupVersion.Version,
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-component",
-			Namespace: "default",
-		},
-		Spec: v1alpha1.ComponentSpec{
-			Interval:  metav1.Duration{Duration: 10 * time.Minute},
-			Component: "github.com/open-component-model/test-component",
-			RepositoryRef: v1alpha1.ObjectKey{
-				Namespace: "default",
-				Name:      "test-repository",
-			},
-			Semver: "v0.1.0",
-			Verify: []v1alpha1.Verification{},
-		},
-	}
-	DefaultResource = &v1alpha1.Resource{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Resource",
-			APIVersion: v1alpha1.GroupVersion.Version,
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-resource",
-			Namespace: "default",
-		},
-		Spec: v1alpha1.ResourceSpec{
-			Interval: metav1.Duration{Duration: 10 * time.Minute},
-		},
-	}
+const (
+	ARTIFACT_PATH   = "ocm-k8s-artifactstore--*"
+	ARTIFACT_SERVER = "localhost:8080"
 )
 
-func getMockComponent(
-	name, version string,
-	opts ...fakes.AccessOptionFunc,
-) ocm.ComponentVersionAccess {
-	res := &fakes.Resource[*ocm.ResourceMeta]{
-		Name:          "introspect-image",
-		Version:       "1.0.0",
-		Type:          "ociImage",
-		Relation:      "local",
-		AccessOptions: opts,
-	}
-	comp := &fakes.Component{
-		Name:      name,
-		Version:   version,
-		Resources: []*fakes.Resource[*ocm.ResourceMeta]{res},
-	}
-	res.Component = comp
-	comp.ComponentDescriptor = fakes.ConstructComponentDescriptor(comp)
+var cfg *rest.Config
+var k8sClient client.Client
+var k8sManager ctrl.Manager
+var testEnv *envtest.Environment
 
-	return comp
+func TestControllers(t *testing.T) {
+	RegisterFailHandler(Fail)
+
+	RunSpecs(t, "Controller Suite")
 }
 
-func getMockComponentWithReference(
-	name, version string,
-	refName, refVersion string,
-	opts ...fakes.AccessOptionFunc,
-) ocm.ComponentVersionAccess {
-	res := &fakes.Resource[*ocm.ResourceMeta]{
-		Name:          "introspect-image",
-		Version:       "1.0.0",
-		Type:          "ociImage",
-		Relation:      "local",
-		AccessOptions: opts,
+var _ = BeforeSuite(func() {
+	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+
+	By("bootstrapping test environment")
+	testEnv = &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+
+		// The BinaryAssetsDirectory is only required if you want to run the tests directly
+		// without call the makefile target test. If not informed it will look for the
+		// default path defined in controller-runtime which is /usr/local/kubebuilder/.
+		// Note that you must have the required binaries setup under the bin directory to perform
+		// the tests directly. When we run make test it will be setup and used automatically.
+		BinaryAssetsDirectory: filepath.Join("..", "..", "bin", "k8s",
+			fmt.Sprintf("1.30.0-%s-%s", runtime.GOOS, runtime.GOARCH)),
 	}
-	comp := &fakes.Component{
-		Name:      name,
-		Version:   version,
-		Resources: []*fakes.Resource[*ocm.ResourceMeta]{res},
-		References: map[string]ocm.ComponentReference{
-			"embedded": {
-				ElementMeta: compdesc.ElementMeta{
-					Name:    refName,
-					Version: refVersion,
-				},
-				ComponentName: refName,
+
+	var err error
+	// cfg is defined in this file globally.
+	cfg, err = testEnv.Start()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(cfg).NotTo(BeNil())
+	DeferCleanup(testEnv.Stop)
+
+	Expect(deliveryv1alpha1.AddToScheme(scheme.Scheme)).Should(Succeed())
+	Expect(v1alpha1.AddToScheme(scheme.Scheme)).Should(Succeed())
+	Expect(err).NotTo(HaveOccurred())
+
+	// +kubebuilder:scaffold:scheme
+	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	Expect(err).NotTo(HaveOccurred())
+	Expect(k8sClient).NotTo(BeNil())
+
+	komega.SetClient(k8sClient)
+
+	k8sManager, err = ctrl.NewManager(cfg, ctrl.Options{
+		Scheme: scheme.Scheme,
+		Metrics: metricserver.Options{
+			BindAddress: "0",
+		},
+	})
+	Expect(err).ToNot(HaveOccurred())
+
+	tmpdir := Must(os.MkdirTemp("", ARTIFACT_PATH))
+	address := ARTIFACT_SERVER
+	storage := Must(server.NewStorage(k8sClient, testEnv.Scheme, tmpdir, address, 0, 0))
+	artifactServer := Must(server.NewArtifactServer(tmpdir, address, time.Millisecond))
+
+	// Register reconcilers
+	//Expect((&OCMRepositoryReconciler{
+	//	GetClient: k8sClient,
+	//	Scheme: testEnv.Scheme,
+	//}).SetupWithManager(k8sManager)).To(Succeed())
+
+	Expect((&ComponentReconciler{
+		OCMK8SBaseReconciler: &helpers.OCMK8SBaseReconciler{
+			Client: k8sClient,
+			Scheme: testEnv.Scheme,
+			EventRecorder: &record.FakeRecorder{
+				Events:        make(chan string, 32),
+				IncludeObject: true,
 			},
 		},
-	}
-	res.Component = comp
-	comp.ComponentDescriptor = fakes.ConstructComponentDescriptor(comp)
+		Storage: storage,
+	}).SetupWithManager(k8sManager)).To(Succeed())
 
-	return comp
-}
+	//Expect((&ResourceReconciler{
+	//	GetClient: k8sClient,
+	//	Scheme: testEnv.Scheme,
+	//}).SetupWithManager(k8sManager)).To(Succeed())
 
-var env *testEnv
-
-func TestMain(m *testing.M) {
-	scheme := runtime.NewScheme()
-	_ = v1alpha1.AddToScheme(scheme)
-	_ = corev1.AddToScheme(scheme)
-	_ = artifactv1.AddToScheme(scheme)
-
-	env = &testEnv{
-		scheme: scheme,
-	}
-	m.Run()
-}
+	ctx, cancel := context.WithCancel(context.Background())
+	DeferCleanup(cancel)
+	go func() {
+		defer GinkgoRecover()
+		Expect(artifactServer.Start(ctx)).To(Succeed())
+	}()
+	go func() {
+		defer GinkgoRecover()
+		Expect(k8sManager.Start(ctx)).To(Succeed())
+	}()
+})

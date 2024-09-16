@@ -17,13 +17,15 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
 	"time"
 
+	"github.com/open-component-model/ocm-k8s-toolkit/utils/helpers"
+
 	"github.com/fluxcd/pkg/runtime/events"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/server"
 
@@ -148,6 +150,7 @@ func main() {
 		setupLog.Error(err, "unable to create event recorder")
 		os.Exit(1)
 	}
+	ctx := context.Background()
 
 	if err = (&controller.OCMRepositoryReconciler{
 		Client:        mgr.GetClient(),
@@ -158,26 +161,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	starter, storage, err := server.InitializeStorage(
-		mgr.GetClient(),
-		mgr.GetScheme(),
-		storagePath,
-		storageAdvAddr,
-		artifactRetentionTTL,
-		artifactRetentionRecords,
-	)
+	storage, artifactServer, err := server.NewArtifactStore(mgr.GetClient(), mgr.GetScheme(),
+		storagePath, storageAdvAddr, artifactRetentionTTL, artifactRetentionRecords)
 	if err != nil {
 		setupLog.Error(err, "unable to initialize storage")
 		os.Exit(1)
 	}
-	ocmClient := ocm.NewClient(mgr.GetClient())
 
 	if err = (&controller.ComponentReconciler{
-		Client:        mgr.GetClient(),
-		Scheme:        mgr.GetScheme(),
-		Storage:       storage,
-		OCMClient:     ocmClient,
-		EventRecorder: eventsRecorder,
+		OCMK8SBaseReconciler: &helpers.OCMK8SBaseReconciler{
+			Client:        mgr.GetClient(),
+			Scheme:        mgr.GetScheme(),
+			EventRecorder: eventsRecorder,
+		},
+		Storage: storage,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Component")
 		os.Exit(1)
@@ -207,8 +204,8 @@ func main() {
 		// to handle that.
 		<-mgr.Elected()
 
-		if err := starter(storagePath, storageAddr); err != nil {
-			setupLog.Error(err, "unable to start storage server")
+		if err := artifactServer.Start(ctx); err != nil {
+			setupLog.Error(err, "unable to start artifact server")
 		}
 	}()
 

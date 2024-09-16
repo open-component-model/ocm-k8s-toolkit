@@ -6,6 +6,7 @@
 *.so
 *.dylib
 bin
+build
 testbin/*
 Dockerfile.cross
 
@@ -20,6 +21,9 @@ Dockerfile.cross
 !vendor/**/zz_generated.*
 
 # editor and IDE paraphernalia
+go.work
+go.work.sum
+.cache_ggshield
 .idea
 *.swp
 *.swo

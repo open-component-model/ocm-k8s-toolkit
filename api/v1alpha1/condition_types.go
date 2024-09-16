@@ -17,11 +17,24 @@ limitations under the License.
 package v1alpha1
 
 const (
-	// AuthenticatedContextCreationFailedReason is used when the controller failed to create an authenticated context.
-	AuthenticatedContextCreationFailedReason = "AuthenticatedContextCreationFailed"
+	// SecretFetchFailedReason is used when the controller failed to fetch its secrets.
+	SecretFetchFailedReason = "SecretFetchFailed"
+
+	// ConfigFetchFailedReason is used when the controller failed to fetch its configs.
+	ConfigFetchFailedReason = "ConfigFetchFailed"
+
+	// VerificationsInvalidReason is used when the controller failed to gather the verification information.
+	VerificationsInvalidReason = "VerificationsInvalid"
+
+	// ConfigureContextFailedReason is used when the controller failed to create an authenticated context.
+	ConfigureContextFailedReason = "ConfigureContextFailed"
 
 	// CheckVersionFailedReason is used when the controller failed to check for new versions.
 	CheckVersionFailedReason = "CheckVersionFailed"
+
+	// RepositorySpecInvalidReason is used when the referenced repository spec cannot be unmarshaled and therefore is
+	// invalid.
+	RepositorySpecInvalidReason = "RepositorySpecInvalid"
 
 	// RepositoryIsNotReadyReason is used when the referenced repository is not Ready yet.
 	RepositoryIsNotReadyReason = "RepositoryIsNotReady"
@@ -31,6 +44,12 @@ const (
 
 	// GetComponentFailedReason is used when the component cannot be fetched.
 	GetComponentFailedReason = "GetComponentFailed"
+
+	// ListComponentDescriptorsFailedReason is used when the components cannot be listed.
+	ListComponentDescriptorsFailedReason = "ListComponentDescriptorsFailed"
+
+	// GetComponentVersionFailedReason is used when the component cannot be fetched.
+	GetComponentVersionFailedReason = "GetComponentVersionFailed"
 
 	// ComponentTraversalFailedReason is used when traversing any existing component references fails.
 	ComponentTraversalFailedReason = "ComponentTraversalFailed"
