@@ -18,6 +18,10 @@ package controller
 
 import (
 	"context"
+	"net/http"
+	"os"
+	"time"
+
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/tar"
 	"github.com/mandelsoft/filepath/pkg/filepath"
@@ -25,25 +29,22 @@ import (
 	"github.com/mandelsoft/vfs/pkg/osfs"
 	"github.com/mandelsoft/vfs/pkg/vfs"
 	. "github.com/onsi/gomega"
-	"github.com/open-component-model/ocm-k8s-toolkit/utils/ocm"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	"net/http"
 	. "ocm.software/ocm/api/helper/builder"
 	environment "ocm.software/ocm/api/helper/env"
 	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
 	"ocm.software/ocm/api/utils/accessio"
 	"ocm.software/ocm/api/utils/accessobj"
-	"os"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 	"sigs.k8s.io/yaml"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	k8socm "github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 )
 
 const (
@@ -155,10 +156,10 @@ var _ = Describe("Component Controller", func() {
 
 			repo := Must(ctf.Open(env, accessobj.ACC_WRITABLE, ctfpath, vfs.FileMode(vfs.O_RDWR), env))
 			cv := Must(repo.LookupComponentVersion(Component, Version1))
-			expecteddescs := Must(ocm.ListComponentDescriptors(ctx, cv, repo))
+			expecteddescs := Must(k8socm.ListComponentDescriptors(ctx, cv, repo))
 
 			data := Must(os.ReadFile(filepath.Join(tmpdir, deliveryv1alpha1.OCMComponentDescriptorList)))
-			descs := &ocm.Descriptors{}
+			descs := &k8socm.Descriptors{}
 			MustBeSuccessful(yaml.Unmarshal(data, descs))
 			Expect(descs).To(YAMLEqual(expecteddescs))
 		})

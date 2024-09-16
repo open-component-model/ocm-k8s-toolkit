@@ -1,4 +1,4 @@
-package helpers
+package ocm
 
 import (
 	"k8s.io/apimachinery/pkg/runtime"
@@ -6,26 +6,26 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type OCMK8SReconciler interface {
+type Reconciler interface {
 	GetClient() ctrl.Client
 	GetScheme() *runtime.Scheme
 	GetEventRecorder() record.EventRecorder
 }
 
-type OCMK8SBaseReconciler struct {
+type BaseReconciler struct {
 	ctrl.Client
 	Scheme *runtime.Scheme
 	record.EventRecorder
 }
 
-func (r *OCMK8SBaseReconciler) GetClient() ctrl.Client {
+func (r *BaseReconciler) GetClient() ctrl.Client {
 	return r.Client
 }
 
-func (r *OCMK8SBaseReconciler) GetScheme() *runtime.Scheme {
+func (r *BaseReconciler) GetScheme() *runtime.Scheme {
 	return r.Scheme
 }
 
-func (r *OCMK8SBaseReconciler) GetEventRecorder() record.EventRecorder {
+func (r *BaseReconciler) GetEventRecorder() record.EventRecorder {
 	return r.EventRecorder
 }

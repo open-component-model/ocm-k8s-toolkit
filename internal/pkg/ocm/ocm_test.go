@@ -3,13 +3,14 @@ package ocm_test
 import (
 	"context"
 	"encoding/pem"
+
 	"github.com/Masterminds/semver/v3"
 	. "github.com/mandelsoft/goutils/testutils"
 	"github.com/mandelsoft/vfs/pkg/vfs"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	. "github.com/open-component-model/ocm-k8s-toolkit/utils/ocm"
+	. "github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/ocm"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"ocm.software/ocm/api/datacontext"

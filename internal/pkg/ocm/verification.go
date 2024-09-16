@@ -1,28 +1,26 @@
-package helpers
+package ocm
 
 import (
 	"context"
 	"encoding/base64"
 	"fmt"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/utils/ocm"
-	"github.com/open-component-model/ocm-k8s-toolkit/utils/rerror"
-	"github.com/open-component-model/ocm-k8s-toolkit/utils/types"
-
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/pkg/rerror"
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func GetVerifications(ctx context.Context, client ctrl.Client,
-	obj types.VerificationProvider,
-) ([]ocm.Verification, rerror.ReconcileError) {
+	obj v1alpha1.VerificationProvider,
+) ([]Verification, rerror.ReconcileError) {
 	verifications := obj.GetVerifications()
 
 	var err error
 	var secret corev1.Secret
-	v := make([]ocm.Verification, 0, len(verifications))
+	v := make([]Verification, 0, len(verifications))
 	for index, verification := range verifications {
-		internal := ocm.Verification{
+		internal := Verification{
 			Signature: verification.Signature,
 		}
 		if verification.Value == "" && verification.SecretRef.Name == "" {

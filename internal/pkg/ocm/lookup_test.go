@@ -1,7 +1,8 @@
-package helpers
+package ocm
 
 import (
 	"context"
+
 	"github.com/mandelsoft/goutils/sliceutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
