@@ -23,7 +23,6 @@ Dockerfile.cross
 # editor and IDE paraphernalia
 go.work
 go.work.sum
-.cache_ggshield
 .idea
 *.swp
 *.swo
