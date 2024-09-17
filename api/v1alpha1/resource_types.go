@@ -17,6 +17,9 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt"
+	"time"
+
 	v1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -108,6 +111,56 @@ type ResourceStatus struct {
 	ConfigSet string `json:"configSet,omitempty"`
 }
 
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+
+// Resource is the Schema for the resources API.
+type Resource struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   ResourceSpec   `json:"spec,omitempty"`
+	Status ResourceStatus `json:"status,omitempty"`
+}
+
+func (in *Resource) GetConditions() []metav1.Condition {
+	return in.Status.Conditions
+}
+
+func (in *Resource) SetConditions(conditions []metav1.Condition) {
+	in.Status.Conditions = conditions
+}
+
+func (in *Resource) GetVID() map[string]string {
+	// TODO: Check if ID is unique
+	vid := fmt.Sprintf("%s:%s", in.Status.Resource.Name, in.Status.Resource.Version)
+	metadata := make(map[string]string)
+	metadata[GroupVersion.Group+"/resource_version"] = vid
+
+	return metadata
+}
+
+// TODO: Check if necessary
+func (in *Resource) SetObservedGeneration(v int64) {
+	in.Status.ObservedGeneration = v
+}
+
+// TODO: Check if necessary
+func (in *Resource) GetObjectMeta() *metav1.ObjectMeta {
+	return &in.ObjectMeta
+}
+
+// TODO: Check if necessary
+func (in *Resource) GetKind() string {
+	return "Resource"
+}
+
+// GetRequeueAfter returns the duration after which the Resource must be
+// reconciled again.
+func (in Resource) GetRequeueAfter() time.Duration {
+	return in.Spec.Interval.Duration
+}
+
 func (in *Resource) GetSecretRefs() []v1.LocalObjectReference {
 	return in.Spec.SecretRefs
 }
@@ -130,18 +183,6 @@ func (in *Resource) GetConfigSet() *string {
 
 func (in *Resource) GetEffectiveConfigSet() string {
 	return in.Status.ConfigSet
-}
-
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
-
-// Resource is the Schema for the resources API.
-type Resource struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   ResourceSpec   `json:"spec,omitempty"`
-	Status ResourceStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true

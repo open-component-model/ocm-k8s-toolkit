@@ -17,8 +17,9 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	ocmv1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 )
 
 type ObjectKey struct {
@@ -40,7 +41,7 @@ type Verification struct {
 	// Additionally, to prepare for a common ocm secret management, it might make sense to introduce a specific secret type
 	// for these secrets.
 	// +optional
-	SecretRef v1.LocalObjectReference `json:"secretRef,omitempty"`
+	SecretRef corev1.LocalObjectReference `json:"secretRef,omitempty"`
 	// Value defines a PEM/base64 encoded public key value.
 	// +optional
 	Value string `json:"value,omitempty"`
@@ -49,9 +50,12 @@ type Verification struct {
 // ResourceID defines the configuration of the repository.
 type ResourceID struct {
 	// +required
-	Name string `json:"name,omitempty"`
+	ByReference ocmv1.ResourceReference `json:"byReference,omitempty"`
+	// TODO: Implement ByPath (ByPath should be parsed to a ResourceReference
 	// +optional
-	ExtraIdentity map[string]string `json:"extraIdentity,omitempty"`
+	ByPath string `json:"byPath,omitempty"`
+	// TODO: Implement BySelector
+	//BySelector any `json:"bySelector,omitempty"`
 }
 
 type ComponentInfo struct {
