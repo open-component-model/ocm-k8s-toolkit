@@ -94,6 +94,7 @@ spec:
                       type: string
                     type: object
                   name:
+                    description: a v1.ResourceReference
                     type: string
                 required:
                 - name
