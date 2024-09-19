@@ -33,8 +33,8 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
-// OCMRepositoryReconciler reconciles a OCMRepository object.
-type OCMRepositoryReconciler struct {
+// Reconciler reconciles a OCMRepository object.
+type Reconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	kuberecorder.EventRecorder
@@ -44,7 +44,7 @@ type OCMRepositoryReconciler struct {
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmrepositories/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmrepositories/finalizers,verbs=update
 
-func (r *OCMRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
 	_ = log.FromContext(ctx)
 
 	obj := &deliveryv1alpha1.OCMRepository{}
@@ -67,7 +67,7 @@ func (r *OCMRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *OCMRepositoryReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&deliveryv1alpha1.OCMRepository{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
