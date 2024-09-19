@@ -11,22 +11,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package component
+package ocmrepository
 
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
-	"time"
 
-	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
-	"github.com/openfluxcd/controller-manager/server"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
@@ -46,11 +42,6 @@ import (
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
-
-const (
-	ARTIFACT_PATH   = "ocm-k8s-artifactstore--*"
-	ARTIFACT_SERVER = "localhost:8080"
-)
 
 var cfg *rest.Config
 var k8sClient client.Client
@@ -106,18 +97,8 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	tmpdir := Must(os.MkdirTemp("", ARTIFACT_PATH))
-	address := ARTIFACT_SERVER
-	storage := Must(server.NewStorage(k8sClient, testEnv.Scheme, tmpdir, address, 0, 0))
-	artifactServer := Must(server.NewArtifactServer(tmpdir, address, time.Millisecond))
-
 	// Register reconcilers
-	//Expect((&OCMRepositoryReconciler{
-	//	GetClient: k8sClient,
-	//	Scheme: testEnv.Scheme,
-	//}).SetupWithManager(k8sManager)).To(Succeed())
-
-	Expect((&ComponentReconciler{
+	Expect((&OCMRepositoryReconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client: k8sClient,
 			Scheme: testEnv.Scheme,
@@ -126,20 +107,10 @@ var _ = BeforeSuite(func() {
 				IncludeObject: true,
 			},
 		},
-		Storage: storage,
 	}).SetupWithManager(k8sManager)).To(Succeed())
-
-	//Expect((&ResourceReconciler{
-	//	GetClient: k8sClient,
-	//	Scheme: testEnv.Scheme,
-	//}).SetupWithManager(k8sManager)).To(Succeed())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	DeferCleanup(cancel)
-	go func() {
-		defer GinkgoRecover()
-		Expect(artifactServer.Start(ctx)).To(Succeed())
-	}()
 	go func() {
 		defer GinkgoRecover()
 		Expect(k8sManager.Start(ctx)).To(Succeed())

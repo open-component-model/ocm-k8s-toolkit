@@ -1,4 +1,4 @@
-package controller
+package ocmrepository
 
 import (
 	"context"
