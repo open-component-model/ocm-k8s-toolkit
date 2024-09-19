@@ -39,6 +39,9 @@ const (
 	// RepositoryIsNotReadyReason is used when the referenced repository is not Ready yet.
 	RepositoryIsNotReadyReason = "RepositoryIsNotReady"
 
+	// GetRepositoryFailedReason is used when the repository cannot be fetched.
+	GetRepositoryFailedReason = "GetRepositoryFailed"
+
 	// ComponentIsNotReadyReason is used when the referenced component is not Ready yet.
 	ComponentIsNotReadyReason = "ComponentIsNotReady"
 
@@ -48,12 +51,72 @@ const (
 	// GetComponentFailedReason is used when the component cannot be fetched.
 	GetComponentFailedReason = "GetComponentFailed"
 
+	// ListComponentDescriptorsFailedReason is used when the components cannot be listed.
+	ListComponentDescriptorsFailedReason = "ListComponentDescriptorsFailed"
+
+	// GetComponentDescriptorsFailedReason is used when the component descriptor cannot be fetched.
+	GetComponentDescriptorsFailedReason = "GetComponentDescriptorsFailed"
+
 	// GetComponentVersionFailedReason is used when the component cannot be fetched.
 	GetComponentVersionFailedReason = "GetComponentVersionFailed"
+
+	// ComponentTraversalFailedReason is used when traversing any existing component references fails.
+	ComponentTraversalFailedReason = "ComponentTraversalFailed"
 
 	// StorageReconcileFailedReason is used when there was a problem reconciling the artifact storage.
 	StorageReconcileFailedReason = "StorageReconcileFailed"
 
+	// TemporaryFolderCreationFailedReason is used when creating a temporary folder fails.
+	TemporaryFolderCreationFailedReason = "TemporaryFolderCreationFailed"
+
+	// MarshallingComponentDescriptorsFailedReason is used when we can't serialize the component descriptor list.
+	MarshallingComponentDescriptorsFailedReason = "MarshallingComponentDescriptorsFailed"
+
+	// UnmarshallingComponentDescriptorsFailedReason is used when we can't serialize the component descriptor list.
+	UnmarshallingComponentDescriptorsFailedReason = "UnmarshallingComponentDescriptorsFailed"
+
+	// WritingComponentFileFailedReason is used when we fail to create the file for the component descriptors.
+	WritingComponentFileFailedReason = "WritingComponentFileFailed"
+
 	// ReconcileArtifactFailedReason is used when we fail in creating an Artifact.
 	ReconcileArtifactFailedReason = "ReconcileArtifactFailed"
+
+	// GetArtifactFailedReason is used when we fail in getting an Artifact.
+	GetArtifactFailedReason = "GetArtifactFailed"
+
+	// ResolveResourceFailedReason is used when we fail in resolving a resource.
+	ResolveResourceFailedReason = "ResolveResourceFailed"
+
+	// GetResourceReaderFailedReason is used when we fail in getting a resource reader.
+	GetResourceReaderFailedReason = "GetResourceReaderFailed"
+
+	// GetResourceAccessFailedReason is used when we fail in getting a resource access(es).
+	GetResourceAccessFailedReason = "GetResourceAccessFailed"
+
+	// GetResourceAccessDataFailedReason is used when we fail in getting a resource access data.
+	GetResourceAccessDataFailedReason = "GetResourceAccessDataFailed"
+
+	// DigestVerificationFailedReason is used when we fail in verifying the digest.
+	DigestVerificationFailedReason = "DigestVerificationFailed"
+
+	// CreateHttpRequestFailedReason is used when we fail in creating an HttpRequest.
+	CreateHTTPRequestFailedReason = "GetHttpRequestFailed"
+
+	// ExecHttpRequestFailedReason is used when we fail in executing an HttpRequest.
+	ExecHTTPRequestFailedReason = "ExecHttpRequestFailed"
+
+	// UntarFailedReason is used when we fail in untaring.
+	UntarFailedReason = "UntarFailed"
+
+	// ReadFileFailedReason is used when we fail in reading a file.
+	ReadFileFailedReason = "ReadFileFailed"
+
+	// OpenFileFailedReason is used when we fail in opening a file.
+	OpenFileFailedReason = "OpenFileFailed"
+
+	// CopyFileFailedReason is used when we fail in copying a file.
+	CopyFileFailedReason = "CopyFileFailed"
+
+	// StatusSetFailedReason is used when we fail to set the component status.
+	StatusSetFailedReason = "StatusSetFailed"
 )

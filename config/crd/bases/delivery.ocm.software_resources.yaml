@@ -77,27 +77,30 @@ spec:
               interval:
                 description: Interval at which the resource is checked for updates.
                 type: string
-              repositoryRef:
-                properties:
-                  name:
-                    type: string
-                  namespace:
-                    type: string
-                required:
-                - name
-                type: object
               resource:
                 description: Resource identifies the ocm resource to be fetched.
                 properties:
-                  extraIdentity:
-                    additionalProperties:
-                      type: string
+                  byReference:
+                    properties:
+                      referencePath:
+                        items:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Identity describes the identity of an object.
+                            Only ascii characters are allowed
+                          type: object
+                        type: array
+                      resource:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Identity describes the identity of an object.
+                          Only ascii characters are allowed
+                        type: object
                     type: object
-                  name:
-                    description: a v1.ResourceReference
-                    type: string
                 required:
-                - name
+                - byReference
                 type: object
               resourceSelector:
                 x-kubernetes-preserve-unknown-fields: true
@@ -127,7 +130,6 @@ spec:
             required:
             - componentRef
             - interval
-            - repositoryRef
             - resource
             type: object
           status:
