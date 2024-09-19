@@ -125,8 +125,8 @@ func (r *Reconciler) reconcilePrepare(ctx context.Context, component *v1alpha1.C
 		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to get repository: %w", err))
 	}
 
-	if repo.DeletionTimestamp != nil {
-		return ctrl.Result{}, rerror.AsNonRetryableError(errors.New("repository is being deleted, please do not use it"))
+	if repo.GetDeletionTimestamp() != nil {
+		return ctrl.Result{Requeue: true}, rerror.AsNonRetryableError(errors.New("repository is being deleted, please do not use it"))
 	}
 
 	if !conditions.IsReady(repo) {
@@ -157,7 +157,7 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 	octx.Finalizer().Close(session)
 
 	rerr = ocm.ConfigureOCMContext(ctx, r, octx, component, repository)
-	if err != nil {
+	if rerr != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ConfigureContextFailedReason, "Configuring Context failed")
 
 		return ctrl.Result{}, rerr
@@ -202,7 +202,7 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 
 	descriptors, rerr := r.verifyComponentVersionAndListDescriptors(ctx, octx, component, cv)
 	if rerr != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.VerificationFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.VerificationFailedReason, rerr.Error())
 
 		return ctrl.Result{}, rerr
 	}
@@ -216,13 +216,13 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 
 	rerr = r.createArtifactForDescriptors(ctx, octx, component, cv, descriptors)
 	if rerr != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, rerr.Error())
 
 		return ctrl.Result{}, rerr
 	}
 
 	// Update status
-	r.setComponentStatus(component, v1alpha1.ComponentInfo{
+	r.setComponentStatus(component, &v1alpha1.ComponentInfo{
 		RepositorySpec: repository.Spec.RepositorySpec,
 		Component:      component.Spec.Component,
 		Version:        version,
@@ -383,10 +383,7 @@ func (r *Reconciler) normalizeComponentVersionName(name string) string {
 	return strings.ReplaceAll(name, "/", "-")
 }
 
-func (r *Reconciler) setComponentStatus(
-	component *v1alpha1.Component,
-	info v1alpha1.ComponentInfo,
-) {
+func (r *Reconciler) setComponentStatus(component *v1alpha1.Component, info *v1alpha1.ComponentInfo) {
 	component.Status.Component = info
 
 	component.Status.ConfigRefs = slices.Clone(component.Spec.ConfigRefs)

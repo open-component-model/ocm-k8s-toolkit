@@ -18,18 +18,37 @@ package resource
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
+	"github.com/fluxcd/pkg/tar"
+	"github.com/mandelsoft/filepath/pkg/filepath"
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
+	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"ocm.software/ocm/api/datacontext"
+	ocmctx "ocm.software/ocm/api/ocm"
+	"ocm.software/ocm/api/ocm/compdesc"
+	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
+	"ocm.software/ocm/api/ocm/ocmutils"
+	"ocm.software/ocm/api/ocm/resolvers"
+	"ocm.software/ocm/api/ocm/selectors"
+	"ocm.software/ocm/api/ocm/tools/signing"
+	"ocm.software/ocm/api/utils/blobaccess/blobaccess"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/yaml"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
@@ -37,7 +56,7 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
-// Reconciler reconciles a Resource object.
+// ResourceReconciler reconciles a Resource object.
 type Reconciler struct {
 	*ocm.BaseReconciler
 	Storage *storage.Storage
@@ -100,17 +119,20 @@ func (r *Reconciler) reconcilePrepare(ctx context.Context, resource *v1alpha1.Re
 		}
 	}()
 
-	// TODO: Check if the repository is also needed
-
-	// Get component for verification and resolving
+	// Get component to resolve resource from component descriptor and verify digest
 	component := &v1alpha1.Component{}
 	if err := r.Get(ctx, types.NamespacedName{
-		Namespace: component.Spec.RepositoryRef.Namespace,
-		Name:      component.Spec.RepositoryRef.Name,
+		Namespace: resource.Spec.ComponentRef.Namespace,
+		Name:      resource.Spec.ComponentRef.Name,
 	}, component); err != nil {
-		logger.Info("failed to get component")
+		logger.Info("failed to get component", "name", resource.Spec.ComponentRef.Name, "namespace", resource.Spec.ComponentRef.Namespace)
 
-		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to get repository: %w", err))
+		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to get component: %w", err))
+	}
+
+	// Check if component is usable
+	if component.GetDeletionTimestamp() != nil {
+		return ctrl.Result{}, rerror.AsNonRetryableError(errors.New("component is being deleted"))
 	}
 
 	if !conditions.IsReady(component) {
@@ -124,20 +146,323 @@ func (r *Reconciler) reconcilePrepare(ctx context.Context, resource *v1alpha1.Re
 }
 
 func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource, component *v1alpha1.Component) (_ ctrl.Result, retErr rerror.ReconcileError) {
+	var err error
+	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
+	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
+	// instance and not at the global default context variable.
+	octx := ocmctx.New(datacontext.MODE_EXTENDED)
+	defer func() {
+		retErr = rerror.AsNonRetryableError(errors.Join(retErr, octx.Finalize()))
+	}()
+	session := ocmctx.NewSession(datacontext.NewSession())
+	// automatically close the session when the ocm context is closed in the above defer
+	octx.Finalizer().Close(session)
 
-	// TODO: Configure/Create context and session
+	if retErr = ocm.ConfigureOCMContext(ctx, r, octx, resource, component); retErr != nil {
+		return ctrl.Result{}, retErr
+	}
 
-	// TODO: Download resource
-	//         Get comp-list from comp-controller => NewComponentVersionSet
-	//         Resolve ComponentDescriptor => Resources, ComponentDescriptor
+	// Get artifact from component that contains component descriptor
+	artifactComponent := &artifactv1.Artifact{}
+	if err := r.Get(ctx, types.NamespacedName{
+		// TODO: Discuss if we should use OwnerReference instead of refs?
+		Namespace: resource.Spec.ComponentRef.Namespace,
+		Name:      component.Status.ArtifactRef.Name,
+	}, artifactComponent); err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetArtifactFailedReason, "Cannot get component artifact")
 
-	// TODO: Verify resource
-	//         Calculate digest for retrieved resource and compare it with digest retrieved from ComponentDescriptor (which is verified in the comp-controller)
+		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("failed to get component artifact: %w", err))
+	}
 
-	// TODO: Provide resource
-	//         Create storage (openfluxcd/controller-manager) or use storage.
-	//           Discuss if we need several storages or only one (note: everything runs in one pod)
-	//         Create artifact from resource and provide it through the storage-server
+	// Get component descriptor set
+	cdSet, err := r.getComponentSetForArtifact(ctx, resource, artifactComponent)
+	if err != nil {
+		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("failed to get component set for artifact: %w", err))
+	}
+
+	// Get referenced component descriptor
+	cd, err := cdSet.LookupComponentVersion(component.Status.Component.Component, component.Status.Component.Version)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentDescriptorsFailedReason, err.Error())
+
+		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("failed to lookup component descriptor: %w", err))
+	}
+
+	// Get resource and respective component descriptor
+	reference := v1.ResourceReference{
+		Resource: resource.Spec.Resource.ByReference.Resource,
+		// ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
+	}
+
+	resourceArtifact, resourceCd, err := compdesc.ResolveResourceReference(cd, reference, cdSet)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ResolveResourceFailedReason, err.Error())
+
+		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("failed to resolve resource reference: %w", err))
+	}
+
+	cv, err := r.getComponentVersion(resource, octx, session, component.Status.Component.RepositorySpec.Raw, resourceCd)
+	if err != nil {
+		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("failed to get component version: %w", err))
+	}
+
+	// Get resource access for identity
+	resourceAccess, err := r.getResourceAccess(resource, cv, resourceArtifact, resourceCd)
+	if err != nil {
+		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("failed to get resource access: %w", err))
+	}
+
+	err = r.verifyAndReconcileResource(ctx, resource, resourceAccess, cv, cd, reference)
+	if err != nil {
+		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("failed to verify and reconcile resource: %w", err))
+	}
+
+	// Update status
+	accessSpec, err := resourceAccess.Access()
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceAccessDataFailedReason, err.Error())
+
+		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("failed to get access spec: %w", err))
+	}
+
+	accessData, err := json.Marshal(accessSpec)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceAccessDataFailedReason, err.Error())
+
+		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("failed to marshal access spec: %w", err))
+	}
+
+	resource.Status.Component = component.Status.Component
+	resource.Status.Resource = &v1alpha1.ResourceInfo{
+		Name:          resourceAccess.Meta().Name,
+		Type:          resourceAccess.Meta().Type,
+		Version:       resourceAccess.Meta().Version,
+		ExtraIdentity: resourceAccess.Meta().ExtraIdentity,
+		Access:        apiextensionsv1.JSON{Raw: accessData},
+	}
+	// TODO: Copy SecretRefs, ConfigRefs, and ConfigSet that "worked"
+	status.MarkReady(r.EventRecorder, resource, "Applied version %s", resourceAccess.Meta().Version)
 
 	return ctrl.Result{RequeueAfter: resource.GetRequeueAfter()}, nil
+}
+
+func (r *Reconciler) getComponentSetForArtifact(ctx context.Context, resource *v1alpha1.Resource, artifact *artifactv1.Artifact) (cdSet *compdesc.ComponentVersionSet, retErr rerror.ReconcileError) {
+	// Get artifact content (Component Descriptor)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, artifact.Spec.URL, nil)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.CreateHTTPRequestFailedReason, err.Error())
+
+		return nil, rerror.AsNonRetryableError(fmt.Errorf("failed to create request: %w", err))
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ExecHTTPRequestFailedReason, err.Error())
+
+		return nil, rerror.AsNonRetryableError(fmt.Errorf("failed to execute request: %w", err))
+	}
+	defer func() {
+		retErr = rerror.AsNonRetryableError(errors.Join(retErr, resp.Body.Close()))
+	}()
+
+	// Create temporary directory to untar component descriptor
+	tmpComponent, err := os.MkdirTemp("/tmp", "component-descriptor-")
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.TemporaryFolderCreationFailedReason, err.Error())
+
+		return nil, rerror.AsNonRetryableError(fmt.Errorf("failed to create temporary directory: %w", err))
+	}
+	defer func() {
+		retErr = rerror.AsNonRetryableError(errors.Join(retErr, os.RemoveAll(tmpComponent)))
+	}()
+
+	if err := tar.Untar(resp.Body, tmpComponent); err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.UntarFailedReason, err.Error())
+
+		return nil, rerror.AsNonRetryableError(fmt.Errorf("failed to untar component artifact: %w", err))
+	}
+
+	// Read component descriptor list
+	cdByte, err := os.ReadFile(filepath.Join(tmpComponent, v1alpha1.OCMComponentDescriptorList))
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ReadFileFailedReason, err.Error())
+
+		return nil, rerror.AsNonRetryableError(fmt.Errorf("failed to read component descriptor: %w", err))
+	}
+
+	// Get component descriptor set
+	cds := &ocm.Descriptors{}
+	if err := yaml.Unmarshal(cdByte, cds); err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.UnmarshallingComponentDescriptorsFailedReason, err.Error())
+
+		return nil, rerror.AsNonRetryableError(fmt.Errorf("failed to unmarshal component descriptors: %w", err))
+	}
+
+	return compdesc.NewComponentVersionSet(cds.List...), nil
+}
+
+func (r *Reconciler) getComponentVersion(resource *v1alpha1.Resource, octx ocmctx.Context, session ocmctx.Session, spec []byte, compDesc *compdesc.ComponentDescriptor,
+) (
+	ocmctx.ComponentVersionAccess, rerror.ReconcileError,
+) {
+	// Get repository and resolver to get the respective component version of the resource
+	repoSpec, err := octx.RepositorySpecForConfig(spec, nil)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.RepositorySpecInvalidReason, err.Error())
+
+		return nil, rerror.AsNonRetryableError(fmt.Errorf("failed to get repository spec: %w", err))
+	}
+	repo, err := session.LookupRepository(octx, repoSpec)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetRepositoryFailedReason, err.Error())
+
+		return nil, rerror.AsRetryableError(fmt.Errorf("failed to lookup repository: %w", err))
+	}
+
+	resolver := resolvers.NewCompoundResolver(repo, octx.GetResolver())
+
+	// Get component version for resource access
+	cv, err := session.LookupComponentVersion(resolver, compDesc.Name, compDesc.Version)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentVersionFailedReason, err.Error())
+
+		return nil, rerror.AsRetryableError(fmt.Errorf("failed to lookup component version: %w", err))
+	}
+
+	return cv, nil
+}
+
+func (r *Reconciler) getResourceAccess(resource *v1alpha1.Resource, cv ocmctx.ComponentVersionAccess, resourceDesc *compdesc.Resource, compDesc *compdesc.ComponentDescriptor,
+) (ocmctx.ResourceAccess, rerror.ReconcileError) {
+	resAccesses, err := cv.SelectResources(selectors.Identity(resourceDesc.GetIdentity(compDesc.GetResources())))
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceAccessFailedReason, err.Error())
+
+		return nil, rerror.AsNonRetryableError(fmt.Errorf("failed to select resources: %w", err))
+	}
+
+	var resourceAccess ocmctx.ResourceAccess
+	switch len(resAccesses) {
+	case 0:
+		err := errors.New("no resources selected")
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceAccessFailedReason, err.Error())
+
+		return nil, rerror.AsNonRetryableError(err)
+	case 1:
+		resourceAccess = resAccesses[0]
+	default:
+		err := errors.New("cannot determine the resource unambiguously")
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceAccessFailedReason, err.Error())
+
+		return nil, rerror.AsNonRetryableError(err)
+	}
+
+	return resourceAccess, nil
+}
+
+func (r *Reconciler) verifyAndReconcileResource(ctx context.Context, resource *v1alpha1.Resource, access ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAccess, cd *compdesc.ComponentDescriptor,
+	reference v1.ResourceReference,
+) (retErr rerror.ReconcileError) {
+	// Write resource
+	tmpDir, err := os.MkdirTemp("", "resource-*")
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.TemporaryFolderCreationFailedReason, err.Error())
+
+		return rerror.AsNonRetryableError(fmt.Errorf("failed to create temporary directory: %w", err))
+	}
+	// TODO: Discuss if we should cache the downloaded resources
+	defer func() {
+		retErr = rerror.AsNonRetryableError(errors.Join(retErr, os.RemoveAll(tmpDir)))
+	}()
+
+	// Get resource reader
+	reader, err := ocmutils.GetResourceReader(access)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceReaderFailedReason, err.Error())
+
+		return rerror.AsNonRetryableError(fmt.Errorf("failed to create reader: %w", err))
+	}
+	defer func() {
+		retErr = rerror.AsNonRetryableError(errors.Join(retErr, reader.Close()))
+	}()
+
+	// Only required for digest calculation and to provide through the artifact server
+	const perm = 0o600
+	pathFile := filepath.Join(tmpDir, resource.Name)
+	file, err := os.OpenFile(pathFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.OpenFileFailedReason, err.Error())
+
+		return rerror.AsNonRetryableError(fmt.Errorf("failed to open resource file: %w", err))
+	}
+	defer func() {
+		retErr = rerror.AsNonRetryableError(errors.Join(retErr, file.Close()))
+	}()
+
+	// Copy content to file
+	// TODO: Discuss if we need a size limitation for copying?
+	_, err = io.Copy(file, reader)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.CopyFileFailedReason, err.Error())
+
+		return rerror.AsNonRetryableError(fmt.Errorf("failed to copy resource file: %w", err))
+	}
+
+	revision := string(reference.Resource.Digest())
+
+	// Verify a resource by calculating digest and comparing it with the one in the component version.
+	dataAccess := blobaccess.DataAccessForReaderFunction(func() (io.ReadCloser, error) {
+		return os.OpenFile(pathFile, os.O_RDONLY, 0)
+	}, pathFile)
+
+	store := signing.NewLocalVerifiedStore()
+	store.Add(cd)
+
+	ok, err := signing.VerifyResourceDigestByResourceAccess(cv, access, dataAccess, store)
+	if !ok {
+		if err != nil {
+			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.DigestVerificationFailedReason, err.Error())
+
+			return rerror.AsNonRetryableError(fmt.Errorf("verification failed: %w", err))
+		}
+		err = errors.New("expected signature verification to be relevant, but it was not")
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.DigestVerificationFailedReason, err.Error())
+
+		return rerror.AsNonRetryableError(err)
+	}
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.DigestVerificationFailedReason, err.Error())
+
+		return rerror.AsNonRetryableError(fmt.Errorf("failed to verify resource digest: %w", err))
+	}
+
+	err = r.Storage.ReconcileStorage(ctx, resource)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.StorageReconcileFailedReason, err.Error())
+
+		return rerror.AsRetryableError(fmt.Errorf("failed to reconcile resource storage: %w", err))
+	}
+
+	// Provide artifact in storage
+	// BUG: NewArtifactFor does not sanitize the name. Could break if name too long
+	if err := r.Storage.ReconcileArtifact(ctx, resource, revision, tmpDir, revision+".tar.gz",
+		func(art *artifactv1.Artifact, _ string) error {
+			// Archive directory to storage
+			if err := r.Storage.Archive(art, tmpDir, nil); err != nil {
+				return fmt.Errorf("failed to reconcile resource artifact: %w", err)
+			}
+
+			resource.Status.ArtifactRef = corev1.LocalObjectReference{
+				Name: art.Name,
+			}
+
+			return nil
+		},
+	); err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ReconcileArtifactFailedReason, err.Error())
+
+		return rerror.AsNonRetryableError(fmt.Errorf("failed to reconcile resource artifact: %w", err))
+	}
+
+	return nil
 }

@@ -83,6 +83,9 @@ type ResourceStatus struct {
 	// +optional
 	ArtifactRef v1.LocalObjectReference `json:"artifactRef,omitempty"`
 
+	// +optional
+	Resource *ResourceInfo `json:"resource,omitempty"`
+
 	// Propagate its effective secrets. Other controllers (e.g. Resource
 	// controller) may use this as default if they do not explicitly refer a
 	// secret.
@@ -132,7 +135,6 @@ func (in *Resource) SetConditions(conditions []metav1.Condition) {
 }
 
 func (in *Resource) GetVID() map[string]string {
-	// TODO: Check if ID is unique
 	vid := fmt.Sprintf("%s:%s", in.Status.Resource.Name, in.Status.Resource.Version)
 	metadata := make(map[string]string)
 	metadata[GroupVersion.Group+"/resource_version"] = vid
@@ -140,17 +142,14 @@ func (in *Resource) GetVID() map[string]string {
 	return metadata
 }
 
-// TODO: Check if necessary
 func (in *Resource) SetObservedGeneration(v int64) {
 	in.Status.ObservedGeneration = v
 }
 
-// TODO: Check if necessary
 func (in *Resource) GetObjectMeta() *metav1.ObjectMeta {
 	return &in.ObjectMeta
 }
 
-// TODO: Check if necessary
 func (in *Resource) GetKind() string {
 	return "Resource"
 }
