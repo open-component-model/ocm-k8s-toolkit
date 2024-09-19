@@ -11,7 +11,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package component
+package resource
 
 import (
 	"context"
@@ -27,6 +27,7 @@ import (
 	. "github.com/onsi/gomega"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/server"
+	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -51,13 +52,14 @@ import (
 
 const (
 	ARTIFACT_PATH   = "ocm-k8s-artifactstore--*"
-	ARTIFACT_SERVER = "localhost:8080"
+	ARTIFACT_SERVER = "127.0.0.1:8080"
 )
 
 var cfg *rest.Config
 var k8sClient client.Client
 var k8sManager ctrl.Manager
 var testEnv *envtest.Environment
+var globStorage *storage.Storage
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -110,6 +112,8 @@ var _ = BeforeSuite(func() {
 
 	// Write the KubeConfig to the file
 	err = clientcmd.WriteToFile(*kubeConfig, kubeconfigFile.Name())
+
+	// Return the environment and KubeConfig file
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 	DeferCleanup(testEnv.Stop)
@@ -135,14 +139,8 @@ var _ = BeforeSuite(func() {
 
 	tmpdir := Must(os.MkdirTemp("", ARTIFACT_PATH))
 	address := ARTIFACT_SERVER
-	storage := Must(server.NewStorage(k8sClient, testEnv.Scheme, tmpdir, address, 0, 0))
+	globStorage = Must(server.NewStorage(k8sClient, testEnv.Scheme, tmpdir, address, 0, 0))
 	artifactServer := Must(server.NewArtifactServer(tmpdir, address, time.Millisecond))
-
-	// Register reconcilers
-	//Expect((&OCMRepositoryReconciler{
-	//	GetClient: k8sClient,
-	//	Scheme: testEnv.Scheme,
-	//}).SetupWithManager(k8sManager)).To(Succeed())
 
 	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
@@ -153,13 +151,8 @@ var _ = BeforeSuite(func() {
 				IncludeObject: true,
 			},
 		},
-		Storage: storage,
+		Storage: globStorage,
 	}).SetupWithManager(k8sManager)).To(Succeed())
-
-	//Expect((&ResourceReconciler{
-	//	GetClient: k8sClient,
-	//	Scheme: testEnv.Scheme,
-	//}).SetupWithManager(k8sManager)).To(Succeed())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	DeferCleanup(cancel)

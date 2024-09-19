@@ -73,11 +73,11 @@ type ComponentStatus struct {
 	// +optional
 	ArtifactRef corev1.LocalObjectReference `json:"artifactRef,omitempty"`
 	// +optional
-	Artifact artifactv1.ArtifactSpec `json:"artifact,omitempty"`
+	Artifact *artifactv1.ArtifactSpec `json:"artifact,omitempty"`
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// +optional
-	Component ComponentInfo `json:"component,omitempty"`
+	Component *ComponentInfo `json:"component,omitempty"`
 	// Propagate its effective secrets. Other controllers (e.g. Resource controller) may use this as default
 	// if they do not explicitly refer a secret.
 	// +optional

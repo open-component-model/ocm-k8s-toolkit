@@ -50,12 +50,14 @@ type Verification struct {
 // ResourceID defines the configuration of the repository.
 type ResourceID struct {
 	// +required
-	ByReference ocmv1.ResourceReference `json:"byReference,omitempty"`
-	// TODO: Implement ByPath (ByPath should be parsed to a ResourceReference
-	// +optional
-	ByPath string `json:"byPath,omitempty"`
+	ByReference ResourceReference `json:"byReference,omitempty"`
 	// TODO: Implement BySelector
 	//BySelector any `json:"bySelector,omitempty"`
+}
+
+type ResourceReference struct {
+	Resource      ocmv1.Identity   `json:"resource,omitempty"`
+	ReferencePath []ocmv1.Identity `json:"referencePath,omitempty"`
 }
 
 type ComponentInfo struct {

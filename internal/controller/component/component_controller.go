@@ -27,7 +27,6 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
-	"github.com/mandelsoft/goutils/general"
 	"github.com/mandelsoft/goutils/sliceutils"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
@@ -203,7 +202,7 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 	}
 
 	// Update status
-	component.Status.Component = v1alpha1.ComponentInfo{
+	component.Status.Component = &v1alpha1.ComponentInfo{
 		RepositorySpec: repository.Spec.RepositorySpec,
 		Component:      component.Spec.Component,
 		Version:        version,
@@ -245,7 +244,10 @@ func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v
 		return "", rerror.AsRetryableError(fmt.Errorf("failed to get component version: %w", err))
 	}
 
-	reconciledVersion := general.OptionalDefaulted(component.Status.Component.Version, "0.0.0")
+	reconciledVersion := "0.0.0"
+	if component.Status.Component != nil {
+		reconciledVersion = component.Status.Component.Version
+	}
 	currentSemver, err := semver.NewVersion(reconciledVersion)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason, err.Error())
