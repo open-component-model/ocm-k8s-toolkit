@@ -21,8 +21,6 @@ import (
 	"errors"
 
 	"github.com/fluxcd/pkg/runtime/patch"
-	"k8s.io/apimachinery/pkg/runtime"
-	kuberecorder "k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,14 +28,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
 // OCMRepositoryReconciler reconciles a OCMRepository object.
 type OCMRepositoryReconciler struct {
-	client.Client
-	Scheme *runtime.Scheme
-	kuberecorder.EventRecorder
+	*ocm.BaseReconciler
 }
 
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmrepositories,verbs=get;list;watch;create;update;patch;delete
@@ -47,21 +44,27 @@ type OCMRepositoryReconciler struct {
 func (r *OCMRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
 	_ = log.FromContext(ctx)
 
-	obj := &deliveryv1alpha1.OCMRepository{}
-	if err := r.Get(ctx, req.NamespacedName, obj); err != nil {
+	ocmRepo := &deliveryv1alpha1.OCMRepository{}
+	if err := r.Get(ctx, req.NamespacedName, ocmRepo); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	patchHelper := patch.NewSerialPatcher(obj, r.Client)
+	patchHelper := patch.NewSerialPatcher(ocmRepo, r.Client)
 
 	// Always attempt to patch the object and status after each reconciliation.
 	defer func() {
-		if perr := status.UpdateStatus(ctx, patchHelper, obj, r.EventRecorder, obj.GetRequeueAfter(), retErr); perr != nil {
+		if perr := status.UpdateStatus(ctx, patchHelper, ocmRepo, r.EventRecorder, ocmRepo.GetRequeueAfter(), retErr); perr != nil {
 			retErr = errors.Join(retErr, perr)
 		}
 	}()
 
-	status.MarkReady(r.EventRecorder, obj, "Successfully reconciled")
+	// validate the repository spec
+	// validate SecretRefs
+	// validate ConfigRefs
+
+	ocmRepo.Status.RepositorySpec = ocmRepo.Spec.RepositorySpec
+
+	status.MarkReady(r.EventRecorder, ocmRepo, "Successfully reconciled")
 
 	return ctrl.Result{}, nil
 }

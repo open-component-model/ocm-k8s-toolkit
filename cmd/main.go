@@ -151,9 +151,11 @@ func main() {
 	ctx := context.Background()
 
 	if err = (&controller.OCMRepositoryReconciler{
-		Client:        mgr.GetClient(),
-		Scheme:        mgr.GetScheme(),
-		EventRecorder: eventsRecorder,
+		BaseReconciler: &ocm.BaseReconciler{
+			Client:        mgr.GetClient(),
+			Scheme:        mgr.GetScheme(),
+			EventRecorder: eventsRecorder,
+		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OCMRepository")
 		os.Exit(1)

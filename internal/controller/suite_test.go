@@ -111,10 +111,16 @@ var _ = BeforeSuite(func() {
 	artifactServer := Must(server.NewArtifactServer(tmpdir, address, time.Millisecond))
 
 	// Register reconcilers
-	//Expect((&OCMRepositoryReconciler{
-	//	GetClient: k8sClient,
-	//	Scheme: testEnv.Scheme,
-	//}).SetupWithManager(k8sManager)).To(Succeed())
+	Expect((&OCMRepositoryReconciler{
+		BaseReconciler: &ocm.BaseReconciler{
+			Client: k8sClient,
+			Scheme: testEnv.Scheme,
+			EventRecorder: &record.FakeRecorder{
+				Events:        make(chan string, 32),
+				IncludeObject: true,
+			},
+		},
+	}).SetupWithManager(k8sManager)).To(Succeed())
 
 	Expect((&ComponentReconciler{
 		BaseReconciler: &ocm.BaseReconciler{
