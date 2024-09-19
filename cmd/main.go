@@ -40,7 +40,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/component"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/ocmrepository"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/resource"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	// +kubebuilder:scaffold:imports
 )
@@ -150,7 +152,7 @@ func main() {
 	}
 	ctx := context.Background()
 
-	if err = (&controller.OCMRepositoryReconciler{
+	if err = (&ocmrepository.OCMRepositoryReconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client:        mgr.GetClient(),
 			Scheme:        mgr.GetScheme(),
@@ -168,7 +170,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.ComponentReconciler{
+	if err = (&component.ComponentReconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client:        mgr.GetClient(),
 			Scheme:        mgr.GetScheme(),
@@ -180,7 +182,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.ResourceReconciler{
+	if err = (&resource.ResourceReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
