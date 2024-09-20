@@ -22,7 +22,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
@@ -79,7 +78,6 @@ var _ = BeforeSuite(func() {
 	DeferCleanup(testEnv.Stop)
 
 	Expect(v1alpha1.AddToScheme(scheme.Scheme)).Should(Succeed())
-	Expect(artifactv1.AddToScheme(scheme.Scheme)).Should(Succeed())
 	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:scheme

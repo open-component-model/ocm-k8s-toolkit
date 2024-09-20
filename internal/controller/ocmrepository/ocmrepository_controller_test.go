@@ -43,7 +43,7 @@ var _ = Describe("OCMRepository Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 
-			By("creating a repository object")
+			By("creating a OCI repository with existing host")
 			spec := ocireg.NewRepositorySpec("http://127.0.0.1:5000/ocm")
 			specdata := Must(spec.MarshalJSON())
 			ocmRepo := &v1alpha1.OCMRepository{
@@ -60,7 +60,7 @@ var _ = Describe("OCMRepository Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
 
-			By("check that repository status has been created successfully")
+			By("check that repository status has been updated successfully")
 			Eventually(komega.Object(ocmRepo), "1m").Should(
 				HaveField("Status.RepositorySpec", Not(BeNil())))
 		})
