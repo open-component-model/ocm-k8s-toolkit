@@ -30,8 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	v1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/rerror"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
@@ -47,7 +46,7 @@ type OCMRepositoryReconciler struct {
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmrepositories/finalizers,verbs=update
 
 func (r *OCMRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
-	ocmRepo := &deliveryv1alpha1.OCMRepository{}
+	ocmRepo := &v1alpha1.OCMRepository{}
 	if err := r.Get(ctx, req.NamespacedName, ocmRepo); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -134,6 +133,6 @@ func (r *OCMRepositoryReconciler) validate(octx ocmctx.Context, session ocmctx.S
 // SetupWithManager sets up the controller with the Manager.
 func (r *OCMRepositoryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&deliveryv1alpha1.OCMRepository{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&v1alpha1.OCMRepository{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
 }
