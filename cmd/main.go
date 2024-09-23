@@ -152,7 +152,7 @@ func main() {
 	}
 	ctx := context.Background()
 
-	if err = (&ocmrepository.OCMRepositoryReconciler{
+	if err = (&ocmrepository.Reconciler{
 		Client:        mgr.GetClient(),
 		Scheme:        mgr.GetScheme(),
 		EventRecorder: eventsRecorder,
@@ -168,7 +168,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&component.ComponentReconciler{
+	if err = (&component.Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client:        mgr.GetClient(),
 			Scheme:        mgr.GetScheme(),
@@ -180,7 +180,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&resource.ResourceReconciler{
+	if err = (&resource.Reconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {

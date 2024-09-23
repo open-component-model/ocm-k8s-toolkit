@@ -49,16 +49,16 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
-// ComponentReconciler reconciles a Component object.
-type ComponentReconciler struct {
+// Reconciler reconciles a Component object.
+type Reconciler struct {
 	*ocm.BaseReconciler
 	Storage *storage.Storage
 }
 
-var _ ocm.Reconciler = (*ComponentReconciler)(nil)
+var _ ocm.Reconciler = (*Reconciler)(nil)
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ComponentReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Component{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
@@ -77,7 +77,7 @@ func (r *ComponentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // Reconcile the component object.
-func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
 	component := &v1alpha1.Component{}
 	if err := r.Get(ctx, req.NamespacedName, component); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -86,7 +86,7 @@ func (r *ComponentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return rerror.EvaluateReconcileError(r.reconcileExists(ctx, component))
 }
 
-func (r *ComponentReconciler) reconcileExists(ctx context.Context, component *v1alpha1.Component) (_ ctrl.Result, retErr rerror.ReconcileError) {
+func (r *Reconciler) reconcileExists(ctx context.Context, component *v1alpha1.Component) (_ ctrl.Result, retErr rerror.ReconcileError) {
 	logger := log.FromContext(ctx)
 	if component.GetDeletionTimestamp() != nil {
 		logger.Info("deleting component", "name", component.Name)
@@ -103,7 +103,7 @@ func (r *ComponentReconciler) reconcileExists(ctx context.Context, component *v1
 	return r.reconcilePrepare(ctx, component)
 }
 
-func (r *ComponentReconciler) reconcilePrepare(ctx context.Context, component *v1alpha1.Component) (_ ctrl.Result, retErr rerror.ReconcileError) {
+func (r *Reconciler) reconcilePrepare(ctx context.Context, component *v1alpha1.Component) (_ ctrl.Result, retErr rerror.ReconcileError) {
 	logger := log.FromContext(ctx)
 
 	patchHelper := patch.NewSerialPatcher(component, r.Client)
@@ -135,7 +135,7 @@ func (r *ComponentReconciler) reconcilePrepare(ctx context.Context, component *v
 	return r.reconcile(ctx, component, repo)
 }
 
-func (r *ComponentReconciler) reconcile(ctx context.Context, component *v1alpha1.Component, repository *v1alpha1.OCMRepository) (_ ctrl.Result, retErr rerror.ReconcileError) {
+func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Component, repository *v1alpha1.OCMRepository) (_ ctrl.Result, retErr rerror.ReconcileError) {
 	var err error
 	var rerr rerror.ReconcileError
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
@@ -213,7 +213,7 @@ func (r *ComponentReconciler) reconcile(ctx context.Context, component *v1alpha1
 	return ctrl.Result{RequeueAfter: component.GetRequeueAfter()}, nil
 }
 
-func (r *ComponentReconciler) determineEffectiveVersion(ctx context.Context, component *v1alpha1.Component,
+func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v1alpha1.Component,
 	session ocmctx.Session, repo ocmctx.Repository, c ocmctx.ComponentAccess,
 ) (string, rerror.ReconcileError) {
 	versions, err := c.ListVersions()
@@ -287,7 +287,7 @@ func (r *ComponentReconciler) determineEffectiveVersion(ctx context.Context, com
 	return latestSemver.String(), nil
 }
 
-func (r *ComponentReconciler) verifyComponentVersionAndListDescriptors(ctx context.Context, octx ocmctx.Context,
+func (r *Reconciler) verifyComponentVersionAndListDescriptors(ctx context.Context, octx ocmctx.Context,
 	component *v1alpha1.Component, cv ocmctx.ComponentVersionAccess,
 ) (*ocm.Descriptors, rerror.ReconcileError) {
 	logger := log.FromContext(ctx)
@@ -314,7 +314,7 @@ func (r *ComponentReconciler) verifyComponentVersionAndListDescriptors(ctx conte
 	return descriptors, nil
 }
 
-func (r *ComponentReconciler) createArtifactForDescriptors(ctx context.Context, octx ocmctx.Context,
+func (r *Reconciler) createArtifactForDescriptors(ctx context.Context, octx ocmctx.Context,
 	component *v1alpha1.Component, cv ocmctx.ComponentVersionAccess, descriptors *ocm.Descriptors,
 ) rerror.ReconcileError {
 	logger := log.FromContext(ctx)
@@ -378,6 +378,6 @@ func (r *ComponentReconciler) createArtifactForDescriptors(ctx context.Context, 
 	return nil
 }
 
-func (r *ComponentReconciler) normalizeComponentVersionName(name string) string {
+func (r *Reconciler) normalizeComponentVersionName(name string) string {
 	return strings.ReplaceAll(name, "/", "-")
 }
