@@ -105,6 +105,10 @@ func (r *OCMRepositoryReconciler) reconsile(ctx context.Context, ocmRepo *v1alph
 
 	ocmRepo.Status.RepositorySpec = ocmRepo.Spec.RepositorySpec
 
+	// if ocmRepo.Spec.ConfigSet != nil {
+	// 	ocmRepo.Status.ConfigSet = *ocmRepo.Spec.ConfigSet
+	// }
+
 	status.MarkReady(r.EventRecorder, ocmRepo, "Successfully reconciled")
 	return ctrl.Result{}, nil
 }
