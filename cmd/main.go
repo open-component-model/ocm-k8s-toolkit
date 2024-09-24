@@ -152,12 +152,10 @@ func main() {
 	}
 	ctx := context.Background()
 
-	if err = (&ocmrepository.OCMRepositoryReconciler{
-		BaseReconciler: &ocm.BaseReconciler{
-			Client:        mgr.GetClient(),
-			Scheme:        mgr.GetScheme(),
-			EventRecorder: eventsRecorder,
-		},
+	if err = (&ocmrepository.Reconciler{
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		EventRecorder: eventsRecorder,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OCMRepository")
 		os.Exit(1)
@@ -170,7 +168,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&component.ComponentReconciler{
+	if err = (&component.Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client:        mgr.GetClient(),
 			Scheme:        mgr.GetScheme(),
@@ -182,7 +180,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&resource.ResourceReconciler{
+	if err = (&resource.Reconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {

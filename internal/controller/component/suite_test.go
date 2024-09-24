@@ -117,7 +117,7 @@ var _ = BeforeSuite(func() {
 	//	Scheme: testEnv.Scheme,
 	//}).SetupWithManager(k8sManager)).To(Succeed())
 
-	Expect((&ComponentReconciler{
+	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client: k8sClient,
 			Scheme: testEnv.Scheme,
