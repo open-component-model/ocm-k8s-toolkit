@@ -110,6 +110,7 @@ func (r *Reconciler) reconsile(ctx context.Context, ocmRepo *v1alpha1.OCMReposit
 	// }
 
 	status.MarkReady(r.EventRecorder, ocmRepo, "Successfully reconciled")
+
 	return ctrl.Result{}, nil
 }
 
@@ -117,17 +118,20 @@ func (r *Reconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRe
 	spec, err := octx.RepositorySpecForConfig(ocmRepo.Spec.RepositorySpec.Raw, nil)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, "cannot create RepositorySpec from raw data")
+
 		return rerror.AsNonRetryableError(fmt.Errorf("cannot create RepositorySpec from raw data: %w", err))
 	}
 
 	if err = spec.Validate(octx, nil); err != nil {
 		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, "invalid RepositorySpec")
+
 		return rerror.AsNonRetryableError(fmt.Errorf("invalid RepositorySpec: %w", err))
 	}
 
 	_, err = session.LookupRepositoryForConfig(octx, ocmRepo.Spec.RepositorySpec.Raw)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, "cannot lookup repository for RepositorySpec")
+
 		return rerror.AsRetryableError(fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err))
 	}
 
