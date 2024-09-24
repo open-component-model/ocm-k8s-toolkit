@@ -51,7 +51,7 @@ var _ = Describe("OCMRepository Controller", func() {
 			It("OCMRepository can be reconciled", func() {
 
 				By("creating a OCI repository with existing host")
-				spec := ocireg.NewRepositorySpec("https://127.0.0.1:5000/ocm")
+				spec := ocireg.NewRepositorySpec("ghcr.io/open-component-model")
 				specdata := Must(spec.MarshalJSON())
 				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, TestOCMRepositoryObj, &specdata)
 				Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
@@ -107,7 +107,7 @@ var _ = Describe("OCMRepository Controller", func() {
 			It("OCMRepository can be reconciled", func() {
 
 				By("creating a OCI repository with all fields set")
-				spec := ocireg.NewRepositorySpec("https://127.0.0.1:5000/ocm")
+				spec := ocireg.NewRepositorySpec("ghcr.io/open-component-model")
 				specdata := Must(spec.MarshalJSON())
 				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, TestOCMRepositoryObj, &specdata)
 				// configSet := "configSet"
