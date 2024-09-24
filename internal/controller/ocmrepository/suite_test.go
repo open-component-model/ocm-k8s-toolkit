@@ -96,7 +96,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	// Register reconcilers
-	Expect((&OCMRepositoryReconciler{
+	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client: k8sClient,
 			Scheme: testEnv.Scheme,

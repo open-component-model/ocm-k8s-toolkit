@@ -67,7 +67,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	return rerror.EvaluateReconcileError(r.reconsile(ctx, ocmRepo))
 }
 
-func (r *OCMRepositoryReconciler) reconsile(ctx context.Context, ocmRepo *v1alpha1.OCMRepository) (_ ctrl.Result, retErr rerror.ReconcileError) {
+func (r *Reconciler) reconsile(ctx context.Context, ocmRepo *v1alpha1.OCMRepository) (_ ctrl.Result, retErr rerror.ReconcileError) {
 	patchHelper := patch.NewSerialPatcher(ocmRepo, r.Client)
 
 	// Always attempt to patch the object and status after each reconciliation.
@@ -113,7 +113,7 @@ func (r *OCMRepositoryReconciler) reconsile(ctx context.Context, ocmRepo *v1alph
 	return ctrl.Result{}, nil
 }
 
-func (r *OCMRepositoryReconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRepo *v1alpha1.OCMRepository) (retErr rerror.ReconcileError) {
+func (r *Reconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRepo *v1alpha1.OCMRepository) (retErr rerror.ReconcileError) {
 	spec, err := octx.RepositorySpecForConfig(ocmRepo.Spec.RepositorySpec.Raw, nil)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, "cannot create RepositorySpec from raw data")
