@@ -236,7 +236,8 @@ func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v
 
 		return "", rerror.AsNonRetryableError(fmt.Errorf("failed to check latest version: %w", err))
 	}
-	latestcv, err := session.LookupComponentVersion(repo, c.GetName(), latestSemver.String())
+
+	latestcv, err := session.LookupComponentVersion(repo, c.GetName(), latestSemver.Original())
 	if err != nil {
 		// this version has to exist (since it was found in GetLatestVersion) and therefore, this is most likely a
 		// static error where requeueing does not make sense
@@ -274,17 +275,17 @@ func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v
 		if !downgradable {
 			status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason,
 				fmt.Sprintf("component version cannot be downgraded from version %s to version %s",
-					currentSemver.String(), latestSemver.String()))
+					currentSemver.String(), latestSemver.Original()))
 			// keep requeueing, a greater component version could be published
 			// semver constraint may even describe older versions and non-existing newer versions, so you have to check
 			// for potential newer versions (current is downgradable to: > 1.0.3, latest is: < 1.1.0, but version 1.0.4
 			// does not exist yet, but will be created)
 			return "", rerror.AsRetryableError(fmt.Errorf("component version cannot be downgraded from version %s "+
-				"to version %s", currentSemver.String(), latestSemver.String()))
+				"to version %s", currentSemver.Original(), latestSemver.Original()))
 		}
 	}
 
-	return latestSemver.String(), nil
+	return latestSemver.Original(), nil
 }
 
 func (r *Reconciler) verifyComponentVersionAndListDescriptors(ctx context.Context, octx ocmctx.Context,
