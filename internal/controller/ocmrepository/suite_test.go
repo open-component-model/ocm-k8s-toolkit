@@ -97,7 +97,6 @@ var _ = BeforeSuite(func() {
 		},
 	})
 	Expect(err).ToNot(HaveOccurred())
-
 	Expect((&Reconciler{
 		Client: k8sClient,
 		Scheme: testEnv.Scheme,

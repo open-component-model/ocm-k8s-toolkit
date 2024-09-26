@@ -41,7 +41,7 @@ import (
 const (
 	requeueAfter        = 10 * time.Second
 	repositoryFinalizer = "finalizers.ocm.software"
-	repositoryKey       = ".metadata.repository"
+	repositoryKey       = ".metadata.repository.componentRef"
 )
 
 // Reconciler reconciles a OCMRepository object.
