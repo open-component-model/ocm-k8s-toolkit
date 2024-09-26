@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/fluxcd/pkg/runtime/patch"
 	"k8s.io/apimachinery/pkg/fields"
@@ -37,6 +38,7 @@ import (
 )
 
 const (
+	requeueAfter        = 10 * time.Second
 	repositoryFinalizer = "finalizers.ocm.software"
 	repositoryKey       = ".metadata.repository"
 )
@@ -74,11 +76,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 			return ctrl.Result{}, nil
 		}
 
-		if err := r.reconcileDeleteRepository(ctx, obj); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
-		}
-
-		return ctrl.Result{}, nil
+		return r.reconcileDeleteRepository(ctx, obj)
 	}
 
 	// AddFinalizer is not present already.
@@ -107,20 +105,27 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *Reconciler) reconcileDeleteRepository(ctx context.Context, obj *v1alpha1.OCMRepository) error {
+func (r *Reconciler) reconcileDeleteRepository(ctx context.Context, obj *v1alpha1.OCMRepository) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	componentList := &v1alpha1.ComponentList{}
 	if err := r.List(ctx, componentList, &client.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(repositoryKey, client.ObjectKeyFromObject(obj).String()),
 	}); err != nil {
-		return fmt.Errorf("failed to list components: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to list components: %w", err)
 	}
 
-	if len(componentList.Items) == 0 {
-		controllerutil.RemoveFinalizer(obj, repositoryFinalizer)
-	} else {
-		logger.Info("number of components are referencing this repository, deletion aborted", "number", len(componentList.Items))
+	if len(componentList.Items) > 0 {
+		var names []string
+		for _, comp := range componentList.Items {
+			names = append(names, fmt.Sprintf("%s/%s", comp.Namespace, comp.Name))
+		}
+
+		logger.Info("repository is being deleted, please remove the following components referencing it", "names", names)
+
+		return ctrl.Result{RequeueAfter: requeueAfter}, nil
 	}
 
-	return nil
+	controllerutil.RemoveFinalizer(obj, repositoryFinalizer)
+
+	return ctrl.Result{}, nil
 }

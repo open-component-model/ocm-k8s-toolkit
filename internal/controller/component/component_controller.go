@@ -125,6 +125,10 @@ func (r *Reconciler) reconcilePrepare(ctx context.Context, component *v1alpha1.C
 		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to get repository: %w", err))
 	}
 
+	if repo.DeletionTimestamp != nil {
+		return ctrl.Result{}, rerror.AsNonRetryableError(errors.New("repository is being deleted, please do not use it"))
+	}
+
 	if !conditions.IsReady(repo) {
 		logger.Info("repository is not ready", "name", component.Spec.RepositoryRef.Name)
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositoryIsNotReadyReason, "Repository is not ready yet")
