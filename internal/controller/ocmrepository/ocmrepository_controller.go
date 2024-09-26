@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/fluxcd/pkg/runtime/patch"
@@ -48,6 +49,8 @@ type Reconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	kuberecorder.EventRecorder
+
+	repositoryRequeueAfter time.Duration
 }
 
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmrepositories,verbs=get;list;watch;create;update;patch;delete
@@ -55,6 +58,10 @@ type Reconciler struct {
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmrepositories/finalizers,verbs=update
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
+	if r.repositoryRequeueAfter == 0 {
+		r.repositoryRequeueAfter = requeueAfter
+	}
+
 	_ = log.FromContext(ctx)
 
 	obj := &v1alpha1.OCMRepository{}
@@ -66,6 +73,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	// Always attempt to patch the object and status after each reconciliation.
 	defer func() {
+		// TODO: This should consider an error. Because right now, it says successful and rerun in 10m but that's not true.
 		if perr := status.UpdateStatus(ctx, patchHelper, obj, r.EventRecorder, obj.GetRequeueAfter(), retErr); perr != nil {
 			retErr = errors.Join(retErr, perr)
 		}
@@ -122,7 +130,9 @@ func (r *Reconciler) reconcileDeleteRepository(ctx context.Context, obj *v1alpha
 
 		logger.Info("repository is being deleted, please remove the following components referencing it", "names", names)
 
-		return ctrl.Result{RequeueAfter: requeueAfter}, nil
+		// TODO: consider returning an error instead of gently trying again and again forever?
+		//return ctrl.Result{RequeueAfter: requeueAfter}, nil
+		return ctrl.Result{}, fmt.Errorf("failed to remove repository referencing components: %s", strings.Join(names, ","))
 	}
 
 	controllerutil.RemoveFinalizer(obj, repositoryFinalizer)
