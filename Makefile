@@ -173,7 +173,7 @@ GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.1
 CONTROLLER_TOOLS_VERSION ?= v0.16.0
-ENVTEST_VERSION ?= release-0.19
+ENVTEST_VERSION ?= release-0.18
 GOLANGCI_LINT_VERSION ?= v1.57.2
 
 # Delete previously downloaded CRDs and record the new version of the source
