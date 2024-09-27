@@ -52,7 +52,7 @@ var _ = Describe("OCMRepository Controller", func() {
 				Name: TestNamespaceOCMRepo,
 			},
 		}
-		k8sClient.Create(ctx, namespace)
+		_ = k8sClient.Create(ctx, namespace)
 	})
 
 	AfterEach(func() {
@@ -67,7 +67,8 @@ var _ = Describe("OCMRepository Controller", func() {
 				By("creating a OCI repository with existing host")
 				spec := ocireg.NewRepositorySpec("ghcr.io/open-component-model")
 				specdata := Must(spec.MarshalJSON())
-				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, TestOCMRepositoryObj, &specdata)
+				repoName := TestOCMRepositoryObj + "-passing"
+				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, repoName, &specdata)
 				Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
 
 				By("check that repository status has been updated successfully")
@@ -84,7 +85,8 @@ var _ = Describe("OCMRepository Controller", func() {
 				By("creating a OCI repository with non-existing host")
 				spec := ocireg.NewRepositorySpec("https://doesnotexist")
 				specdata := Must(spec.MarshalJSON())
-				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, TestOCMRepositoryObj, &specdata)
+				repoName := TestOCMRepositoryObj + "-no-host"
+				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, repoName, &specdata)
 				Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
 
 				By("check that repository status has NOT been updated successfully")
@@ -98,7 +100,8 @@ var _ = Describe("OCMRepository Controller", func() {
 
 				By("creating a OCI repository from invalid json")
 				specdata := []byte("not a json")
-				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, TestOCMRepositoryObj, &specdata)
+				repoName := TestOCMRepositoryObj + "-invalid-json"
+				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, repoName, &specdata)
 				Expect(k8sClient.Create(ctx, ocmRepo)).NotTo(Succeed())
 			})
 		})
@@ -108,7 +111,8 @@ var _ = Describe("OCMRepository Controller", func() {
 
 				By("creating a OCI repository from a valid json but invalid RepositorySpec")
 				specdata := []byte(`{"json":"not a valid RepositorySpec"}`)
-				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, TestOCMRepositoryObj, &specdata)
+				repoName := TestOCMRepositoryObj + "-invalid-spec"
+				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, repoName, &specdata)
 				Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
 
 				By("check that repository status has NOT been updated successfully")
@@ -123,7 +127,8 @@ var _ = Describe("OCMRepository Controller", func() {
 				By("creating a OCI repository with all fields set")
 				spec := ocireg.NewRepositorySpec("ghcr.io/open-component-model")
 				specdata := Must(spec.MarshalJSON())
-				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, TestOCMRepositoryObj, &specdata)
+				repoName := TestOCMRepositoryObj + "-all-fields"
+				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, repoName, &specdata)
 				// configSet := "configSet"
 				// ocmRepo.Spec.ConfigSet = &configSet
 				Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
@@ -150,15 +155,16 @@ var _ = Describe("OCMRepository Controller", func() {
 				})
 				spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
 				specdata := Must(spec.MarshalJSON())
-				repository := newTestOCMRepository(TestNamespaceOCMRepo, TestOCMRepositoryObj, &specdata)
+				ocmRepoName := TestOCMRepositoryObj + "-deleted"
+				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, ocmRepoName, &specdata)
 
-				Expect(k8sClient.Create(ctx, repository)).To(Succeed())
+				Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
 
 				By("checking if the repository is ready")
 
 				Eventually(func() bool {
-					Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: TestNamespaceOCMRepo, Name: TestOCMRepositoryObj}, repository)).To(Succeed())
-					return conditions.IsReady(repository)
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: TestNamespaceOCMRepo, Name: ocmRepoName}, ocmRepo)).To(Succeed())
+					return conditions.IsReady(ocmRepo)
 				}).WithTimeout(5 * time.Second).Should(BeTrue())
 
 				By("creating a component that uses this repository")
@@ -170,7 +176,7 @@ var _ = Describe("OCMRepository Controller", func() {
 					Spec: v1alpha1.ComponentSpec{
 						RepositoryRef: v1alpha1.ObjectKey{
 							Namespace: TestNamespaceOCMRepo,
-							Name:      TestOCMRepositoryObj,
+							Name:      ocmRepoName,
 						},
 						Component:              componentName,
 						EnforceDowngradability: false,
@@ -181,27 +187,21 @@ var _ = Describe("OCMRepository Controller", func() {
 				}
 				Expect(k8sClient.Create(ctx, component)).To(Succeed())
 				By("deleting the repository should not allow the deletion unless the component is removed")
-				Expect(k8sClient.Delete(ctx, repository)).To(Succeed())
-				Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: TestNamespaceOCMRepo, Name: TestOCMRepositoryObj}, repository)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, ocmRepo)).To(Succeed())
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: TestNamespaceOCMRepo, Name: ocmRepoName}, ocmRepo)).To(Succeed())
 
 				By("removing the component")
 				Expect(k8sClient.Delete(ctx, component)).To(Succeed())
 
 				By("checking if the repository is eventually deleted")
 				Eventually(func() error {
-					err := k8sClient.Get(ctx, types.NamespacedName{Namespace: TestNamespaceOCMRepo, Name: TestOCMRepositoryObj}, repository)
+					err := k8sClient.Get(ctx, types.NamespacedName{Namespace: TestNamespaceOCMRepo, Name: ocmRepoName}, ocmRepo)
 					if errors.IsNotFound(err) {
 						return nil
 					}
 
 					return err
 				}).WithTimeout(10 * time.Second).Should(Succeed())
-
-				tmpdir := Must(os.MkdirTemp("/tmp", "descriptors-"))
-				DeferCleanup(func() error {
-					return os.RemoveAll(tmpdir)
-				})
-
 			})
 		})
 
