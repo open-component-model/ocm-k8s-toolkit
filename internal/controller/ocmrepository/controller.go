@@ -103,11 +103,7 @@ func (r *Reconciler) reconsile(ctx context.Context, ocmRepo *v1alpha1.OCMReposit
 		return ctrl.Result{}, rerr
 	}
 
-	ocmRepo.Status.RepositorySpec = ocmRepo.Spec.RepositorySpec
-
-	// if ocmRepo.Spec.ConfigSet != nil {
-	// 	ocmRepo.Status.ConfigSet = *ocmRepo.Spec.ConfigSet
-	// }
+	r.fillRepoStatusFromSpec(ocmRepo)
 
 	status.MarkReady(r.EventRecorder, ocmRepo, "Successfully reconciled")
 
@@ -125,10 +121,10 @@ func (r *Reconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRe
 	if err = spec.Validate(octx, nil); err != nil {
 		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, "invalid RepositorySpec")
 
-		return rerror.AsNonRetryableError(fmt.Errorf("invalid RepositorySpec: %w", err))
+		return rerror.AsRetryableError(fmt.Errorf("invalid RepositorySpec: %w", err))
 	}
 
-	_, err = session.LookupRepositoryForConfig(octx, ocmRepo.Spec.RepositorySpec.Raw)
+	_, err = session.LookupRepository(octx, spec)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, "cannot lookup repository for RepositorySpec")
 
@@ -136,6 +132,13 @@ func (r *Reconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRe
 	}
 
 	return nil
+}
+
+func (r *Reconciler) fillRepoStatusFromSpec(ocmRepo *v1alpha1.OCMRepository) {
+	ocmRepo.SetEffectiveRepositorySpec()
+	ocmRepo.SetEffectiveConfigSet()
+	ocmRepo.SetEffectiveConfigRefs()
+	ocmRepo.SetEffectiveSecretRefs()
 }
 
 // SetupWithManager sets up the controller with the Manager.

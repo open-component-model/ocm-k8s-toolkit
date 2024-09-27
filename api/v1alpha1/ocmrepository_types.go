@@ -108,12 +108,25 @@ func (in *OCMRepository) SetObservedGeneration(v int64) {
 	in.Status.ObservedGeneration = v
 }
 
+func (in *OCMRepository) SetEffectiveRepositorySpec() {
+	if in.Spec.RepositorySpec != nil {
+		in.Status.RepositorySpec = in.Spec.RepositorySpec
+	}
+}
+
 func (in *OCMRepository) GetSecretRefs() []v1.LocalObjectReference {
 	if in.Spec.SecretRef != nil {
 		return append(in.Spec.SecretRefs, *in.Spec.SecretRef)
 	}
 
 	return in.Spec.SecretRefs
+}
+
+func (in *OCMRepository) SetEffectiveSecretRefs() {
+	refs := in.GetSecretRefs()
+	if len(refs) > 0 {
+		in.Status.SecretRefs = refs
+	}
 }
 
 func (in *OCMRepository) GetEffectiveSecretRefs() []v1.LocalObjectReference {
@@ -128,12 +141,25 @@ func (in *OCMRepository) GetConfigRefs() []v1.LocalObjectReference {
 	return in.Spec.ConfigRefs
 }
 
+func (in *OCMRepository) SetEffectiveConfigRefs() {
+	refs := in.GetConfigRefs()
+	if len(refs) > 0 {
+		in.Status.ConfigRefs = refs
+	}
+}
+
 func (in *OCMRepository) GetEffectiveConfigRefs() []v1.LocalObjectReference {
 	return in.Status.ConfigRefs
 }
 
 func (in *OCMRepository) GetConfigSet() *string {
 	return in.Spec.ConfigSet
+}
+
+func (in *OCMRepository) SetEffectiveConfigSet() {
+	if in.Spec.ConfigSet != nil {
+		in.Status.ConfigSet = *in.Spec.ConfigSet
+	}
 }
 
 func (in *OCMRepository) GetEffectiveConfigSet() string {

@@ -22,6 +22,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
@@ -46,6 +48,27 @@ var cfg *rest.Config
 var k8sClient client.Client
 var k8sManager ctrl.Manager
 var testEnv *envtest.Environment
+
+var ctx context.Context
+var cancel context.CancelFunc
+
+const (
+	TestNamespaceOCMRepo = "test-namespace-ocmrepository"
+
+	Config1 = "config1"
+	Config2 = "config2"
+	Config3 = "config3"
+
+	Secret1 = "secret1"
+	Secret2 = "secret2"
+	Secret3 = "secret3"
+)
+
+var (
+	configs   []*corev1.ConfigMap
+	secrets   []*corev1.Secret
+	namespace *corev1.Namespace
+)
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -107,10 +130,193 @@ var _ = BeforeSuite(func() {
 		},
 	}).SetupWithManager(k8sManager)).To(Succeed())
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel = context.WithCancel(context.Background())
 	DeferCleanup(cancel)
 	go func() {
 		defer GinkgoRecover()
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
+
+	createTestConfigsAndSecrets()
 })
+
+var _ = AfterSuite(func() {
+	for _, config := range configs {
+		Expect(k8sClient.Delete(ctx, config)).To(Succeed())
+	}
+	for _, secret := range secrets {
+		Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+	}
+	Expect(k8sClient.Delete(ctx, namespace)).To(Succeed())
+})
+
+func createTestConfigsAndSecrets() {
+	By("setup namespace")
+	namespace = &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: TestNamespaceOCMRepo,
+		},
+	}
+	Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+
+	By("setup configs")
+	config1 := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: TestNamespaceOCMRepo,
+			Name:      Config1,
+		},
+		Data: map[string]string{
+			v1alpha1.OCMConfigKey: `
+type: generic.config.ocm.software/v1
+sets:
+  set1:
+    description: set1
+    configurations:
+    - type: credentials.config.ocm.software
+      consumers:
+      - identity:
+          type: MavenRepository
+          hostname: example.com
+          pathprefix: path/ocm
+        credentials:
+        - type: Credentials
+          properties:
+            username: testuser1
+            password: testpassword1 
+`,
+		},
+	}
+	configs = append(configs, config1)
+	Expect(k8sClient.Create(ctx, config1)).To(Succeed())
+
+	config2 := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: TestNamespaceOCMRepo,
+			Name:      Config2,
+		},
+		Data: map[string]string{
+			v1alpha1.OCMConfigKey: `
+type: generic.config.ocm.software/v1
+sets:
+  set2:
+    description: set2
+    configurations:
+    - type: credentials.config.ocm.software
+      consumers:
+      - identity:
+          type: MavenRepository
+          hostname: example.com
+          pathprefix: path/ocm
+        credentials:
+        - type: Credentials
+          properties:
+            username: testuser1
+            password: testpassword1 
+`,
+		},
+	}
+	configs = append(configs, config2)
+	Expect(k8sClient.Create(ctx, config2)).To(Succeed())
+
+	config3 := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: TestNamespaceOCMRepo,
+			Name:      Config3,
+		},
+		Data: map[string]string{
+			v1alpha1.OCMConfigKey: `
+type: generic.config.ocm.software/v1
+sets:
+  set3:
+    description: set3
+    configurations:
+    - type: credentials.config.ocm.software
+      consumers:
+      - identity:
+          type: MavenRepository
+          hostname: example.com
+          pathprefix: path/ocm
+        credentials:
+        - type: Credentials
+          properties:
+            username: testuser1
+            password: testpassword1 
+`,
+		},
+	}
+	configs = append(configs, config3)
+	Expect(k8sClient.Create(ctx, config3)).To(Succeed())
+
+	By("setup secrets")
+	secret1 := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: TestNamespaceOCMRepo,
+			Name:      Secret1,
+		},
+		Data: map[string][]byte{
+			v1alpha1.OCMConfigKey: []byte(`
+type: credentials.config.ocm.software
+consumers:
+- identity:
+    type: MavenRepository
+    hostname: example.com
+    pathprefix: path1
+  credentials:
+  - type: Credentials
+    properties:
+      username: testuser1
+      password: testpassword1
+`),
+		},
+	}
+	secrets = append(secrets, secret1)
+	Expect(k8sClient.Create(ctx, secret1)).To(Succeed())
+
+	secret2 := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: TestNamespaceOCMRepo,
+			Name:      Secret2,
+		},
+		Data: map[string][]byte{
+			v1alpha1.OCMConfigKey: []byte(`
+type: credentials.config.ocm.software
+consumers:
+- identity:
+    type: MavenRepository
+    hostname: example.com
+    pathprefix: path2
+  credentials:
+  - type: Credentials
+    properties:
+      username: testuser2
+      password: testpassword2
+`),
+		},
+	}
+	secrets = append(secrets, secret2)
+	Expect(k8sClient.Create(ctx, secret2)).To(Succeed())
+
+	secret3 := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: TestNamespaceOCMRepo,
+			Name:      Secret3,
+		},
+		Data: map[string][]byte{
+			v1alpha1.OCMConfigKey: []byte(`
+type: credentials.config.ocm.software
+consumers:
+- identity:
+    type: MavenRepository
+    hostname: example.com
+    pathprefix: path3
+  credentials:
+  - type: Credentials
+    properties:
+      username: testuser3
+      password: testpassword3
+`),
+		},
+	}
+	secrets = append(secrets, &secret3)
+	Expect(k8sClient.Create(ctx, &secret3)).To(Succeed())
+}

@@ -4,10 +4,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/fluxcd/pkg/apis/meta"
 	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ocireg "ocm.software/ocm/api/ocm/extensions/repositories/ocireg"
@@ -16,36 +17,25 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
-const (
-	TestNamespaceOCMRepo = "test-namespace-ocmrepository"
-	TestOCMRepositoryObj = "test-ocmrepository"
-)
+const TestOCMRepositoryObj = "test-ocmrepository"
 
 var _ = Describe("OCMRepository Controller", func() {
 	var (
-		ctx       context.Context
-		cancel    context.CancelFunc
-		namespace *corev1.Namespace
-		ocmRepo   *v1alpha1.OCMRepository
+		ctx     context.Context
+		cancel  context.CancelFunc
+		ocmRepo *v1alpha1.OCMRepository
 	)
 
 	BeforeEach(func() {
 		ctx, cancel = context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-
-		namespace = &corev1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: TestNamespaceOCMRepo,
-			},
-		}
-		k8sClient.Create(ctx, namespace)
 	})
 
 	AfterEach(func() {
 		_ = k8sClient.Delete(ctx, ocmRepo)
 	})
 
-	Describe("Reconcile an OCMRepository", func() {
+	Describe("Reconsiling with different RepositorySpec specifications", func() {
 
 		Context("When correct RepositorySpec is provided", func() {
 			It("OCMRepository can be reconciled", func() {
@@ -59,7 +49,9 @@ var _ = Describe("OCMRepository Controller", func() {
 				By("check that repository status has been updated successfully")
 				Eventually(komega.Object(ocmRepo), "1m").Should(And(
 					HaveField("Status.RepositorySpec.Raw", Equal(specdata)),
-					HaveField("Status.Conditions", ContainElement(HaveField("Type", Equal("Ready")))),
+					HaveField("Status.Conditions", ContainElement(
+						And(HaveField("Type", Equal(meta.ReadyCondition)), HaveField("Status", Equal(metav1.ConditionTrue))),
+					)),
 				))
 			})
 		})
@@ -74,8 +66,12 @@ var _ = Describe("OCMRepository Controller", func() {
 				Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
 
 				By("check that repository status has NOT been updated successfully")
-				Eventually(komega.Object(ocmRepo), "1m").Should(
-					HaveField("Status.RepositorySpec", BeNil()))
+				Eventually(komega.Object(ocmRepo), "1m").Should(And(
+					HaveField("Status.RepositorySpec", BeNil()),
+					HaveField("Status.Conditions", ContainElement(
+						And(HaveField("Type", Equal(meta.ReadyCondition)), HaveField("Status", Equal(metav1.ConditionFalse))),
+					)),
+				))
 			})
 		})
 
@@ -98,27 +94,56 @@ var _ = Describe("OCMRepository Controller", func() {
 				Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
 
 				By("check that repository status has NOT been updated successfully")
-				Eventually(komega.Object(ocmRepo), "1m").Should(
-					HaveField("Status.RepositorySpec", BeNil()))
+				Eventually(komega.Object(ocmRepo), "1m").Should(And(
+					HaveField("Status.RepositorySpec", BeNil()),
+					HaveField("Status.Conditions", ContainElement(
+						And(HaveField("Type", Equal(meta.ReadyCondition)), HaveField("Status", Equal(metav1.ConditionFalse))),
+					)),
+				))
 			})
 		})
+	})
 
-		Context("When all fields properly provided", func() {
+	Describe("Reconsiling a valid OCMRepository", func() {
+
+		Context("When SecretRefs and ConfigRefs properly set", func() {
 			It("OCMRepository can be reconciled", func() {
 
-				By("creating a OCI repository with all fields set")
+				By("creating a OCI repository")
 				spec := ocireg.NewRepositorySpec("ghcr.io/open-component-model")
 				specdata := Must(spec.MarshalJSON())
 				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, TestOCMRepositoryObj, &specdata)
-				// configSet := "configSet"
-				// ocmRepo.Spec.ConfigSet = &configSet
+
+				By("adding SecretRefs")
+				ocmRepo.Spec.SecretRef = &v1.LocalObjectReference{Name: secrets[0].Name}
+				ocmRepo.Spec.SecretRefs = append(ocmRepo.Spec.SecretRefs, v1.LocalObjectReference{Name: secrets[1].Name})
+				ocmRepo.Spec.SecretRefs = append(ocmRepo.Spec.SecretRefs, v1.LocalObjectReference{Name: secrets[2].Name})
+
+				By("adding ConfigRefs")
+				ocmRepo.Spec.ConfigRef = &v1.LocalObjectReference{Name: configs[0].Name}
+				ocmRepo.Spec.ConfigRefs = append(ocmRepo.Spec.ConfigRefs, v1.LocalObjectReference{Name: configs[1].Name})
+				ocmRepo.Spec.ConfigRefs = append(ocmRepo.Spec.ConfigRefs, v1.LocalObjectReference{Name: configs[2].Name})
+
+				By("adding ConfigSet")
+				configSet := "set1"
+				ocmRepo.Spec.ConfigSet = &configSet
+
+				By("creating OCMRepository object")
 				Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
 
-				By("check that repository status has been updated successfully")
+				By("check that the SecretRefs and ConfigRefs are in the status")
 				Eventually(komega.Object(ocmRepo), "1m").Should(And(
 					HaveField("Status.RepositorySpec.Raw", Equal(specdata)),
-					HaveField("Status.Conditions", ContainElement(HaveField("Type", Equal("Ready")))),
-					// HaveField("Status.ConfigSet", Equal(configSet)),
+					HaveField("Status.Conditions", ContainElement(
+						And(HaveField("Type", Equal(meta.ReadyCondition)), HaveField("Status", Equal(metav1.ConditionTrue))),
+					)),
+					HaveField("Status.SecretRefs", ContainElement(Equal(*ocmRepo.Spec.SecretRef))),
+					HaveField("Status.SecretRefs", ContainElement(Equal(ocmRepo.Spec.SecretRefs[0]))),
+					HaveField("Status.SecretRefs", ContainElement(Equal(ocmRepo.Spec.SecretRefs[1]))),
+					HaveField("Status.ConfigRefs", ContainElement(Equal(*ocmRepo.Spec.ConfigRef))),
+					HaveField("Status.ConfigRefs", ContainElement(Equal(ocmRepo.Spec.ConfigRefs[0]))),
+					HaveField("Status.ConfigRefs", ContainElement(Equal(ocmRepo.Spec.ConfigRefs[1]))),
+					HaveField("Status.ConfigSet", Equal(*ocmRepo.Spec.ConfigSet)),
 				))
 			})
 		})
@@ -139,90 +164,3 @@ func newTestOCMRepository(ns, name string, specdata *[]byte) *v1alpha1.OCMReposi
 		},
 	}
 }
-
-// <*v1alpha1.OCMRepository | 0x14001166a00>: {
-// 	TypeMeta: {Kind: "", APIVersion: ""},
-// 	ObjectMeta: {
-// 		Name: "test-ocmrepository",
-// 		GenerateName: "",
-// 		Namespace: "test-namespace-ocmrepository",
-// 		SelfLink: "",
-// 		UID: "40241465-6718-401d-b941-8584f9c4d90c",
-// 		ResourceVersion: "214",
-// 		Generation: 1,
-// 		CreationTimestamp: {
-// 			Time: 2024-09-23T15:11:40+02:00,
-// 		},
-// 		DeletionTimestamp: nil,
-// 		DeletionGracePeriodSeconds: nil,
-// 		Labels: nil,
-// 		Annotations: nil,
-// 		OwnerReferences: nil,
-// 		Finalizers: nil,
-// 		ManagedFields: [
-// 			{
-// 				Manager: "__debug_bin3007256420",
-// 				Operation: "Update",
-// 				APIVersion: "delivery.ocm.software/v1alpha1",
-// 				Time: {
-// 					Time: 2024-09-23T15:11:40+02:00,
-// 				},
-// 				FieldsType: "FieldsV1",
-// 				FieldsV1: {
-// 					Raw: "{\"f:spec\":{\".\":{},\"f:interval\":{},\"f:repositorySpec\":{\".\":{},\"f:baseUrl\":{},\"f:componentNameMapping\":{},\"f:subPath\":{},\"f:type\":{}}}}",
-// 				},
-// 				Subresource: "",
-// 			},
-// 			{
-// 				Manager: "__debug_bin3007256420",
-// 				Operation: "Update",
-// 				APIVersion: "delivery.ocm.software/v1alpha1",
-// 				Time: {
-// 					Time: 2024-09-23T15:11:40+02:00,
-// 				},
-// 				FieldsType: "FieldsV1",
-// 				FieldsV1: {
-// 					Raw: "{\"f:status\":{\".\":{},\"f:conditions\":{},\"f:observedGeneration\":{},\"f:repositorySpec\":{\".\":{},\"f:baseUrl\":{},\"f:componentNameMapping\":{},\"f:subPath\":{},\"f:type\":{}}}}",
-// 				},
-// 				Subresource: "status",
-// 			},
-// 		],
-// 	},
-// 	Spec: {
-// 		RepositorySpec: {
-// 			Raw: "{\"baseUrl\":\"https://127.0.0.1:5000\",\"componentNameMapping\":\"urlPath\",\"subPath\":\"ocm\",\"type\":\"OCIRegistry\"}",
-// 		},
-// 		SecretRef: nil,
-// 		SecretRefs: nil,
-// 		ConfigRef: nil,
-// 		ConfigRefs: nil,
-// 		ConfigSet: nil,
-// 		Interval: {
-// 			Duration: 600000000000,
-// 		},
-// 		Suspend: false,
-// 	},
-// 	Status: {
-// 		State: "",
-// 		Message: "",
-// 		ObservedGeneration: 1,
-// 		Conditions: [
-// 			{
-// 				Type: "Ready",
-// 				Status: "True",
-// 				ObservedGeneration: 1,
-// 				LastTransitionTime: {
-// 					Time: 2024-09-23T15:11:40+02:00,
-// 				},
-// 				Reason: "Succeeded",
-// 				Message: "Successfully reconciled",
-// 			},
-// 		],
-// 		RepositorySpec: {
-// 			Raw: "{\"baseUrl\":\"https://127.0.0.1:5000\",\"componentNameMapping\":\"urlPath\",\"subPath\":\"ocm\",\"type\":\"OCIRegistry\"}",
-// 		},
-// 		SecretRefs: nil,
-// 		ConfigRefs: nil,
-// 		ConfigSet: "",
-// 	},
-// }

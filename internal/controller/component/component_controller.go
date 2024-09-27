@@ -157,7 +157,14 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 		return ctrl.Result{}, rerr
 	}
 
-	repo, err := session.LookupRepositoryForConfig(octx, repository.Spec.RepositorySpec.Raw)
+	spec, err := octx.RepositorySpecForConfig(repository.Spec.RepositorySpec.Raw, nil)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositorySpecInvalidReason, "RepositorySpec is invalid")
+
+		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("failed to unmarshal RepositorySpec: %w", err))
+	}
+
+	repo, err := session.LookupRepository(octx, spec)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositorySpecInvalidReason, "RepositorySpec is invalid")
 
