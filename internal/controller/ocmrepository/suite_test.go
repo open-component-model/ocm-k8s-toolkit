@@ -118,6 +118,7 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
+	repositoryKey = "metadata.name"
 	// Register reconcilers
 	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
