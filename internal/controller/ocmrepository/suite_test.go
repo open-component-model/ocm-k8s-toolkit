@@ -89,7 +89,6 @@ var _ = BeforeSuite(func() {
 	Expect(k8sClient).NotTo(BeNil())
 
 	komega.SetClient(k8sClient)
-
 	k8sManager, err = ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
 		Metrics: metricserver.Options{
@@ -97,6 +96,9 @@ var _ = BeforeSuite(func() {
 		},
 	})
 	Expect(err).ToNot(HaveOccurred())
+	// metadata.name is an allowed Field by default. Instead of mocking about with the cache
+	// we just use an allowed field instead.
+	repositoryKey = "metadata.name"
 	Expect((&Reconciler{
 		Client: k8sClient,
 		Scheme: testEnv.Scheme,

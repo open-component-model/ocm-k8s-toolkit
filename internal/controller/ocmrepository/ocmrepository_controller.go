@@ -41,8 +41,9 @@ import (
 const (
 	requeueAfter        = 10 * time.Second
 	repositoryFinalizer = "finalizers.ocm.software"
-	repositoryKey       = ".metadata.repository.componentRef"
 )
+
+var repositoryKey = ".spec.repositoryRef"
 
 // Reconciler reconciles a OCMRepository object.
 type Reconciler struct {
@@ -73,6 +74,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	// Always attempt to patch the object and status after each reconciliation.
 	defer func() {
+		//nolint:godox // I know, I want to talk about this later
 		// TODO: This should consider an error. Because right now, it says successful and rerun in 10m but that's not true.
 		if perr := status.UpdateStatus(ctx, patchHelper, obj, r.EventRecorder, obj.GetRequeueAfter(), retErr); perr != nil {
 			retErr = errors.Join(retErr, perr)
@@ -84,7 +86,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 			return ctrl.Result{}, nil
 		}
 
-		return r.reconcileDeleteRepository(ctx, obj)
+		return ctrl.Result{}, r.reconcileDeleteRepository(ctx, obj)
 	}
 
 	// AddFinalizer is not present already.
@@ -113,13 +115,13 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *Reconciler) reconcileDeleteRepository(ctx context.Context, obj *v1alpha1.OCMRepository) (ctrl.Result, error) {
+func (r *Reconciler) reconcileDeleteRepository(ctx context.Context, obj *v1alpha1.OCMRepository) error {
 	logger := log.FromContext(ctx)
 	componentList := &v1alpha1.ComponentList{}
 	if err := r.List(ctx, componentList, &client.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(repositoryKey, client.ObjectKeyFromObject(obj).String()),
 	}); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to list components: %w", err)
+		return fmt.Errorf("failed to list components: %w", err)
 	}
 
 	if len(componentList.Items) > 0 {
@@ -130,12 +132,10 @@ func (r *Reconciler) reconcileDeleteRepository(ctx context.Context, obj *v1alpha
 
 		logger.Info("repository is being deleted, please remove the following components referencing it", "names", names)
 
-		// TODO: consider returning an error instead of gently trying again and again forever?
-		//return ctrl.Result{RequeueAfter: requeueAfter}, nil
-		return ctrl.Result{}, fmt.Errorf("failed to remove repository referencing components: %s", strings.Join(names, ","))
+		return fmt.Errorf("failed to remove repository referencing components: %s", strings.Join(names, ","))
 	}
 
 	controllerutil.RemoveFinalizer(obj, repositoryFinalizer)
 
-	return ctrl.Result{}, nil
+	return nil
 }
