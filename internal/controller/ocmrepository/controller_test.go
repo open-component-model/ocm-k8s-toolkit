@@ -2,21 +2,31 @@ package ocmrepository
 
 import (
 	"context"
+	"os"
 	"time"
 
+	"github.com/fluxcd/pkg/runtime/conditions"
 	. "github.com/mandelsoft/goutils/testutils"
+	"github.com/mandelsoft/vfs/pkg/osfs"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	ocireg "ocm.software/ocm/api/ocm/extensions/repositories/ocireg"
+	"k8s.io/apimachinery/pkg/types"
+	. "ocm.software/ocm/api/helper/builder"
+	environment "ocm.software/ocm/api/helper/env"
+	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
+	"ocm.software/ocm/api/ocm/extensions/repositories/ocireg"
+	"ocm.software/ocm/api/utils/accessio"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
 const (
+	CTFPath              = "ocm-k8s-ctfstore--*"
 	TestNamespaceOCMRepo = "test-namespace-ocmrepository"
 	TestOCMRepositoryObj = "test-ocmrepository"
 )
@@ -27,9 +37,13 @@ var _ = Describe("OCMRepository Controller", func() {
 		cancel    context.CancelFunc
 		namespace *corev1.Namespace
 		ocmRepo   *v1alpha1.OCMRepository
+		env       *Builder
 	)
 
 	BeforeEach(func() {
+		env = NewBuilder(environment.FileSystem(osfs.OsFs))
+		DeferCleanup(env.Cleanup)
+
 		ctx, cancel = context.WithCancel(context.Background())
 		DeferCleanup(cancel)
 
@@ -122,6 +136,75 @@ var _ = Describe("OCMRepository Controller", func() {
 				))
 			})
 		})
+
+		Context("repository controller", func() {
+			It("reconciles a repository", func() {
+				By("creating a repository object")
+				ctfpath := Must(os.MkdirTemp("", CTFPath))
+				componentName := "ocm.software/test-component"
+				componentVersion := "v1.0.0"
+				env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+					env.Component(componentName, func() {
+						env.Version(componentVersion)
+					})
+				})
+				spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
+				specdata := Must(spec.MarshalJSON())
+				repository := newTestOCMRepository(TestNamespaceOCMRepo, TestOCMRepositoryObj, &specdata)
+
+				Expect(k8sClient.Create(ctx, repository)).To(Succeed())
+
+				By("checking if the repository is ready")
+
+				Eventually(func() bool {
+					Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: TestNamespaceOCMRepo, Name: TestOCMRepositoryObj}, repository)).To(Succeed())
+					return conditions.IsReady(repository)
+				}).WithTimeout(5 * time.Second).Should(BeTrue())
+
+				By("creating a component that uses this repository")
+				component := &v1alpha1.Component{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: TestNamespaceOCMRepo,
+						Name:      "test-component-name",
+					},
+					Spec: v1alpha1.ComponentSpec{
+						RepositoryRef: v1alpha1.ObjectKey{
+							Namespace: TestNamespaceOCMRepo,
+							Name:      TestOCMRepositoryObj,
+						},
+						Component:              componentName,
+						EnforceDowngradability: false,
+						Semver:                 "1.0.0",
+						Interval:               metav1.Duration{Duration: time.Minute * 10},
+					},
+					Status: v1alpha1.ComponentStatus{},
+				}
+				Expect(k8sClient.Create(ctx, component)).To(Succeed())
+				By("deleting the repository should not allow the deletion unless the component is removed")
+				Expect(k8sClient.Delete(ctx, repository)).To(Succeed())
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: TestNamespaceOCMRepo, Name: TestOCMRepositoryObj}, repository)).To(Succeed())
+
+				By("removing the component")
+				Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+
+				By("checking if the repository is eventually deleted")
+				Eventually(func() error {
+					err := k8sClient.Get(ctx, types.NamespacedName{Namespace: TestNamespaceOCMRepo, Name: TestOCMRepositoryObj}, repository)
+					if errors.IsNotFound(err) {
+						return nil
+					}
+
+					return err
+				}).WithTimeout(10 * time.Second).Should(Succeed())
+
+				tmpdir := Must(os.MkdirTemp("/tmp", "descriptors-"))
+				DeferCleanup(func() error {
+					return os.RemoveAll(tmpdir)
+				})
+
+			})
+		})
+
 	})
 })
 
