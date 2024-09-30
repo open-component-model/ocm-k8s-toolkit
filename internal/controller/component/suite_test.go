@@ -113,12 +113,6 @@ var _ = BeforeSuite(func() {
 	storage := Must(server.NewStorage(k8sClient, testEnv.Scheme, tmpdir, address, 0, 0))
 	artifactServer := Must(server.NewArtifactServer(tmpdir, address, time.Millisecond))
 
-	// Register reconcilers
-	//Expect((&OCMRepositoryReconciler{
-	//	GetClient: k8sClient,
-	//	Scheme: testEnv.Scheme,
-	//}).SetupWithManager(k8sManager)).To(Succeed())
-
 	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client: k8sClient,
@@ -130,12 +124,6 @@ var _ = BeforeSuite(func() {
 		},
 		Storage: storage,
 	}).SetupWithManager(k8sManager)).To(Succeed())
-
-	//Expect((&ResourceReconciler{
-	//	GetClient: k8sClient,
-	//	Scheme: testEnv.Scheme,
-	//}).SetupWithManager(k8sManager)).To(Succeed())
-
 	ctx, cancel := context.WithCancel(context.Background())
 	DeferCleanup(cancel)
 

@@ -34,6 +34,7 @@ import (
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	. "ocm.software/ocm/api/helper/builder"
 	environment "ocm.software/ocm/api/helper/env"
 	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
@@ -53,6 +54,7 @@ const (
 	Component     = "ocm.software/test-component"
 	ComponentObj  = "test-component"
 	Version1      = "1.0.0"
+	Version2      = "1.0.1"
 )
 
 var _ = Describe("Component Controller", func() {
@@ -195,13 +197,46 @@ var _ = Describe("Component Controller", func() {
 				HaveField("Status.ArtifactRef.Name", BeEmpty()))
 		})
 
-		It("doesn't update if there is no new version", func() {
+		It("grabs the new version when it becomes available", func() {
+			By("creating a component")
+			component := &v1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: Namespace,
+					Name:      fmt.Sprintf("%s-%d", ComponentObj, testNumber),
+				},
+				Spec: v1alpha1.ComponentSpec{
+					RepositoryRef: v1alpha1.ObjectKey{
+						Namespace: Namespace,
+						Name:      repositoryName,
+					},
+					Component:              Component,
+					EnforceDowngradability: false,
+					Semver:                 ">=1.0.0",
+					Interval:               metav1.Duration{Duration: time.Second},
+				},
+				Status: v1alpha1.ComponentStatus{},
+			}
+			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
+			By("check that artifact has been created successfully")
+
+			Eventually(komega.Object(component), "15s").Should(
+				HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
+			Expect(component.Status.Component.Version).To(Equal(Version1))
+
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(Component, func() {
+					env.Version(Version2)
+				})
+			})
+
+			Eventually(func() bool {
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
+
+				return component.Status.Component.Version == Version2
+			}).WithTimeout(15 * time.Second).Should(BeTrue())
 		})
-
-		It("grabs the new version when it becomes available", func() {})
-
-		It("fails on invalid repo spec", func() {})
-
 	})
 })
