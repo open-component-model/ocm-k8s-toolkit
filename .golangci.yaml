@@ -86,33 +86,34 @@ issues:
 linters:
   enable-all: true
   disable:
-    - gci
+    - deadcode
     - depguard
     - exhaustivestruct
+    - exhaustruct
+    - forbidigo
+    - gci
+    - gochecknoglobals
+    - gochecknoinits
+    - godox
+    - goerr113
     - golint
+    - gomoddirectives
+    - govet
+    - ifshort
     - interfacer
     - ireturn
     - maligned
     - nilnil
-    - scopelint
-    - tagliatelle
-    - gomoddirectives
-    - varcheck
-    - nosnakecase
-    - structcheck
-    - ifshort
-    - deadcode
-    - forbidigo
-    - prealloc
-    - gochecknoinits
-    - exhaustruct
-    - goerr113
-    - govet
     - nonamedreturns
+    - nosnakecase
+    - paralleltest
+    - perfsprint
+    - prealloc
+    - scopelint
+    - staticcheck
+    - structcheck
+    - tagliatelle
+    - varcheck
     - varnamelen
     - wrapcheck
-    - staticcheck
-    - gochecknoglobals
-    - paralleltest
     - wsl
-    - perfsprint
