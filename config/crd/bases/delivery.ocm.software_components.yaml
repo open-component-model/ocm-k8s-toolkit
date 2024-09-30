@@ -66,8 +66,13 @@ spec:
                   (s. https://ocm.software/docs/cli-reference/help/configfile/). If the SecretRef (or SecretRefs) and ConfigRef and
                   ConfigRefs contain ocm config sets, the user may specify which config set he wants to be effective.
                 type: string
-              enforceDowngradability:
-                type: boolean
+              downgradePolicy:
+                default: Deny
+                enum:
+                - Allow
+                - Deny
+                - Enforce
+                type: string
               interval:
                 type: string
               repositoryRef:

@@ -32,6 +32,8 @@ import (
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
 	ocmctx "ocm.software/ocm/api/ocm"
@@ -182,7 +184,7 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed looking up component: %w", err))
 	}
 
-	version, rerr := r.determineEffectiveVersion(ctx, component, session, repo, c)
+	version, rerr := r.determineEffectiveVersion(ctx, component, c)
 	if rerr != nil {
 		return ctrl.Result{}, rerr
 	}
@@ -214,19 +216,16 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 	}
 
 	// Update status
-	component.Status.Component = v1alpha1.ComponentInfo{
-		RepositorySpec: repository.Spec.RepositorySpec,
-		Component:      component.Spec.Component,
-		Version:        version,
+	if err := r.setComponentStatus(ctx, component, repository.Spec.RepositorySpec, component.Spec.Component, version); err != nil {
+		return ctrl.Result{}, rerror.AsNonRetryableError(err)
 	}
+
 	status.MarkReady(r.EventRecorder, component, "Applied version %s", version)
 
 	return ctrl.Result{RequeueAfter: component.GetRequeueAfter()}, nil
 }
 
-func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v1alpha1.Component,
-	session ocmctx.Session, repo ocmctx.Repository, c ocmctx.ComponentAccess,
-) (string, rerror.ReconcileError) {
+func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v1alpha1.Component, c ocmctx.ComponentAccess) (string, rerror.ReconcileError) {
 	versions, err := c.ListVersions()
 	if err != nil || len(versions) == 0 {
 		// for most repository implementations (especially oci), there is no way to check whether a component exists but
@@ -248,7 +247,7 @@ func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v
 		return "", rerror.AsNonRetryableError(fmt.Errorf("failed to check latest version: %w", err))
 	}
 
-	latestcv, err := session.LookupComponentVersion(repo, c.GetName(), latestSemver.Original())
+	latestcv, err := c.LookupVersion(latestSemver.Original())
 	if err != nil {
 		// this version has to exist (since it was found in GetLatestVersion) and therefore, this is most likely a
 		// static error where requeueing does not make sense
@@ -257,7 +256,8 @@ func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v
 		return "", rerror.AsRetryableError(fmt.Errorf("failed to get component version: %w", err))
 	}
 
-	reconciledVersion := general.OptionalDefaulted(component.Status.Component.Version, "0.0.0")
+	// the default is the FIRST parameter...
+	reconciledVersion := general.OptionalDefaulted("0.0.0", component.Status.Component.Version)
 	currentSemver, err := semver.NewVersion(reconciledVersion)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason, err.Error())
@@ -265,10 +265,10 @@ func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v
 		return "", rerror.AsNonRetryableError(fmt.Errorf("failed to check reconciled version: %w", err))
 	}
 
-	if latestSemver.LessThan(currentSemver) && !component.Spec.EnforceDowngradability {
+	if latestSemver.LessThan(currentSemver) && component.Spec.DowngradePolicy != v1alpha1.DowngradeDeny {
 		downgradable := false
 		if reconciledVersion != "0.0.0" {
-			reconciledcv, err := session.LookupComponentVersion(repo, component.GetName(), reconciledVersion)
+			reconciledcv, err := c.LookupVersion(reconciledVersion)
 			if err != nil {
 				status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetComponentVersionFailedReason, err.Error())
 
@@ -281,6 +281,10 @@ func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v
 
 				return "", rerror.AsNonRetryableError(fmt.Errorf("failed to check downgradability: %w", err))
 			}
+		}
+
+		if component.Spec.DowngradePolicy == v1alpha1.DowngradeEnforce {
+			downgradable = true
 		}
 
 		if !downgradable {
@@ -392,4 +396,39 @@ func (r *Reconciler) createArtifactForDescriptors(ctx context.Context, octx ocmc
 
 func (r *Reconciler) normalizeComponentVersionName(name string) string {
 	return strings.ReplaceAll(name, "/", "-")
+}
+
+func (r *Reconciler) setComponentStatus(
+	ctx context.Context,
+	component *v1alpha1.Component,
+	repositorySpec *apiextensionsv1.JSON,
+	componentName string,
+	version string,
+) error {
+	component.Status.Component = v1alpha1.ComponentInfo{
+		RepositorySpec: repositorySpec,
+		Component:      componentName,
+		Version:        version,
+	}
+
+	component.SetEffectiveConfigRefs()
+	component.SetEffectiveConfigRefs()
+
+	if component.Spec.ConfigSet != nil {
+		component.Status.ConfigSet = *component.Spec.ConfigSet
+	}
+
+	artifact := &artifactv1.Artifact{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      component.Status.ArtifactRef.Name,
+			Namespace: component.Namespace,
+		},
+	}
+	if err := r.Get(ctx, client.ObjectKeyFromObject(artifact), artifact); err != nil {
+		return fmt.Errorf("failed to fetch artifact: %w", err)
+	}
+
+	component.Status.Artifact = artifact.Spec
+
+	return nil
 }

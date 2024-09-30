@@ -126,10 +126,9 @@ var _ = Describe("Component Controller", func() {
 						Namespace: Namespace,
 						Name:      repositoryName,
 					},
-					Component:              Component,
-					EnforceDowngradability: false,
-					Semver:                 "1.0.0",
-					Interval:               metav1.Duration{Duration: time.Minute * 10},
+					Component: Component,
+					Semver:    "1.0.0",
+					Interval:  metav1.Duration{Duration: time.Minute * 10},
 				},
 				Status: v1alpha1.ComponentStatus{},
 			}
@@ -165,6 +164,7 @@ var _ = Describe("Component Controller", func() {
 			descs := &ocm.Descriptors{}
 			MustBeSuccessful(yaml.Unmarshal(data, descs))
 			Expect(descs).To(YAMLEqual(expecteddescs))
+			Expect(component.Status.Artifact).To(Equal(artifact.Spec))
 		})
 
 		It("does not reconcile when the repository is not ready", func() {
@@ -183,10 +183,9 @@ var _ = Describe("Component Controller", func() {
 						Namespace: Namespace,
 						Name:      repositoryName,
 					},
-					Component:              Component,
-					EnforceDowngradability: false,
-					Semver:                 "1.0.0",
-					Interval:               metav1.Duration{Duration: time.Minute * 10},
+					Component: Component,
+					Semver:    "1.0.0",
+					Interval:  metav1.Duration{Duration: time.Minute * 10},
 				},
 				Status: v1alpha1.ComponentStatus{},
 			}
@@ -209,10 +208,9 @@ var _ = Describe("Component Controller", func() {
 						Namespace: Namespace,
 						Name:      repositoryName,
 					},
-					Component:              Component,
-					EnforceDowngradability: false,
-					Semver:                 ">=1.0.0",
-					Interval:               metav1.Duration{Duration: time.Second},
+					Component: Component,
+					Semver:    ">=1.0.0",
+					Interval:  metav1.Duration{Duration: time.Second},
 				},
 				Status: v1alpha1.ComponentStatus{},
 			}
@@ -236,6 +234,178 @@ var _ = Describe("Component Controller", func() {
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 
 				return component.Status.Component.Version == Version2
+			}).WithTimeout(15 * time.Second).Should(BeTrue())
+		})
+
+		It("grabs lower version if downgrade is allowed", func() {
+			componentName := Component + "-downgrade"
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version("0.0.3", func() {
+						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.2")
+					})
+				})
+			})
+
+			By("creating a component")
+			component := &v1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: Namespace,
+					Name:      fmt.Sprintf("%s-%d", ComponentObj, testNumber),
+				},
+				Spec: v1alpha1.ComponentSpec{
+					RepositoryRef: v1alpha1.ObjectKey{
+						Namespace: Namespace,
+						Name:      repositoryName,
+					},
+					Component:       componentName,
+					DowngradePolicy: v1alpha1.DowngradeAllow,
+					Semver:          "<1.0.0",
+					Interval:        metav1.Duration{Duration: time.Second},
+				},
+				Status: v1alpha1.ComponentStatus{},
+			}
+			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+
+			By("check that artifact has been created successfully")
+
+			Eventually(komega.Object(component), "15s").Should(HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
+			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
+
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version("0.0.2", func() {
+						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.2")
+					})
+					env.Version("0.0.3", func() {
+						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.2")
+					})
+				})
+			})
+
+			component.Spec.Semver = "0.0.2"
+			Expect(k8sClient.Update(ctx, component)).To(Succeed())
+
+			Eventually(func() bool {
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
+
+				return component.Status.Component.Version == "0.0.2"
+			}).WithTimeout(15 * time.Second).Should(BeTrue())
+		})
+
+		It("does not grab lower version if downgrade is denied", func() {
+			componentName := Component + "-downgrade-2"
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version("0.0.3", func() {
+						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.2")
+					})
+				})
+			})
+
+			By("creating a component")
+			component := &v1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: Namespace,
+					Name:      fmt.Sprintf("%s-%d", ComponentObj, testNumber),
+				},
+				Spec: v1alpha1.ComponentSpec{
+					RepositoryRef: v1alpha1.ObjectKey{
+						Namespace: Namespace,
+						Name:      repositoryName,
+					},
+					Component:       componentName,
+					DowngradePolicy: v1alpha1.DowngradeDeny,
+					Semver:          "<1.0.0",
+					Interval:        metav1.Duration{Duration: time.Second},
+				},
+			}
+			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+
+			By("check that artifact has been created successfully")
+
+			Eventually(komega.Object(component), "15s").Should(
+				HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
+			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
+
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version("0.0.2", func() {
+						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.2")
+					})
+					env.Version("0.0.3", func() {
+						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.3")
+					})
+				})
+			})
+
+			component.Spec.Semver = "0.0.2"
+			Expect(k8sClient.Update(ctx, component)).To(Succeed())
+
+			Eventually(func() bool {
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
+
+				return component.Status.Component.Version == "0.0.2"
+			}).WithTimeout(10 * time.Second).Should(BeFalse())
+		})
+
+		XIt("can force downgrade even if not allowed by the component", func() {
+			componentName := Component + "-downgrade-3"
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version("0.0.3", func() {
+						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.2")
+					})
+				})
+			})
+
+			By("creating a component")
+			component := &v1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: Namespace,
+					Name:      fmt.Sprintf("%s-%d", ComponentObj, testNumber),
+				},
+				Spec: v1alpha1.ComponentSpec{
+					RepositoryRef: v1alpha1.ObjectKey{
+						Namespace: Namespace,
+						Name:      repositoryName,
+					},
+					Component:       componentName,
+					DowngradePolicy: v1alpha1.DowngradeAllow,
+					Semver:          "<1.0.0",
+					Interval:        metav1.Duration{Duration: time.Second},
+				},
+				Status: v1alpha1.ComponentStatus{},
+			}
+			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+
+			By("check that artifact has been created successfully")
+
+			Eventually(komega.Object(component), "15s").Should(
+				HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
+			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
+
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version("0.0.2", func() {
+						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.2")
+					})
+				})
+			})
+
+			component.Spec.Semver = "0.0.2"
+			Expect(k8sClient.Update(ctx, component)).To(Succeed())
+
+			Eventually(func() bool {
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
+
+				return component.Status.Component.Version == "0.0.2"
 			}).WithTimeout(15 * time.Second).Should(BeTrue())
 		})
 	})

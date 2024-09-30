@@ -18,11 +18,20 @@ package v1alpha1
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+type DowngradeState string
+
+var (
+	DowngradeAllow   DowngradeState = "Allow"
+	DowngradeDeny    DowngradeState = "Deny"
+	DowngradeEnforce DowngradeState = "Enforce"
 )
 
 // ComponentSpec defines the desired state of Component.
@@ -31,8 +40,10 @@ type ComponentSpec struct {
 	RepositoryRef ObjectKey `json:"repositoryRef"`
 	// +required
 	Component string `json:"component"`
+	// +kubebuilder:validation:Enum:=Allow;Deny;Enforce
+	// +kubebuilder:default:=Deny
 	// +optional
-	EnforceDowngradability bool `json:"enforceDowngradability,omitempty"`
+	DowngradePolicy DowngradeState `json:"downgradePolicy,omitempty"`
 	// Semver defines the constraint of the fetched version. '>=v0.1'.
 	// +required
 	Semver string `json:"semver"`
@@ -88,6 +99,14 @@ type ComponentStatus struct {
 	// effective.
 	// +optional
 	ConfigSet string `json:"configSet,omitempty"`
+}
+
+func (in *Component) SetEffectiveSecretRefs() {
+	in.Status.SecretRefs = slices.Clone(in.Spec.SecretRefs)
+}
+
+func (in *Component) SetEffectiveConfigRefs() {
+	in.Status.ConfigRefs = slices.Clone(in.Spec.ConfigRefs)
 }
 
 // +kubebuilder:object:root=true
