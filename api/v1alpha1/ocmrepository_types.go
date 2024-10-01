@@ -18,6 +18,8 @@ package v1alpha1
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -108,12 +110,22 @@ func (in *OCMRepository) SetObservedGeneration(v int64) {
 	in.Status.ObservedGeneration = v
 }
 
+func (in *OCMRepository) SetEffectiveRepositorySpec() {
+	if in.Spec.RepositorySpec != nil {
+		in.Status.RepositorySpec = in.Spec.RepositorySpec
+	}
+}
+
 func (in *OCMRepository) GetSecretRefs() []v1.LocalObjectReference {
 	if in.Spec.SecretRef != nil {
 		return append(in.Spec.SecretRefs, *in.Spec.SecretRef)
 	}
 
 	return in.Spec.SecretRefs
+}
+
+func (in *OCMRepository) SetEffectiveSecretRefs() {
+	in.Status.SecretRefs = slices.Clone(in.GetSecretRefs())
 }
 
 func (in *OCMRepository) GetEffectiveSecretRefs() []v1.LocalObjectReference {
@@ -128,12 +140,22 @@ func (in *OCMRepository) GetConfigRefs() []v1.LocalObjectReference {
 	return in.Spec.ConfigRefs
 }
 
+func (in *OCMRepository) SetEffectiveConfigRefs() {
+	in.Status.ConfigRefs = slices.Clone(in.GetConfigRefs())
+}
+
 func (in *OCMRepository) GetEffectiveConfigRefs() []v1.LocalObjectReference {
 	return in.Status.ConfigRefs
 }
 
 func (in *OCMRepository) GetConfigSet() *string {
 	return in.Spec.ConfigSet
+}
+
+func (in *OCMRepository) SetEffectiveConfigSet() {
+	if in.Spec.ConfigSet != nil {
+		in.Status.ConfigSet = strings.Clone(*in.Spec.ConfigSet)
+	}
 }
 
 func (in *OCMRepository) GetEffectiveConfigSet() string {
