@@ -160,6 +160,8 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 
 	rerr = ocm.ConfigureOCMContext(ctx, r, octx, component, repository)
 	if err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ConfigureContextFailedReason, "Configuring Context failed")
+
 		return ctrl.Result{}, rerr
 	}
 
@@ -184,8 +186,10 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed looking up component: %w", err))
 	}
 
-	version, rerr := r.determineEffectiveVersion(ctx, component, c)
+	version, rerr := r.determineEffectiveVersion(ctx, component, session, repo, c)
 	if rerr != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason, rerr.Error())
+
 		return ctrl.Result{}, rerr
 	}
 
@@ -200,6 +204,8 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 
 	descriptors, rerr := r.verifyComponentVersionAndListDescriptors(ctx, octx, component, cv)
 	if rerr != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.VerificationFailedReason, err.Error())
+
 		return ctrl.Result{}, rerr
 	}
 
@@ -212,11 +218,15 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 
 	rerr = r.createArtifactForDescriptors(ctx, octx, component, cv, descriptors)
 	if rerr != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, err.Error())
+
 		return ctrl.Result{}, rerr
 	}
 
 	// Update status
 	if err := r.setComponentStatus(ctx, component, repository.Spec.RepositorySpec, component.Spec.Component, version); err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.StatueSetFailedReason, err.Error())
+
 		return ctrl.Result{}, rerror.AsNonRetryableError(err)
 	}
 
@@ -225,72 +235,62 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 	return ctrl.Result{RequeueAfter: component.GetRequeueAfter()}, nil
 }
 
-func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v1alpha1.Component, c ocmctx.ComponentAccess) (string, rerror.ReconcileError) {
+func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v1alpha1.Component,
+	session ocmctx.Session, repo ocmctx.Repository, c ocmctx.ComponentAccess,
+) (string, rerror.ReconcileError) {
 	versions, err := c.ListVersions()
 	if err != nil || len(versions) == 0 {
-		// for most repository implementations (especially oci), there is no way to check whether a component exists but
-		// trying to list all versions
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetComponentFailedReason, "Component not found in repository")
-
 		return "", rerror.AsRetryableError(fmt.Errorf("component %s not found in repository", c.GetName()))
 	}
 	filter, err := ocm.RegexpFilter(component.Spec.SemverFilter)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason, err.Error())
-
 		return "", rerror.AsNonRetryableError(fmt.Errorf("failed to parse regexp filter: %w", err))
 	}
 	latestSemver, err := ocm.GetLatestValidVersion(ctx, versions, component.Spec.Semver, filter)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason, err.Error())
-
 		return "", rerror.AsNonRetryableError(fmt.Errorf("failed to check latest version: %w", err))
-	}
-
-	latestcv, err := c.LookupVersion(latestSemver.Original())
-	if err != nil {
-		// this version has to exist (since it was found in GetLatestVersion) and therefore, this is most likely a
-		// static error where requeueing does not make sense
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetComponentVersionFailedReason, err.Error())
-
-		return "", rerror.AsRetryableError(fmt.Errorf("failed to get component version: %w", err))
 	}
 
 	// the default is the FIRST parameter...
 	reconciledVersion := general.OptionalDefaulted("0.0.0", component.Status.Component.Version)
+
+	// we didn't yet reconcile anything, return whatever the retrieved version is.
+	if reconciledVersion == "0.0.0" {
+		return latestSemver.Original(), nil
+	}
+
 	currentSemver, err := semver.NewVersion(reconciledVersion)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason, err.Error())
-
 		return "", rerror.AsNonRetryableError(fmt.Errorf("failed to check reconciled version: %w", err))
 	}
 
-	if latestSemver.LessThan(currentSemver) && component.Spec.DowngradePolicy != v1alpha1.DowngradeDeny {
-		downgradable := false
-		if reconciledVersion != "0.0.0" {
-			reconciledcv, err := c.LookupVersion(reconciledVersion)
-			if err != nil {
-				status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetComponentVersionFailedReason, err.Error())
+	if latestSemver.GreaterThanEqual(currentSemver) {
+		return latestSemver.Original(), nil
+	}
 
-				return "", rerror.AsRetryableError(fmt.Errorf("failed to get reconciled component version to check"+
-					"downgradability: %w", err))
-			}
-			downgradable, err = ocm.IsDowngradable(ctx, reconciledcv, latestcv)
-			if err != nil {
-				status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason, err.Error())
-
-				return "", rerror.AsNonRetryableError(fmt.Errorf("failed to check downgradability: %w", err))
-			}
+	switch component.Spec.DowngradePolicy {
+	case v1alpha1.DowngradeDeny:
+		return "", rerror.AsRetryableError(fmt.Errorf("component version cannot be downgraded from version %s "+
+			"to version %s", currentSemver.Original(), latestSemver.Original()))
+	case v1alpha1.DowngradeEnforce:
+		return latestSemver.Original(), nil
+	case v1alpha1.DowngradeAllow:
+		reconciledcv, err := session.LookupComponentVersion(repo, c.GetName(), reconciledVersion)
+		if err != nil {
+			return "", rerror.AsRetryableError(fmt.Errorf("failed to get reconciled component version to check"+
+				" downgradability: %w", err))
 		}
 
-		if component.Spec.DowngradePolicy == v1alpha1.DowngradeEnforce {
-			downgradable = true
+		latestcv, err := session.LookupComponentVersion(repo, c.GetName(), latestSemver.Original())
+		if err != nil {
+			return "", rerror.AsRetryableError(fmt.Errorf("failed to get component version: %w", err))
 		}
 
+		downgradable, err := ocm.IsDowngradable(ctx, reconciledcv, latestcv)
+		if err != nil {
+			return "", rerror.AsNonRetryableError(fmt.Errorf("failed to check downgradability: %w", err))
+		}
 		if !downgradable {
-			status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason,
-				fmt.Sprintf("component version cannot be downgraded from version %s to version %s",
-					currentSemver.String(), latestSemver.Original()))
 			// keep requeueing, a greater component version could be published
 			// semver constraint may even describe older versions and non-existing newer versions, so you have to check
 			// for potential newer versions (current is downgradable to: > 1.0.3, latest is: < 1.1.0, but version 1.0.4
@@ -298,9 +298,11 @@ func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v
 			return "", rerror.AsRetryableError(fmt.Errorf("component version cannot be downgraded from version %s "+
 				"to version %s", currentSemver.Original(), latestSemver.Original()))
 		}
-	}
 
-	return latestSemver.Original(), nil
+		return latestSemver.Original(), nil
+	default:
+		return "", rerror.AsNonRetryableError(errors.New("unknown downgrade policy: " + string(component.Spec.DowngradePolicy)))
+	}
 }
 
 func (r *Reconciler) verifyComponentVersionAndListDescriptors(ctx context.Context, octx ocmctx.Context,
@@ -311,8 +313,6 @@ func (r *Reconciler) verifyComponentVersionAndListDescriptors(ctx context.Contex
 		return verify.Signature
 	}))
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.VerificationFailedReason, err.Error())
-
 		return nil, rerror.AsRetryableError(fmt.Errorf("failed to verify component: %w", err))
 	}
 	logger.Info("component successfully verified", "version", cv.GetVersion(), "component", cv.GetName())
@@ -321,8 +321,6 @@ func (r *Reconciler) verifyComponentVersionAndListDescriptors(ctx context.Contex
 	if descriptors == nil || len(descriptors.List) == 0 {
 		descriptors, err = ocm.ListComponentDescriptors(ctx, cv, resolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver()))
 		if err != nil {
-			status.MarkNotReady(r.EventRecorder, component, v1alpha1.ListComponentDescriptorsFailedReason, err.Error())
-
 			return nil, rerror.AsRetryableError(fmt.Errorf("failed to list component descriptors: %w", err))
 		}
 	}
@@ -338,8 +336,6 @@ func (r *Reconciler) createArtifactForDescriptors(ctx context.Context, octx ocmc
 	// Create temp working dir
 	tmpDir, err := os.MkdirTemp("", fmt.Sprintf("%s-%s-%s-", component.Kind, component.Namespace, component.Name))
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.TemporaryFolderCreationFailedReason, err.Error())
-
 		return rerror.AsNonRetryableError(fmt.Errorf("failed to create temporary working directory: %w", err))
 	}
 	octx.Finalizer().With(func() error {
@@ -352,15 +348,11 @@ func (r *Reconciler) createArtifactForDescriptors(ctx context.Context, octx ocmc
 
 	content, err := yaml.Marshal(descriptors)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.MarshallingComponentDescriptorsFailedReason, err.Error())
-
 		return rerror.AsNonRetryableError(fmt.Errorf("failed to marshal content: %w", err))
 	}
 
 	const perm = 0o655
 	if err := os.WriteFile(filepath.Join(tmpDir, v1alpha1.OCMComponentDescriptorList), content, perm); err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.WritingComponentFileFailedReason, err.Error())
-
 		return rerror.AsNonRetryableError(fmt.Errorf("failed to write file: %w", err))
 	}
 
@@ -384,8 +376,6 @@ func (r *Reconciler) createArtifactForDescriptors(ctx context.Context, octx ocmc
 			return nil
 		},
 	); err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, err.Error())
-
 		return rerror.AsRetryableError(fmt.Errorf("failed to reconcileComponent artifact: %w", err))
 	}
 

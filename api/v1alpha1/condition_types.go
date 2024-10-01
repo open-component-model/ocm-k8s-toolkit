@@ -45,27 +45,15 @@ const (
 	// GetComponentFailedReason is used when the component cannot be fetched.
 	GetComponentFailedReason = "GetComponentFailed"
 
-	// ListComponentDescriptorsFailedReason is used when the components cannot be listed.
-	ListComponentDescriptorsFailedReason = "ListComponentDescriptorsFailed"
-
 	// GetComponentVersionFailedReason is used when the component cannot be fetched.
 	GetComponentVersionFailedReason = "GetComponentVersionFailed"
-
-	// ComponentTraversalFailedReason is used when traversing any existing component references fails.
-	ComponentTraversalFailedReason = "ComponentTraversalFailed"
 
 	// StorageReconcileFailedReason is used when there was a problem reconciling the artifact storage.
 	StorageReconcileFailedReason = "StorageReconcileFailed"
 
-	// TemporaryFolderCreationFailedReason is used when creating a temporary folder fails.
-	TemporaryFolderCreationFailedReason = "TemporaryFolderCreationFailed"
-
-	// MarshallingComponentDescriptorsFailedReason is used when we can't serialize the component descriptor list.
-	MarshallingComponentDescriptorsFailedReason = "MarshallingComponentDescriptorsFailed"
-
-	// WritingComponentFileFailedReason is used when we fail to create the file for the component descriptors.
-	WritingComponentFileFailedReason = "WritingComponentFileFailed"
-
 	// ReconcileArtifactFailedReason is used when we fail in creating an Artifact.
 	ReconcileArtifactFailedReason = "ReconcileArtifactFailed"
+
+	// StatueSetFailedReason is used when we fail to set the component status.
+	StatueSetFailedReason = "StatueSetFailed"
 )

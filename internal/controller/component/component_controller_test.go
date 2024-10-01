@@ -23,6 +23,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/fluxcd/pkg/apis/meta"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/tar"
 	"github.com/mandelsoft/filepath/pkg/filepath"
@@ -66,14 +67,14 @@ var _ = Describe("Component Controller", func() {
 	)
 	BeforeEach(func() {
 		ctfpath = Must(os.MkdirTemp("", CTFPath))
-		DeferCleanup(func() error {
-			return os.RemoveAll(ctfpath)
-		})
 		env = NewBuilder(environment.FileSystem(osfs.OsFs))
-		DeferCleanup(env.Cleanup)
-
+		ctx = context.Background()
 		ctx, cancel = context.WithCancel(context.Background())
-		DeferCleanup(cancel)
+	})
+	AfterEach(func() {
+		Expect(os.RemoveAll(ctfpath)).To(Succeed())
+		Expect(env.Cleanup()).To(Succeed())
+		cancel()
 	})
 
 	Context("component controller", func() {
@@ -112,6 +113,12 @@ var _ = Describe("Component Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, repositoryObj)).To(Succeed())
 
 			testNumber++
+		})
+
+		AfterEach(func() {
+			// make sure the repo is still ready
+			conditions.MarkTrue(repositoryObj, "Ready", "ready", "message")
+			Expect(k8sClient.Status().Update(ctx, repositoryObj)).To(Succeed())
 		})
 
 		It("reconcileComponent a component", func() {
@@ -226,6 +233,9 @@ var _ = Describe("Component Controller", func() {
 
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
 				env.Component(Component, func() {
+					env.Version(Version1)
+				})
+				env.Component(Component, func() {
 					env.Version(Version2)
 				})
 			})
@@ -242,6 +252,9 @@ var _ = Describe("Component Controller", func() {
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
 				env.Component(componentName, func() {
 					env.Version("0.0.3", func() {
+						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.2")
+					})
+					env.Version("0.0.2", func() {
 						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.2")
 					})
 				})
@@ -274,17 +287,6 @@ var _ = Describe("Component Controller", func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
 
-			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
-				env.Component(componentName, func() {
-					env.Version("0.0.2", func() {
-						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.2")
-					})
-					env.Version("0.0.3", func() {
-						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.2")
-					})
-				})
-			})
-
 			component.Spec.Semver = "0.0.2"
 			Expect(k8sClient.Update(ctx, component)).To(Succeed())
 
@@ -300,6 +302,9 @@ var _ = Describe("Component Controller", func() {
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
 				env.Component(componentName, func() {
 					env.Version("0.0.3", func() {
+						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.2")
+					})
+					env.Version("0.0.2", func() {
 						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.2")
 					})
 				})
@@ -318,30 +323,17 @@ var _ = Describe("Component Controller", func() {
 					},
 					Component:       componentName,
 					DowngradePolicy: v1alpha1.DowngradeDeny,
-					Semver:          "<1.0.0",
+					Semver:          "0.0.3",
 					Interval:        metav1.Duration{Duration: time.Second},
 				},
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("check that artifact has been created successfully")
-
-			Eventually(komega.Object(component), "15s").Should(
-				HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+			Eventually(komega.Object(component), "15s").Should(HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
-
-			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
-				env.Component(componentName, func() {
-					env.Version("0.0.2", func() {
-						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.2")
-					})
-					env.Version("0.0.3", func() {
-						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.3")
-					})
-				})
-			})
 
 			component.Spec.Semver = "0.0.2"
 			Expect(k8sClient.Update(ctx, component)).To(Succeed())
@@ -349,17 +341,17 @@ var _ = Describe("Component Controller", func() {
 			Eventually(func() bool {
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 
-				return component.Status.Component.Version == "0.0.2"
-			}).WithTimeout(10 * time.Second).Should(BeFalse())
+				cond := conditions.Get(component, meta.ReadyCondition)
+				return cond.Message == "component version cannot be downgraded from version 0.0.3 to version 0.0.2"
+			}).WithTimeout(15 * time.Second).Should(BeTrue())
 		})
 
-		XIt("can force downgrade even if not allowed by the component", func() {
+		It("can force downgrade even if not allowed by the component", func() {
 			componentName := Component + "-downgrade-3"
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
 				env.Component(componentName, func() {
-					env.Version("0.0.3", func() {
-						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.2")
-					})
+					env.Version("0.0.3")
+					env.Version("0.0.2")
 				})
 			})
 
@@ -375,7 +367,7 @@ var _ = Describe("Component Controller", func() {
 						Name:      repositoryName,
 					},
 					Component:       componentName,
-					DowngradePolicy: v1alpha1.DowngradeAllow,
+					DowngradePolicy: v1alpha1.DowngradeEnforce,
 					Semver:          "<1.0.0",
 					Interval:        metav1.Duration{Duration: time.Second},
 				},
@@ -390,14 +382,6 @@ var _ = Describe("Component Controller", func() {
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
-
-			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
-				env.Component(componentName, func() {
-					env.Version("0.0.2", func() {
-						env.Label(v1alpha1.OCMLabelDowngradable, "0.0.2")
-					})
-				})
-			})
 
 			component.Spec.Semver = "0.0.2"
 			Expect(k8sClient.Update(ctx, component)).To(Succeed())
