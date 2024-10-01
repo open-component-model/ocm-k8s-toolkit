@@ -104,15 +104,15 @@ type ObjectPointerType[T any] interface {
 func get[T any, P ObjectPointerType[T]](ctx context.Context, client ctrl.Client,
 	refs []ctrl.ObjectKey,
 ) ([]P, error) {
-	objs := make([]P, len(refs))
-	for i, ref := range refs {
+	objs := make([]P, 0, len(refs))
+	for _, ref := range refs {
 		var _obj T
 		obj := P(&_obj)
 
 		if err := client.Get(ctx, ref, obj); err != nil {
 			return nil, fmt.Errorf("failed to locate object: %w", err)
 		}
-		objs[i] = obj
+		objs = append(objs, obj)
 	}
 
 	return objs, nil
