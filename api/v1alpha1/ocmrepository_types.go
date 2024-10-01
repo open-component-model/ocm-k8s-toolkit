@@ -18,6 +18,8 @@ package v1alpha1
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -123,10 +125,7 @@ func (in *OCMRepository) GetSecretRefs() []v1.LocalObjectReference {
 }
 
 func (in *OCMRepository) SetEffectiveSecretRefs() {
-	refs := in.GetSecretRefs()
-	if len(refs) > 0 {
-		in.Status.SecretRefs = refs
-	}
+	in.Status.SecretRefs = slices.Clone(in.GetSecretRefs())
 }
 
 func (in *OCMRepository) GetEffectiveSecretRefs() []v1.LocalObjectReference {
@@ -142,10 +141,7 @@ func (in *OCMRepository) GetConfigRefs() []v1.LocalObjectReference {
 }
 
 func (in *OCMRepository) SetEffectiveConfigRefs() {
-	refs := in.GetConfigRefs()
-	if len(refs) > 0 {
-		in.Status.ConfigRefs = refs
-	}
+	in.Status.ConfigRefs = slices.Clone(in.GetConfigRefs())
 }
 
 func (in *OCMRepository) GetEffectiveConfigRefs() []v1.LocalObjectReference {
@@ -158,7 +154,7 @@ func (in *OCMRepository) GetConfigSet() *string {
 
 func (in *OCMRepository) SetEffectiveConfigSet() {
 	if in.Spec.ConfigSet != nil {
-		in.Status.ConfigSet = *in.Spec.ConfigSet
+		in.Status.ConfigSet = strings.Clone(*in.Spec.ConfigSet)
 	}
 }
 
