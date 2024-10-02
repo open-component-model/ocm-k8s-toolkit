@@ -156,12 +156,12 @@ var _ = Describe("OCMRepository Controller", func() {
 				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, repoName, &specdata)
 
 				By("adding SecretRefs")
-				ocmRepo.Spec.SecretRef = &corev1.LocalObjectReference{Name: secrets[0].Name}
+				ocmRepo.Spec.SecretRefs = append(ocmRepo.Spec.SecretRefs, corev1.LocalObjectReference{Name: secrets[0].Name})
 				ocmRepo.Spec.SecretRefs = append(ocmRepo.Spec.SecretRefs, corev1.LocalObjectReference{Name: secrets[1].Name})
 				ocmRepo.Spec.SecretRefs = append(ocmRepo.Spec.SecretRefs, corev1.LocalObjectReference{Name: secrets[2].Name})
 
 				By("adding ConfigRefs")
-				ocmRepo.Spec.ConfigRef = &corev1.LocalObjectReference{Name: configs[0].Name}
+				ocmRepo.Spec.ConfigRefs = append(ocmRepo.Spec.ConfigRefs, corev1.LocalObjectReference{Name: configs[0].Name})
 				ocmRepo.Spec.ConfigRefs = append(ocmRepo.Spec.ConfigRefs, corev1.LocalObjectReference{Name: configs[1].Name})
 				ocmRepo.Spec.ConfigRefs = append(ocmRepo.Spec.ConfigRefs, corev1.LocalObjectReference{Name: configs[2].Name})
 
@@ -178,12 +178,12 @@ var _ = Describe("OCMRepository Controller", func() {
 					HaveField("Status.Conditions", ContainElement(
 						And(HaveField("Type", Equal(meta.ReadyCondition)), HaveField("Status", Equal(metav1.ConditionTrue))),
 					)),
-					HaveField("Status.SecretRefs", ContainElement(Equal(*ocmRepo.Spec.SecretRef))),
 					HaveField("Status.SecretRefs", ContainElement(Equal(ocmRepo.Spec.SecretRefs[0]))),
 					HaveField("Status.SecretRefs", ContainElement(Equal(ocmRepo.Spec.SecretRefs[1]))),
-					HaveField("Status.ConfigRefs", ContainElement(Equal(*ocmRepo.Spec.ConfigRef))),
+					HaveField("Status.SecretRefs", ContainElement(Equal(ocmRepo.Spec.SecretRefs[2]))),
 					HaveField("Status.ConfigRefs", ContainElement(Equal(ocmRepo.Spec.ConfigRefs[0]))),
 					HaveField("Status.ConfigRefs", ContainElement(Equal(ocmRepo.Spec.ConfigRefs[1]))),
+					HaveField("Status.ConfigRefs", ContainElement(Equal(ocmRepo.Spec.ConfigRefs[2]))),
 					HaveField("Status.ConfigSet", Equal(*ocmRepo.Spec.ConfigSet)),
 				))
 

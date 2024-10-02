@@ -37,11 +37,7 @@ type ResourceSpec struct {
 	// +optional
 	ResourceSelector *apiextensionsv1.JSON `json:"resourceSelector"`
 	// +optional
-	SecretRef *v1.LocalObjectReference `json:"secretRef,omitempty"`
-	// +optional
 	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
-	// +optional
-	ConfigRef *v1.LocalObjectReference `json:"configRef,omitempty"`
 	// +optional
 	ConfigRefs []v1.LocalObjectReference `json:"configRefs,omitempty"`
 	// The secrets and configs referred to by SecretRef (or SecretRefs) and Config (or ConfigRefs) may contain ocm
@@ -93,10 +89,6 @@ type ResourceStatus struct {
 }
 
 func (in *Resource) GetSecretRefs() []v1.LocalObjectReference {
-	if in.Spec.SecretRef != nil {
-		return append(in.Spec.SecretRefs, *in.Spec.SecretRef)
-	}
-
 	return in.Spec.SecretRefs
 }
 
@@ -105,10 +97,6 @@ func (in *Resource) GetEffectiveSecretRefs() []v1.LocalObjectReference {
 }
 
 func (in *Resource) GetConfigRefs() []v1.LocalObjectReference {
-	if in.Spec.ConfigRef != nil {
-		return append(in.Spec.ConfigRefs, *in.Spec.ConfigRef)
-	}
-
 	return in.Spec.ConfigRefs
 }
 

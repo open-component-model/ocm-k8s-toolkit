@@ -115,20 +115,10 @@ func (in *ComponentSpec) DeepCopyInto(out *ComponentSpec) {
 		*out = make([]Verification, len(*in))
 		copy(*out, *in)
 	}
-	if in.SecretRef != nil {
-		in, out := &in.SecretRef, &out.SecretRef
-		*out = new(corev1.LocalObjectReference)
-		**out = **in
-	}
 	if in.SecretRefs != nil {
 		in, out := &in.SecretRefs, &out.SecretRefs
 		*out = make([]corev1.LocalObjectReference, len(*in))
 		copy(*out, *in)
-	}
-	if in.ConfigRef != nil {
-		in, out := &in.ConfigRef, &out.ConfigRef
-		*out = new(corev1.LocalObjectReference)
-		**out = **in
 	}
 	if in.ConfigRefs != nil {
 		in, out := &in.ConfigRefs, &out.ConfigRefs
@@ -255,20 +245,10 @@ func (in *OCMRepositorySpec) DeepCopyInto(out *OCMRepositorySpec) {
 		*out = new(v1.JSON)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.SecretRef != nil {
-		in, out := &in.SecretRef, &out.SecretRef
-		*out = new(corev1.LocalObjectReference)
-		**out = **in
-	}
 	if in.SecretRefs != nil {
 		in, out := &in.SecretRefs, &out.SecretRefs
 		*out = make([]corev1.LocalObjectReference, len(*in))
 		copy(*out, *in)
-	}
-	if in.ConfigRef != nil {
-		in, out := &in.ConfigRef, &out.ConfigRef
-		*out = new(corev1.LocalObjectReference)
-		**out = **in
 	}
 	if in.ConfigRefs != nil {
 		in, out := &in.ConfigRefs, &out.ConfigRefs
@@ -460,20 +440,10 @@ func (in *ResourceSpec) DeepCopyInto(out *ResourceSpec) {
 		*out = new(v1.JSON)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.SecretRef != nil {
-		in, out := &in.SecretRef, &out.SecretRef
-		*out = new(corev1.LocalObjectReference)
-		**out = **in
-	}
 	if in.SecretRefs != nil {
 		in, out := &in.SecretRefs, &out.SecretRefs
 		*out = make([]corev1.LocalObjectReference, len(*in))
 		copy(*out, *in)
-	}
-	if in.ConfigRef != nil {
-		in, out := &in.ConfigRef, &out.ConfigRef
-		*out = new(corev1.LocalObjectReference)
-		**out = **in
 	}
 	if in.ConfigRefs != nil {
 		in, out := &in.ConfigRefs, &out.ConfigRefs
