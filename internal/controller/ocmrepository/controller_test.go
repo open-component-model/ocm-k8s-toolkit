@@ -236,6 +236,9 @@ var _ = Describe("OCMRepository Controller", func() {
 				}
 				Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
+				By("wait for the cache to catch up and create the index field on the component")
+				time.Sleep(time.Second)
+
 				By("deleting the repository should not allow the deletion unless the component is removed")
 				Expect(k8sClient.Delete(ctx, ocmRepo)).To(Succeed())
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: TestNamespaceOCMRepo, Name: ocmRepoName}, ocmRepo)).To(Succeed())
