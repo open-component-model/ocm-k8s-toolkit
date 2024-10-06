@@ -8,10 +8,10 @@ replace github.com/opencontainers/go-digest => github.com/opencontainers/go-dige
 
 require (
 	github.com/Masterminds/semver/v3 v3.3.0
-	github.com/fluxcd/pkg/apis/event v0.9.0
-	github.com/fluxcd/pkg/apis/meta v1.5.0
-	github.com/fluxcd/pkg/runtime v0.47.1
-	github.com/fluxcd/pkg/tar v0.7.0
+	github.com/fluxcd/pkg/apis/event v0.10.1
+	github.com/fluxcd/pkg/apis/meta v1.6.1
+	github.com/fluxcd/pkg/runtime v0.49.1
+	github.com/fluxcd/pkg/tar v0.8.1
 	github.com/mandelsoft/filepath v0.0.0-20240223090642-3e2777258aa3
 	github.com/mandelsoft/goutils v0.0.0-20240910114310-fc2a9de4c494
 	github.com/mandelsoft/vfs v0.4.3
@@ -20,11 +20,11 @@ require (
 	github.com/openfluxcd/artifact v0.1.0
 	github.com/openfluxcd/controller-manager v0.0.0-20240911114759-e30218862b92
 	github.com/stretchr/testify v1.9.0
-	k8s.io/api v0.31.0
-	k8s.io/apiextensions-apiserver v0.31.0
-	k8s.io/apimachinery v0.31.0
-	k8s.io/client-go v0.31.0
-	ocm.software/ocm v0.14.1-0.20240912152121-7c14e9d135e0
+	k8s.io/api v0.31.1
+	k8s.io/apiextensions-apiserver v0.31.1
+	k8s.io/apimachinery v0.31.1
+	k8s.io/client-go v0.31.1
+	ocm.software/ocm v0.15.0
 	sigs.k8s.io/controller-runtime v0.19.0
 	sigs.k8s.io/yaml v1.4.0
 )
@@ -112,7 +112,7 @@ require (
 	github.com/containers/storage v1.55.0 // indirect
 	github.com/coreos/go-oidc/v3 v3.11.0 // indirect
 	github.com/cyberphone/json-canonicalization v0.0.0-20231217050601-ba74d44ecf5f // indirect
-	github.com/cyphar/filepath-securejoin v0.3.1 // indirect
+	github.com/cyphar/filepath-securejoin v0.3.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/digitorus/pkcs7 v0.0.0-20230818184609-3a137a874352 // indirect
@@ -251,7 +251,7 @@ require (
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus/client_golang v1.19.1 // indirect
+	github.com/prometheus/client_golang v1.20.3 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.55.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
@@ -346,7 +346,7 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	helm.sh/helm/v3 v3.15.4 // indirect
-	k8s.io/cli-runtime v0.31.0 // indirect
+	k8s.io/cli-runtime v0.31.1 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20240521193020-835d969ad83a // indirect
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8 // indirect
