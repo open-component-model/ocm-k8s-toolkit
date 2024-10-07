@@ -41,11 +41,7 @@ type ComponentSpec struct {
 	// +optional
 	Verify []Verification `json:"verify,omitempty"`
 	// +optional
-	SecretRef *corev1.LocalObjectReference `json:"secretRef,omitempty"`
-	// +optional
 	SecretRefs []corev1.LocalObjectReference `json:"secretRefs,omitempty"`
-	// +optional
-	ConfigRef *corev1.LocalObjectReference `json:"configRef,omitempty"`
 	// +optional
 	ConfigRefs []corev1.LocalObjectReference `json:"configRefs,omitempty"`
 	// The secrets and configs referred to by SecretRef (or SecretRefs) and Config (or ConfigRefs) may contain ocm
@@ -144,10 +140,6 @@ func (in Component) GetRequeueAfter() time.Duration {
 }
 
 func (in *Component) GetSecretRefs() []corev1.LocalObjectReference {
-	if in.Spec.SecretRef != nil {
-		return append(in.Status.SecretRefs, *in.Spec.SecretRef)
-	}
-
 	return in.Spec.SecretRefs
 }
 
@@ -156,10 +148,6 @@ func (in *Component) GetEffectiveSecretRefs() []corev1.LocalObjectReference {
 }
 
 func (in *Component) GetConfigRefs() []corev1.LocalObjectReference {
-	if in.Spec.ConfigRef != nil {
-		return append(in.Spec.ConfigRefs, *in.Spec.ConfigRef)
-	}
-
 	return in.Spec.ConfigRefs
 }
 

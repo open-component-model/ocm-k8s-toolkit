@@ -49,17 +49,13 @@ var _ = Describe("k8s utils", func() {
 					Namespace: Namespace,
 				},
 				Spec: v1alpha1.OCMRepositorySpec{
-					SecretRef: &v1.LocalObjectReference{
-						Name: SecretRef1,
-					},
 					SecretRefs: []v1.LocalObjectReference{
+						{Name: SecretRef1},
 						{Name: SecretRef2},
 						{Name: SecretRef3},
 					},
-					ConfigRef: &v1.LocalObjectReference{
-						Name: ConfigRef1,
-					},
 					ConfigRefs: []v1.LocalObjectReference{
+						{Name: ConfigRef1},
 						{Name: ConfigRef2},
 						{Name: ConfigRef3},
 					},
@@ -92,11 +88,11 @@ var _ = Describe("k8s utils", func() {
 					Namespace: Namespace,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					SecretRef: &v1.LocalObjectReference{
-						Name: SecretRef1,
+					SecretRefs: []v1.LocalObjectReference{
+						{Name: SecretRef1},
 					},
-					ConfigRef: &v1.LocalObjectReference{
-						Name: ConfigRef1,
+					ConfigRefs: []v1.LocalObjectReference{
+						{Name: ConfigRef1},
 					},
 					ConfigSet: &ConfigSet2,
 				},
@@ -105,7 +101,7 @@ var _ = Describe("k8s utils", func() {
 
 		It("get effective secret refs", func() {
 			keys := GetEffectiveSecretRefs(ctx, &nodefcomp, &repo)
-			expectedKeys := sliceutils.Transform(append(nodefcomp.Spec.SecretRefs, *nodefcomp.Spec.SecretRef), func(ref v1.LocalObjectReference) ctrl.ObjectKey {
+			expectedKeys := sliceutils.Transform(nodefcomp.Spec.SecretRefs, func(ref v1.LocalObjectReference) ctrl.ObjectKey {
 				return ctrl.ObjectKey{Namespace: nodefcomp.Namespace, Name: ref.Name}
 			})
 			Expect(keys).To(ConsistOf(expectedKeys))
@@ -119,14 +115,14 @@ var _ = Describe("k8s utils", func() {
 		})
 		It("get effective secret ref with no default", func() {
 			keys := GetEffectiveSecretRefs(ctx, &repo)
-			expectedKeys := sliceutils.Transform(append(repo.Spec.SecretRefs, *repo.Spec.SecretRef), func(ref v1.LocalObjectReference) ctrl.ObjectKey {
+			expectedKeys := sliceutils.Transform(repo.Spec.SecretRefs, func(ref v1.LocalObjectReference) ctrl.ObjectKey {
 				return ctrl.ObjectKey{Namespace: repo.Namespace, Name: ref.Name}
 			})
 			Expect(keys).To(ConsistOf(expectedKeys))
 		})
 		It("get effective config refs", func() {
 			keys := GetEffectiveConfigRefs(ctx, &nodefcomp, &repo)
-			expectedKeys := sliceutils.Transform(append(nodefcomp.Spec.ConfigRefs, *nodefcomp.Spec.ConfigRef), func(ref v1.LocalObjectReference) ctrl.ObjectKey {
+			expectedKeys := sliceutils.Transform(nodefcomp.Spec.ConfigRefs, func(ref v1.LocalObjectReference) ctrl.ObjectKey {
 				return ctrl.ObjectKey{Namespace: nodefcomp.Namespace, Name: ref.Name}
 			})
 			Expect(keys).To(ConsistOf(expectedKeys))
@@ -140,7 +136,7 @@ var _ = Describe("k8s utils", func() {
 		})
 		It("get effective config refs with no default", func() {
 			keys := GetEffectiveConfigRefs(ctx, &repo)
-			expectedKeys := sliceutils.Transform(append(repo.Spec.ConfigRefs, *repo.Spec.ConfigRef), func(ref v1.LocalObjectReference) ctrl.ObjectKey {
+			expectedKeys := sliceutils.Transform(repo.Spec.ConfigRefs, func(ref v1.LocalObjectReference) ctrl.ObjectKey {
 				return ctrl.ObjectKey{Namespace: repo.Namespace, Name: ref.Name}
 			})
 			Expect(keys).To(ConsistOf(expectedKeys))
