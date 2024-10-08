@@ -164,7 +164,7 @@ func main() {
 	}
 
 	storage, artifactServer, err := server.NewArtifactStore(mgr.GetClient(), mgr.GetScheme(),
-		storagePath, storageAdvAddr, artifactRetentionTTL, artifactRetentionRecords)
+		storagePath, storageAddr, storageAdvAddr, artifactRetentionTTL, artifactRetentionRecords)
 	if err != nil {
 		setupLog.Error(err, "unable to initialize storage")
 		os.Exit(1)
