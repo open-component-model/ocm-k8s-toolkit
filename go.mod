@@ -6,8 +6,6 @@ go 1.23.2
 // xref: https://github.com/opencontainers/go-digest/pull/66
 replace github.com/opencontainers/go-digest => github.com/opencontainers/go-digest v1.0.1-0.20220411205349-bde1400a84be
 
-replace ocm.software/ocm => ../ocm
-
 require (
 	github.com/Masterminds/semver/v3 v3.3.0
 	github.com/fluxcd/pkg/apis/event v0.9.0
@@ -26,7 +24,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.31.1
 	k8s.io/apimachinery v0.31.1
 	k8s.io/client-go v0.31.1
-	ocm.software/ocm v0.14.1-0.20240912152121-7c14e9d135e0
+	ocm.software/ocm v0.15.1-0.20241002080319-c38277a2f067
 	sigs.k8s.io/controller-runtime v0.19.0
 	sigs.k8s.io/yaml v1.4.0
 )

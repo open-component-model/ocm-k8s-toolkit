@@ -126,7 +126,7 @@ func (r *Reconciler) reconcilePrepare(ctx context.Context, component *v1alpha1.C
 	}
 
 	if repo.GetDeletionTimestamp() != nil {
-		return ctrl.Result{Requeue: true}, rerror.AsNonRetryableError(errors.New("repository is being deleted, please do not use it"))
+		return ctrl.Result{}, rerror.AsNonRetryableError(errors.New("repository is being deleted, please do not use it"))
 	}
 
 	if !conditions.IsReady(repo) {
