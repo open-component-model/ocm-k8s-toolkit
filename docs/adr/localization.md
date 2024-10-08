@@ -193,13 +193,13 @@ Chosen option: "[option 1]", because [justification. e.g., only option, which me
 
 ## Pros and Cons of the Options <!-- optional -->
 
-### [option 1]
+### Option 1 - Pre-Processing / Templating
 
 [example | description | pointer to more information | …] <!-- optional -->
 
-* Good, because [argument a]
-* Good, because [argument b]
-* Bad, because [argument c]
+* Good, because the component is not invalid/inconsistent after the transport.
+* Bad, because the deployment instructions are not more valid manifest / helm
+charts / kustomize overlays.
 * … <!-- numbers of pros and cons can vary -->
 
 ### [option 2]
