@@ -32,7 +32,6 @@ import (
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	corev1 "k8s.io/api/core/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
@@ -224,7 +223,11 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 	}
 
 	// Update status
-	if rerr = r.setComponentStatus(ctx, component, repository.Spec.RepositorySpec, component.Spec.Component, version); rerr != nil {
+	if rerr = r.setComponentStatus(ctx, component, v1alpha1.ComponentInfo{
+		RepositorySpec: repository.Spec.RepositorySpec,
+		Component:      component.Spec.Component,
+		Version:        version,
+	}); rerr != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.StatusSetFailedReason, err.Error())
 
 		return ctrl.Result{}, rerr
@@ -388,15 +391,9 @@ func (r *Reconciler) normalizeComponentVersionName(name string) string {
 func (r *Reconciler) setComponentStatus(
 	ctx context.Context,
 	component *v1alpha1.Component,
-	repositorySpec *apiextensionsv1.JSON,
-	componentName string,
-	version string,
+	info v1alpha1.ComponentInfo,
 ) rerror.ReconcileError {
-	component.Status.Component = v1alpha1.ComponentInfo{
-		RepositorySpec: repositorySpec,
-		Component:      componentName,
-		Version:        version,
-	}
+	component.Status.Component = info
 
 	component.Status.ConfigRefs = slices.Clone(component.Spec.ConfigRefs)
 	component.Status.SecretRefs = slices.Clone(component.Spec.SecretRefs)
