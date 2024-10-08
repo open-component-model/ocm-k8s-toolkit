@@ -22,12 +22,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
-	"github.com/mandelsoft/goutils/general"
 	"github.com/mandelsoft/goutils/sliceutils"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
@@ -224,10 +224,10 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 	}
 
 	// Update status
-	if err := r.setComponentStatus(ctx, component, repository.Spec.RepositorySpec, component.Spec.Component, version); err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.StatueSetFailedReason, err.Error())
+	if rerr = r.setComponentStatus(ctx, component, repository.Spec.RepositorySpec, component.Spec.Component, version); rerr != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.StatusSetFailedReason, err.Error())
 
-		return ctrl.Result{}, rerror.AsNonRetryableError(err)
+		return ctrl.Result{}, rerr
 	}
 
 	status.MarkReady(r.EventRecorder, component, "Applied version %s", version)
@@ -251,15 +251,12 @@ func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v
 		return "", rerror.AsNonRetryableError(fmt.Errorf("failed to check latest version: %w", err))
 	}
 
-	// the default is the FIRST parameter...
-	reconciledVersion := general.OptionalDefaulted("0.0.0", component.Status.Component.Version)
-
 	// we didn't yet reconcile anything, return whatever the retrieved version is.
-	if reconciledVersion == "0.0.0" {
+	if component.Status.Component.Version == "" {
 		return latestSemver.Original(), nil
 	}
 
-	currentSemver, err := semver.NewVersion(reconciledVersion)
+	currentSemver, err := semver.NewVersion(component.Status.Component.Version)
 	if err != nil {
 		return "", rerror.AsNonRetryableError(fmt.Errorf("failed to check reconciled version: %w", err))
 	}
@@ -269,15 +266,15 @@ func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v
 	}
 
 	switch component.Spec.DowngradePolicy {
-	case v1alpha1.DowngradeDeny:
-		return "", rerror.AsRetryableError(fmt.Errorf("component version cannot be downgraded from version %s "+
+	case v1alpha1.DowngradePolicyDeny:
+		return "", rerror.AsNonRetryableError(fmt.Errorf("component version cannot be downgraded from version %s "+
 			"to version %s", currentSemver.Original(), latestSemver.Original()))
-	case v1alpha1.DowngradeEnforce:
+	case v1alpha1.DowngradePolicyEnforce:
 		return latestSemver.Original(), nil
-	case v1alpha1.DowngradeAllow:
-		reconciledcv, err := session.LookupComponentVersion(repo, c.GetName(), reconciledVersion)
+	case v1alpha1.DowngradePolicyAllow:
+		reconciledcv, err := session.LookupComponentVersion(repo, c.GetName(), currentSemver.Original())
 		if err != nil {
-			return "", rerror.AsRetryableError(fmt.Errorf("failed to get reconciled component version to check"+
+			return "", rerror.AsNonRetryableError(fmt.Errorf("failed to get reconciled component version to check"+
 				" downgradability: %w", err))
 		}
 
@@ -394,15 +391,15 @@ func (r *Reconciler) setComponentStatus(
 	repositorySpec *apiextensionsv1.JSON,
 	componentName string,
 	version string,
-) error {
+) rerror.ReconcileError {
 	component.Status.Component = v1alpha1.ComponentInfo{
 		RepositorySpec: repositorySpec,
 		Component:      componentName,
 		Version:        version,
 	}
 
-	component.SetEffectiveConfigRefs()
-	component.SetEffectiveConfigRefs()
+	component.Status.ConfigRefs = slices.Clone(component.Spec.ConfigRefs)
+	component.Status.SecretRefs = slices.Clone(component.Spec.SecretRefs)
 
 	if component.Spec.ConfigSet != nil {
 		component.Status.ConfigSet = *component.Spec.ConfigSet
@@ -415,7 +412,7 @@ func (r *Reconciler) setComponentStatus(
 		},
 	}
 	if err := r.Get(ctx, client.ObjectKeyFromObject(artifact), artifact); err != nil {
-		return fmt.Errorf("failed to fetch artifact: %w", err)
+		return rerror.AsRetryableError(fmt.Errorf("failed to fetch artifact: %w", err))
 	}
 
 	component.Status.Artifact = artifact.Spec

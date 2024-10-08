@@ -18,7 +18,6 @@ package v1alpha1
 
 import (
 	"fmt"
-	"slices"
 	"time"
 
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
@@ -99,14 +98,6 @@ type ComponentStatus struct {
 	// effective.
 	// +optional
 	ConfigSet string `json:"configSet,omitempty"`
-}
-
-func (in *Component) SetEffectiveSecretRefs() {
-	in.Status.SecretRefs = slices.Clone(in.Spec.SecretRefs)
-}
-
-func (in *Component) SetEffectiveConfigRefs() {
-	in.Status.ConfigRefs = slices.Clone(in.Spec.ConfigRefs)
 }
 
 // +kubebuilder:object:root=true
