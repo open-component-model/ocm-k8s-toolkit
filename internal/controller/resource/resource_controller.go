@@ -143,7 +143,7 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 	// instance and not at the global default context variable.
 	octx := ocmctx.New(datacontext.MODE_EXTENDED)
 	defer func() {
-		retErr = rerror.AsNonRetryableError(errors.Join(retErr, octx.Finalize()))
+		retErr = rerror.AsRetryableError(errors.Join(retErr, octx.Finalize()))
 	}()
 	session := ocmctx.NewSession(datacontext.NewSession())
 	// automatically close the session when the ocm context is closed in the above defer
@@ -176,7 +176,7 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentDescriptorsFailedReason, err.Error())
 
-		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("failed to lookup component descriptor: %w", err))
+		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to lookup component descriptor: %w", err))
 	}
 
 	// Get resource and respective component descriptor
@@ -189,7 +189,7 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ResolveResourceFailedReason, err.Error())
 
-		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("failed to resolve resource reference: %w", err))
+		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to resolve resource reference: %w", err))
 	}
 
 	cv, rErr := r.getComponentVersion(resource, octx, session, component.Status.Component.RepositorySpec.Raw, resourceCd)
@@ -203,9 +203,9 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 		return ctrl.Result{}, rErr
 	}
 
-	err = r.verifyAndReconcileResource(ctx, resource, resourceAccess, cv, cd, reference)
-	if err != nil {
-		return ctrl.Result{}, rerror.AsNonRetryableError(fmt.Errorf("failed to verify and reconcile resource: %w", err))
+	rErr = r.verifyAndReconcileResource(ctx, resource, resourceAccess, cv, cd, reference)
+	if rErr != nil {
+		return ctrl.Result{}, rErr
 	}
 
 	// Update status
@@ -243,7 +243,7 @@ func (r *Reconciler) getComponentSetForArtifact(resource *v1alpha1.Resource, art
 		return nil, rerror.AsRetryableError(fmt.Errorf("failed to create temporary directory: %w", err))
 	}
 	defer func() {
-		retErr = rerror.AsNonRetryableError(errors.Join(retErr, os.RemoveAll(tmp)))
+		retErr = rerror.AsRetryableError(errors.Join(retErr, os.RemoveAll(tmp)))
 	}()
 
 	unlock, err := r.Storage.Lock(*artifact)
@@ -263,10 +263,10 @@ func (r *Reconciler) getComponentSetForArtifact(resource *v1alpha1.Resource, art
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ReadFileFailedReason, err.Error())
 
-		return nil, rerror.AsNonRetryableError(fmt.Errorf("failed to open component descriptor: %w", err))
+		return nil, rerror.AsRetryableError(fmt.Errorf("failed to open component descriptor: %w", err))
 	}
 	defer func() {
-		retErr = rerror.AsNonRetryableError(errors.Join(retErr, file.Close()))
+		retErr = rerror.AsRetryableError(errors.Join(retErr, file.Close()))
 	}()
 
 	// Get component descriptor set
@@ -276,14 +276,13 @@ func (r *Reconciler) getComponentSetForArtifact(resource *v1alpha1.Resource, art
 	if err := decoder.Decode(cds); err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.UnmarshallingComponentDescriptorsFailedReason, err.Error())
 
-		return nil, rerror.AsNonRetryableError(fmt.Errorf("failed to unmarshal component descriptors: %w", err))
+		return nil, rerror.AsRetryableError(fmt.Errorf("failed to unmarshal component descriptors: %w", err))
 	}
 
 	return compdesc.NewComponentVersionSet(cds.List...), nil
 }
 
-func (r *Reconciler) getComponentVersion(resource *v1alpha1.Resource, octx ocmctx.Context, session ocmctx.Session, spec []byte, compDesc *compdesc.ComponentDescriptor,
-) (
+func (r *Reconciler) getComponentVersion(resource *v1alpha1.Resource, octx ocmctx.Context, session ocmctx.Session, spec []byte, compDesc *compdesc.ComponentDescriptor) (
 	ocmctx.ComponentVersionAccess, rerror.ReconcileError,
 ) {
 	// Get repository and resolver to get the respective component version of the resource
@@ -291,13 +290,13 @@ func (r *Reconciler) getComponentVersion(resource *v1alpha1.Resource, octx ocmct
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.RepositorySpecInvalidReason, err.Error())
 
-		return nil, rerror.AsNonRetryableError(fmt.Errorf("failed to get repository spec: %w", err))
+		return nil, rerror.AsRetryableError(fmt.Errorf("failed to get repository spec: %w", err))
 	}
 	repo, err := session.LookupRepository(octx, repoSpec)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetRepositoryFailedReason, err.Error())
 
-		return nil, rerror.AsNonRetryableError(fmt.Errorf("failed to lookup repository: %w", err))
+		return nil, rerror.AsRetryableError(fmt.Errorf("failed to lookup repository: %w", err))
 	}
 
 	resolver := resolvers.NewCompoundResolver(repo, octx.GetResolver())
@@ -307,7 +306,7 @@ func (r *Reconciler) getComponentVersion(resource *v1alpha1.Resource, octx ocmct
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentVersionFailedReason, err.Error())
 
-		return nil, rerror.AsNonRetryableError(fmt.Errorf("failed to lookup component version: %w", err))
+		return nil, rerror.AsRetryableError(fmt.Errorf("failed to lookup component version: %w", err))
 	}
 
 	return cv, nil
@@ -319,7 +318,7 @@ func (r *Reconciler) getResourceAccess(resource *v1alpha1.Resource, cv ocmctx.Co
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceAccessFailedReason, err.Error())
 
-		return nil, rerror.AsNonRetryableError(fmt.Errorf("failed to select resources: %w", err))
+		return nil, rerror.AsRetryableError(fmt.Errorf("failed to select resources: %w", err))
 	}
 
 	var resourceAccess ocmctx.ResourceAccess
@@ -328,14 +327,14 @@ func (r *Reconciler) getResourceAccess(resource *v1alpha1.Resource, cv ocmctx.Co
 		err := errors.New("no resources selected")
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceAccessFailedReason, err.Error())
 
-		return nil, rerror.AsNonRetryableError(err)
+		return nil, rerror.AsRetryableError(err)
 	case 1:
 		resourceAccess = resAccesses[0]
 	default:
 		err := errors.New("cannot determine the resource unambiguously")
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceAccessFailedReason, err.Error())
 
-		return nil, rerror.AsNonRetryableError(err)
+		return nil, rerror.AsRetryableError(err)
 	}
 
 	return resourceAccess, nil
@@ -343,17 +342,19 @@ func (r *Reconciler) getResourceAccess(resource *v1alpha1.Resource, cv ocmctx.Co
 
 func (r *Reconciler) verifyAndReconcileResource(ctx context.Context, resource *v1alpha1.Resource, access ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAccess, cd *compdesc.ComponentDescriptor,
 	reference v1.ResourceReference,
-) (retErr rerror.ReconcileError) {
+) (
+	retErr rerror.ReconcileError,
+) {
 	// Write resource
 	tmpDir, err := os.MkdirTemp("", "resource-*")
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.TemporaryFolderCreationFailedReason, err.Error())
 
-		return rerror.AsNonRetryableError(fmt.Errorf("failed to create temporary directory: %w", err))
+		return rerror.AsRetryableError(fmt.Errorf("failed to create temporary directory: %w", err))
 	}
 	// TODO: Discuss if we should cache the downloaded resources
 	defer func() {
-		retErr = rerror.AsNonRetryableError(errors.Join(retErr, os.RemoveAll(tmpDir)))
+		retErr = rerror.AsRetryableError(errors.Join(retErr, os.RemoveAll(tmpDir)))
 	}()
 
 	// Get resource reader
@@ -361,10 +362,10 @@ func (r *Reconciler) verifyAndReconcileResource(ctx context.Context, resource *v
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceReaderFailedReason, err.Error())
 
-		return rerror.AsNonRetryableError(fmt.Errorf("failed to create reader: %w", err))
+		return rerror.AsRetryableError(fmt.Errorf("failed to create reader: %w", err))
 	}
 	defer func() {
-		retErr = rerror.AsNonRetryableError(errors.Join(retErr, reader.Close()))
+		retErr = rerror.AsRetryableError(errors.Join(retErr, reader.Close()))
 	}()
 
 	// Only required for digest calculation and to provide through the artifact server
@@ -374,10 +375,10 @@ func (r *Reconciler) verifyAndReconcileResource(ctx context.Context, resource *v
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.OpenFileFailedReason, err.Error())
 
-		return rerror.AsNonRetryableError(fmt.Errorf("failed to open resource file: %w", err))
+		return rerror.AsRetryableError(fmt.Errorf("failed to open resource file: %w", err))
 	}
 	defer func() {
-		retErr = rerror.AsNonRetryableError(errors.Join(retErr, file.Close()))
+		retErr = rerror.AsRetryableError(errors.Join(retErr, file.Close()))
 	}()
 
 	// Copy content to file
@@ -386,7 +387,7 @@ func (r *Reconciler) verifyAndReconcileResource(ctx context.Context, resource *v
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.CopyFileFailedReason, err.Error())
 
-		return rerror.AsNonRetryableError(fmt.Errorf("failed to copy resource file: %w", err))
+		return rerror.AsRetryableError(fmt.Errorf("failed to copy resource file: %w", err))
 	}
 
 	revision := string(reference.Resource.Digest())
@@ -404,17 +405,17 @@ func (r *Reconciler) verifyAndReconcileResource(ctx context.Context, resource *v
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.DigestVerificationFailedReason, err.Error())
 
-			return rerror.AsNonRetryableError(fmt.Errorf("verification failed: %w", err))
+			return rerror.AsRetryableError(fmt.Errorf("verification failed: %w", err))
 		}
 		err = errors.New("expected signature verification to be relevant, but it was not")
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.DigestVerificationFailedReason, err.Error())
 
-		return rerror.AsNonRetryableError(err)
+		return rerror.AsRetryableError(err)
 	}
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.DigestVerificationFailedReason, err.Error())
 
-		return rerror.AsNonRetryableError(fmt.Errorf("failed to verify resource digest: %w", err))
+		return rerror.AsRetryableError(fmt.Errorf("failed to verify resource digest: %w", err))
 	}
 
 	err = r.Storage.ReconcileStorage(ctx, resource)
@@ -425,7 +426,7 @@ func (r *Reconciler) verifyAndReconcileResource(ctx context.Context, resource *v
 	}
 
 	// Provide artifact in storage
-	// BUG: NewArtifactFor does not sanitize the name. Could break if name too long
+	// TODO: NewArtifactFor does not sanitize the name. Could break if name too long
 	if err := r.Storage.ReconcileArtifact(ctx, resource, revision, tmpDir, revision+".tar.gz",
 		func(art *artifactv1.Artifact, _ string) error {
 			// Archive directory to storage
@@ -442,7 +443,7 @@ func (r *Reconciler) verifyAndReconcileResource(ctx context.Context, resource *v
 	); err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ReconcileArtifactFailedReason, err.Error())
 
-		return rerror.AsNonRetryableError(fmt.Errorf("failed to reconcile resource artifact: %w", err))
+		return rerror.AsRetryableError(fmt.Errorf("failed to reconcile resource artifact: %w", err))
 	}
 
 	return nil
