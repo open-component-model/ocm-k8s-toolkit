@@ -25,14 +25,24 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+type DowngradePolicy string
+
+var (
+	DowngradePolicyAllow   DowngradePolicy = "Allow"
+	DowngradePolicyDeny    DowngradePolicy = "Deny"
+	DowngradePolicyEnforce DowngradePolicy = "Enforce"
+)
+
 // ComponentSpec defines the desired state of Component.
 type ComponentSpec struct {
 	// +required
 	RepositoryRef ObjectKey `json:"repositoryRef"`
 	// +required
 	Component string `json:"component"`
+	// +kubebuilder:validation:Enum:=Allow;Deny;Enforce
+	// +kubebuilder:default:=Deny
 	// +optional
-	EnforceDowngradability bool `json:"enforceDowngradability,omitempty"`
+	DowngradePolicy DowngradePolicy `json:"downgradePolicy,omitempty"`
 	// Semver defines the constraint of the fetched version. '>=v0.1'.
 	// +required
 	Semver string `json:"semver"`

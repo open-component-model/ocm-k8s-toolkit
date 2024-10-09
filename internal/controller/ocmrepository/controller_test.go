@@ -227,10 +227,9 @@ var _ = Describe("OCMRepository Controller", func() {
 							Namespace: TestNamespaceOCMRepo,
 							Name:      ocmRepoName,
 						},
-						Component:              componentName,
-						EnforceDowngradability: false,
-						Semver:                 "1.0.0",
-						Interval:               metav1.Duration{Duration: time.Minute * 10},
+						Component: componentName,
+						Semver:    "1.0.0",
+						Interval:  metav1.Duration{Duration: time.Minute * 10},
 					},
 					Status: v1alpha1.ComponentStatus{},
 				}
