@@ -40,7 +40,6 @@ spec:
             description: ComponentSpec defines the desired state of Component.
             properties:
               component:
-                description: Component is the name of the ocm component.
                 type: string
               configRefs:
                 items:
@@ -67,25 +66,16 @@ spec:
                   (s. https://ocm.software/docs/cli-reference/help/configfile/). If the SecretRef (or SecretRefs) and ConfigRef and
                   ConfigRefs contain ocm config sets, the user may specify which config set he wants to be effective.
                 type: string
-              enforceDowngradability:
-                description: |-
-                  DowngradePolicy specifies whether the component may be
-                  downgraded. The property is an enum with the 3 states: `Enforce`, `Allow`,
-                  `Deny`, with `Deny` being the default.
-                  `Deny` means never allow downgrades (thus, never fetch components with a
-                  version lower than the version currently deployed).
-                  `Allow` means that the component will be checked for a label with the
-                  `ocm.software/ocm-k8s-toolkit/downgradePolicy` which may specify a semver
-                  constraint down to which version downgrades are allowed.
-                  `Enforce` means always allow downgrades.
-                type: boolean
+              downgradePolicy:
+                default: Deny
+                enum:
+                - Allow
+                - Deny
+                - Enforce
+                type: string
               interval:
-                description: |-
-                  Interval at which the repository will be checked for new component
-                  versions.
                 type: string
               repositoryRef:
-                description: RepositoryRef is a reference to a OCMRepository.
                 properties:
                   name:
                     type: string
@@ -114,22 +104,13 @@ spec:
                 type: array
               semver:
                 description: Semver defines the constraint of the fetched version.
+                  '>=v0.1'.
                 type: string
               semverFilter:
-                description: |-
-                  SemverFilter is a regex pattern to filter the versions within the Semver
-                  range.
                 type: string
               suspend:
-                description: |-
-                  Suspend tells the controller to suspend the reconciliation of this
-                  Component.
                 type: boolean
               verify:
-                description: |-
-                  Verify contains a signature name specifying the component signature to be
-                  verified as well as the trusted public keys (or certificates containing
-                  the public keys) used to verify the signature.
                 items:
                   properties:
                     secretRef:
@@ -168,12 +149,48 @@ spec:
           status:
             description: ComponentStatus defines the observed state of Component.
             properties:
+              artifact:
+                description: ArtifactSpec defines the desired state of Artifact
+                properties:
+                  digest:
+                    description: Digest is the digest of the file in the form of '<algorithm>:<checksum>'.
+                    pattern: ^[a-z0-9]+(?:[.+_-][a-z0-9]+)*:[a-zA-Z0-9=_-]+$
+                    type: string
+                  lastUpdateTime:
+                    description: |-
+                      LastUpdateTime is the timestamp corresponding to the last update of the
+                      Artifact.
+                    format: date-time
+                    type: string
+                  metadata:
+                    additionalProperties:
+                      type: string
+                    description: Metadata holds upstream information such as OCI annotations.
+                    type: object
+                  revision:
+                    description: |-
+                      Revision is a human-readable identifier traceable in the origin source
+                      system. It can be a Git commit SHA, Git tag, a Helm chart version, etc.
+                    type: string
+                  size:
+                    description: Size is the number of bytes in the file.
+                    format: int64
+                    type: integer
+                  url:
+                    description: |-
+                      URL is the HTTP address of the Artifact as exposed by the controller
+                      managing the Source. It can be used to retrieve the Artifact for
+                      consumption, e.g. by another controller applying the Artifact contents.
+                    type: string
+                required:
+                - lastUpdateTime
+                - revision
+                - url
+                type: object
               artifactRef:
                 description: |-
-                  The component controller generates an artifact which is a list of
-                  component descriptors. If the components were verified, other controllers
-                  (e.g. Resource controller) can use this without having to verify the
-                  signature again.
+                  The component controller generates an artifact which is a list of component descriptors. If the components were
+                  verified, other controllers (e.g. Resource controller) can use this without having to verify the signature again
                 properties:
                   name:
                     default: ""
@@ -200,7 +217,6 @@ spec:
                 - version
                 type: object
               conditions:
-                description: Conditions holds the conditions for the Component.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -284,10 +300,9 @@ spec:
                   SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be
                   effective.
                 type: string
+              message:
+                type: string
               observedGeneration:
-                description: |-
-                  ObservedGeneration is the last observed generation of the ComponentStatus
-                  object.
                 format: int64
                 type: integer
               secretRefs:
@@ -311,6 +326,8 @@ spec:
                   type: object
                   x-kubernetes-map-type: atomic
                 type: array
+              state:
+                type: string
             type: object
         type: object
     served: true

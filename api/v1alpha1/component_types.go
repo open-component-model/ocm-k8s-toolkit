@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"time"
 
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -51,10 +52,11 @@ type ComponentSpec struct {
 	// `ocm.software/ocm-k8s-toolkit/downgradePolicy` which may specify a semver
 	// constraint down to which version downgrades are allowed.
 	// `Enforce` means always allow downgrades.
+	// +kubebuilder:validation:Enum:=Allow;Deny;Enforce
+	// +kubebuilder:default:=Deny
 	// +optional
-	EnforceDowngradability bool `json:"enforceDowngradability,omitempty"`
-
-	// Semver defines the constraint of the fetched version.
+	DowngradePolicy DowngradePolicy `json:"downgradePolicy,omitempty"`
+	// Semver defines the constraint of the fetched version. '>=v0.1'.
 	// +required
 	Semver string `json:"semver"`
 
@@ -107,11 +109,12 @@ type ComponentStatus struct {
 	// +optional
 	ArtifactRef corev1.LocalObjectReference `json:"artifactRef,omitempty"`
 
-	// Conditions holds the conditions for the Component.
+	// +optional
+	Artifact artifactv1.ArtifactSpec `json:"artifact,omitempty"`
+
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// TODO: do we really need this?
 	// +optional
 	Component ComponentInfo `json:"component,omitempty"`
 	// Propagate its effective secrets. Other controllers (e.g. Resource controller) may use this as default
