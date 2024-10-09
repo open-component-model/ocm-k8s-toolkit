@@ -145,7 +145,6 @@ func (r *Reconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRe
 }
 
 func (r *Reconciler) fillRepoStatusFromSpec(ocmRepo *v1alpha1.OCMRepository) {
-	ocmRepo.SetEffectiveRepositorySpec()
 	ocmRepo.SetEffectiveConfigSet()
 	ocmRepo.SetEffectiveConfigRefs()
 	ocmRepo.SetEffectiveSecretRefs()

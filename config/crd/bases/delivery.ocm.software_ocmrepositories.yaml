@@ -178,6 +178,9 @@ spec:
                   Propagate its effective configs. Other controllers (e.g. Component or
                   Resource controller) may use this as default if they do not explicitly
                   refer a config.
+                  This is required to allow transitive defaulting (thus, e.g. Component
+                  defaults from OCMRepository and Resource defaults from Component) without
+                  having to traverse the entire chain.
                 items:
                   description: |-
                     LocalObjectReference contains enough information to let you locate the
@@ -200,6 +203,9 @@ spec:
                   Propagate its effective config set. Other controllers (e.g. Component or
                   Resource controller) may use this as default if they do not explicitly
                   specify a config set.
+                  This is required to allow transitive defaulting (thus, e.g. Component
+                  defaults from OCMRepository and Resource defaults from Component) without
+                  having to traverse the entire chain.
                 type: string
               observedGeneration:
                 description: |-
@@ -207,16 +213,14 @@ spec:
                   object.
                 format: int64
                 type: integer
-              repositorySpec:
-                description: |-
-                  RepositorySpec represents the RepositorySpec used in the last successful
-                  OCMRepository reconciliation
-                x-kubernetes-preserve-unknown-fields: true
               secretRefs:
                 description: |-
                   Propagate its effective secrets. Other controllers (e.g. Component or
                   Resource controller) may use this as default if they do not explicitly
                   refer a secret.
+                  This is required to allow transitive defaulting (thus, e.g. Component
+                  defaults from OCMRepository and Resource defaults from Component) without
+                  having to traverse the entire chain.
                 items:
                   description: |-
                     LocalObjectReference contains enough information to let you locate the

@@ -79,27 +79,30 @@ type OCMRepositoryStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// TODO: can we delete this?
-	// RepositorySpec represents the RepositorySpec used in the last successful
-	// OCMRepository reconciliation
-	// +optional
-	RepositorySpec *apiextensionsv1.JSON `json:"repositorySpec,omitempty"`
-
 	// Propagate its effective secrets. Other controllers (e.g. Component or
 	// Resource controller) may use this as default if they do not explicitly
 	// refer a secret.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
 	// +optional
 	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
 
 	// Propagate its effective configs. Other controllers (e.g. Component or
 	// Resource controller) may use this as default if they do not explicitly
 	// refer a config.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
 	// +optional
 	ConfigRefs []v1.LocalObjectReference `json:"configRefs,omitempty"`
 
 	// Propagate its effective config set. Other controllers (e.g. Component or
 	// Resource controller) may use this as default if they do not explicitly
 	// specify a config set.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
 	// +optional
 	ConfigSet string `json:"configSets,omitempty"`
 }
@@ -131,12 +134,6 @@ func (in *OCMRepository) GetVID() map[string]string {
 
 func (in *OCMRepository) SetObservedGeneration(v int64) {
 	in.Status.ObservedGeneration = v
-}
-
-func (in *OCMRepository) SetEffectiveRepositorySpec() {
-	if in.Spec.RepositorySpec != nil {
-		in.Status.RepositorySpec = in.Spec.RepositorySpec
-	}
 }
 
 func (in *OCMRepository) GetSecretRefs() []v1.LocalObjectReference {

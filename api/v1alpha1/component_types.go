@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"time"
 
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -102,6 +101,10 @@ type ComponentStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
+	// Conditions holds the conditions for the Component.
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
 	// The component controller generates an artifact which is a list of
 	// component descriptors. If the components were verified, other controllers
 	// (e.g. Resource controller) can use this without having to verify the
@@ -109,28 +112,35 @@ type ComponentStatus struct {
 	// +optional
 	ArtifactRef corev1.LocalObjectReference `json:"artifactRef,omitempty"`
 
-	// +optional
-	Artifact artifactv1.ArtifactSpec `json:"artifact,omitempty"`
-
-	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
-
+	// Component specifies the concrete version of the component that was
+	// fetched after based on the semver constraints during the last successful
+	// reconciliation.
 	// +optional
 	Component ComponentInfo `json:"component,omitempty"`
-	// Propagate its effective secrets. Other controllers (e.g. Resource controller) may use this as default
-	// if they do not explicitly refer a secret.
+	// Propagate its effective secrets. Other controllers (e.g. Resource
+	// controller) may use this as default if they do not explicitly refer a
+	// secret.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
 	// +optional
 	SecretRefs []corev1.LocalObjectReference `json:"secretRefs,omitempty"`
 
-	// Propagate its effective configs. Other controllers (e.g. Component or Resource controller) may use this as default
-	// if they do not explicitly refer a config.
+	// Propagate its effective configs. Other controllers (e.g. Component or
+	// Resource controller) may use this as default if they do not explicitly
+	// refer a config.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
 	// +optional
 	ConfigRefs []corev1.LocalObjectReference `json:"configRefs,omitempty"`
 
-	// The secrets referred to by SecretRef (or SecretRefs) may contain ocm config data. The ocm config allows to
-	// specify sets of configuration data (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
-	// SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be
-	// effective.
+	// Propagate its effective config set. Other controllers (e.g. Component or
+	// Resource controller) may use this as default if they do not explicitly
+	// specify a config set.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
 	// +optional
 	ConfigSet string `json:"configSet,omitempty"`
 }

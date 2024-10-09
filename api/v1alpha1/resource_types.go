@@ -71,29 +71,39 @@ type ResourceStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
+	// Conditions holds the conditions for the Resource.
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
 	// ArtifactRef points to the Artifact which represents the output of the
 	// last successful Resource sync.
 	// +optional
 	ArtifactRef v1.LocalObjectReference `json:"artifactRef,omitempty"`
 
-	// Conditions holds the conditions for the Resource.
-	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
-
-	// Propagate its effective secrets. Other controllers (e.g. Resource controller) may use this as default
-	// if they do not explicitly refer a secret.
+	// Propagate its effective secrets. Other controllers (e.g. Resource
+	// controller) may use this as default if they do not explicitly refer a
+	// secret.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
 	// +optional
 	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
 
-	// Propagate its effective configs. Other controllers (e.g. Component or Resource controller) may use this as default
-	// if they do not explicitly refer a config.
+	// Propagate its effective configs. Other controllers (e.g. Component or
+	// Resource controller) may use this as default if they do not explicitly
+	// refer a config.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
 	// +optional
 	ConfigRefs []v1.LocalObjectReference `json:"configRefs,omitempty"`
 
-	// The secrets referred to by SecretRef (or SecretRefs) may contain ocm config data. The ocm config allows to
-	// specify sets of configuration data (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
-	// SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be
-	// effective.
+	// Propagate its effective config set. Other controllers (e.g. Component or
+	// Resource controller) may use this as default if they do not explicitly
+	// specify a config set.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
 	// +optional
 	ConfigSet string `json:"configSet,omitempty"`
 }
