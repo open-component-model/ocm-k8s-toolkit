@@ -106,6 +106,8 @@ But theoretically, it could also be for a
 [*CommonTransportFormat Archive*](https://github.com/open-component-model/ocm-spec/blob/main/doc/04-extensions/03-storage-backends/ctf.md)
 or any other [ocm repository implementation](https://github.com/open-component-model/ocm-spec/blob/main/doc/04-extensions/03-storage-backends/README.md).
 
+> **NOTE:** The other fields are common to all the custom resources and are
+> therefore explained in a separate dedicated *common fields* section below.
 
 #### Component
 
@@ -320,9 +322,16 @@ development).
 The `interval` (required) is a common property for flux custom resources as
 documented [here](https://fluxcd.io/flux/components/source/gitrepositories/#interval).
 In general, it specifies the time interval in which the custom
-resource is reconciled again (so thereby, in case of the `Component` custom
-resource, the time interval in which the *component controller* checks the
-repository for newer versions of the corresponding *ocm component*).
+resource is reconciled again. So thereby, in case of the `Component` custom
+resource, e.g. the time interval in which the *component controller* checks the
+repository for newer versions of the corresponding *ocm component*. Meanwhile, 
+it also serves as a drift detection.  
+But it is **important** to notice, this interval is also used as the retry 
+interval for some particular failure cases. In case of the `Component` custom
+resource, e.g. if the *component controller* fails to find the *ocm component* 
+in the specified *ocm repository*, it will wait for the duration specified in
+the `interval` until it will try again. Therefore, setting the interval quite 
+high can lead to unexpected behaviour in regard to recovery time.
 
 The `suspend` (optional) is a common property for flux custom resources as
 documented [here](https://fluxcd.io/flux/components/source/gitrepositories/#suspend).

@@ -25,12 +25,20 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+type ResolverSpec struct {
+	RepositoryRef ObjectKey
+	...
+}
+
 // ComponentSpec defines the desired state of Component.
 type ComponentSpec struct {
+	// RepositoryRef is a reference to a OCMRepository.
 	// +required
-	RepositoryRef ObjectKey `json:"repositoryRef"`
+	RepositoryRef ObjectKey      `json:"repositoryRef"`
+	// Component is the name of the ocm component.
 	// +required
 	Component string `json:"component"`
+	//
 	// +optional
 	EnforceDowngradability bool `json:"enforceDowngradability,omitempty"`
 	// Semver defines the constraint of the fetched version. '>=v0.1'.
