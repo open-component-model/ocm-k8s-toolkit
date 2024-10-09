@@ -36,7 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
 	ocmctx "ocm.software/ocm/api/ocm"
-	"ocm.software/ocm/api/ocm/resolvers"
+	ocmresolvers "ocm.software/ocm/api/ocm/resolvers"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -158,7 +158,14 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 	octx.Finalizer().Close(session)
 
 	rerr = ocm.ConfigureOCMContext(ctx, r, octx, component, repository)
-	if err != nil {
+	if rerr != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ConfigureContextFailedReason, "Configuring Context failed")
+
+		return ctrl.Result{}, rerr
+	}
+
+	rerr = ocm.ConfigureResolvers(ctx, r.GetClient(), octx, component.Spec.Resolvers)
+	if rerr != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ConfigureContextFailedReason, "Configuring Context failed")
 
 		return ctrl.Result{}, rerr
@@ -319,7 +326,7 @@ func (r *Reconciler) verifyComponentVersionAndListDescriptors(ctx context.Contex
 
 	// if the component descriptors were not collected during signature validation, collect them now
 	if descriptors == nil || len(descriptors.List) == 0 {
-		descriptors, err = ocm.ListComponentDescriptors(ctx, cv, resolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver()))
+		descriptors, err = ocm.ListComponentDescriptors(ctx, cv, ocmresolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver()))
 		if err != nil {
 			return nil, rerror.AsRetryableError(fmt.Errorf("failed to list component descriptors: %w", err))
 		}

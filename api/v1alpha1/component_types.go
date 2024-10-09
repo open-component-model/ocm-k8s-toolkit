@@ -33,10 +33,18 @@ var (
 	DowngradePolicyEnforce DowngradePolicy = "Enforce"
 )
 
+type Resolver struct {
+	RepositoryRef ObjectKey `json:"repositoryRef"`
+	Prefix        string    `json:"prefix"`
+	Priority      int       `json:"priority"`
+}
+
 // ComponentSpec defines the desired state of Component.
 type ComponentSpec struct {
 	// +required
 	RepositoryRef ObjectKey `json:"repositoryRef"`
+	// +optional
+	Resolvers []Resolver `json:"resolvers"`
 	// +required
 	Component string `json:"component"`
 	// +kubebuilder:validation:Enum:=Allow;Deny;Enforce
