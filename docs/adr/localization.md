@@ -356,42 +356,19 @@ spec:
       name: mydeploymentinstruction
       version: 1.0.0
   interval: 10m0s
-  sourceRef:
-    kind: ComponentVersion
-    name: podinfocomponent-version
-    namespace: ocm-system
-    resourceRef:
-      name: manifests
-      referencePath:
-      - name: backend
-      version: 1.0.0
----
-## Data in podinfocomponent-version
-localization:
-  - resource:
-      name: image
-    file: deploy.yaml
-    image: spec.template.spec.containers[0].image
----
-apiVersion: delivery.ocm.software/v1alpha1
-kind: Configuration
-metadata:
-  name: backend-configuration
-  namespace: ocm-system
-spec:
-  configRef:
-    kind: ComponentVersion
-    name: podinfocomponent-version
-    namespace: ocm-system
-    resourceRef:
-      name: mydeploymentinstruction
-      version: 1.0.0
-  interval: 10m0s
-  sourceRef:
-    apiVersion: delivery.ocm.software/v1alpha1
-    kind: Localization
-    name: backend-localization
-    namespace: ocm-system
+  patchStrategicMerge: 
+    source:
+      sourceRef: 
+        kind: GitRepository 
+        name: gitRepo 
+        namespace: default 
+      path: "sites/eu-west-1/deployment.yaml" 
+    target: 
+      # Alternatively allow looking up via kind/name/namespace? This is not present currently, but could be implemented
+      # kind: Deployment
+      # name: deployment-in-mydeploymentinstruction
+      # namespace: ocm-system
+      path: "merge-target/merge-target.yaml"
 ```
 
 **Option 4 - Substitution With Mutating Webhooks**
