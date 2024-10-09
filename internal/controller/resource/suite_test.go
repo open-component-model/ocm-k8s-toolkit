@@ -50,7 +50,7 @@ import (
 
 const (
 	ARTIFACT_PATH   = "ocm-k8s-artifactstore--*"
-	ARTIFACT_SERVER = "127.0.0.1:8080"
+	ARTIFACT_SERVER = "localhost:8081"
 )
 
 var cfg *rest.Config

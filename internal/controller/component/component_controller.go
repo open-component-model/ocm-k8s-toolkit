@@ -140,23 +140,18 @@ func (r *Reconciler) reconcilePrepare(ctx context.Context, component *v1alpha1.C
 }
 
 func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Component, repository *v1alpha1.OCMRepository) (_ ctrl.Result, retErr rerror.ReconcileError) {
-	var err error
-	var rerr rerror.ReconcileError
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
 	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
 	// instance and not at the global default context variable.
 	octx := ocmctx.New(datacontext.MODE_EXTENDED)
 	defer func() {
-		err = octx.Finalize()
-		if err != nil {
-			retErr = rerror.AsNonRetryableError(errors.Join(retErr, err))
-		}
+		retErr = rerror.AsRetryableError(errors.Join(retErr, octx.Finalize()))
 	}()
 	session := ocmctx.NewSession(datacontext.NewSession())
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
 
-	rerr = ocm.ConfigureOCMContext(ctx, r, octx, component, repository)
+	rerr := ocm.ConfigureOCMContext(ctx, r, octx, component, repository)
 	if rerr != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ConfigureContextFailedReason, "Configuring Context failed")
 
