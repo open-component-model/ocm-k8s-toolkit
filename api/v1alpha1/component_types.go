@@ -20,76 +20,110 @@ import (
 	"fmt"
 	"time"
 
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type ResolverSpec struct {
-	RepositoryRef ObjectKey
-	...
-}
+type DowngradePolicy string
+
+var (
+	DowngradePolicyAllow   DowngradePolicy = "Allow"
+	DowngradePolicyDeny    DowngradePolicy = "Deny"
+	DowngradePolicyEnforce DowngradePolicy = "Enforce"
+)
 
 // ComponentSpec defines the desired state of Component.
 type ComponentSpec struct {
 	// RepositoryRef is a reference to a OCMRepository.
 	// +required
-	RepositoryRef ObjectKey      `json:"repositoryRef"`
+	RepositoryRef ObjectKey `json:"repositoryRef"`
+
 	// Component is the name of the ocm component.
 	// +required
 	Component string `json:"component"`
-	//
+
+	// DowngradePolicy specifies whether the component may be
+	// downgraded. The property is an enum with the 3 states: `Enforce`, `Allow`,
+	// `Deny`, with `Deny` being the default.
+	// `Deny` means never allow downgrades (thus, never fetch components with a
+	// version lower than the version currently deployed).
+	// `Allow` means that the component will be checked for a label with the
+	// `ocm.software/ocm-k8s-toolkit/downgradePolicy` which may specify a semver
+	// constraint down to which version downgrades are allowed.
+	// `Enforce` means always allow downgrades.
 	// +optional
 	EnforceDowngradability bool `json:"enforceDowngradability,omitempty"`
-	// Semver defines the constraint of the fetched version. '>=v0.1'.
+
+	// Semver defines the constraint of the fetched version.
 	// +required
 	Semver string `json:"semver"`
+
+	// SemverFilter is a regex pattern to filter the versions within the Semver
+	// range.
 	// +optional
 	SemverFilter string `json:"semverFilter,omitempty"`
+
+	// Verify contains a signature name specifying the component signature to be
+	// verified as well as the trusted public keys (or certificates containing
+	// the public keys) used to verify the signature.
 	// +optional
 	Verify []Verification `json:"verify,omitempty"`
+
 	// +optional
 	SecretRefs []corev1.LocalObjectReference `json:"secretRefs,omitempty"`
+
 	// +optional
 	ConfigRefs []corev1.LocalObjectReference `json:"configRefs,omitempty"`
+
 	// The secrets and configs referred to by SecretRef (or SecretRefs) and Config (or ConfigRefs) may contain ocm
 	// config data. The  ocm config allows to specify sets of configuration data
 	// (s. https://ocm.software/docs/cli-reference/help/configfile/). If the SecretRef (or SecretRefs) and ConfigRef and
 	// ConfigRefs contain ocm config sets, the user may specify which config set he wants to be effective.
 	// +optional
 	ConfigSet *string `json:"configSet"`
+
+	// Interval at which the repository will be checked for new component
+	// versions.
 	// +required
 	Interval metav1.Duration `json:"interval"`
+
+	// Suspend tells the controller to suspend the reconciliation of this
+	// Component.
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
 }
 
 // ComponentStatus defines the observed state of Component.
 type ComponentStatus struct {
-	// +optional
-	State string `json:"state,omitempty"`
-	// +optional
-	Message string `json:"message,omitempty"`
+	// ObservedGeneration is the last observed generation of the ComponentStatus
+	// object.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-	// The component controller generates an artifact which is a list of component descriptors. If the components were
-	// verified, other controllers (e.g. Resource controller) can use this without having to verify the signature again
+
+	// The component controller generates an artifact which is a list of
+	// component descriptors. If the components were verified, other controllers
+	// (e.g. Resource controller) can use this without having to verify the
+	// signature again.
 	// +optional
 	ArtifactRef corev1.LocalObjectReference `json:"artifactRef,omitempty"`
-	// +optional
-	Artifact artifactv1.ArtifactSpec `json:"artifact,omitempty"`
+
+	// Conditions holds the conditions for the Component.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// TODO: do we really need this?
 	// +optional
 	Component ComponentInfo `json:"component,omitempty"`
 	// Propagate its effective secrets. Other controllers (e.g. Resource controller) may use this as default
 	// if they do not explicitly refer a secret.
 	// +optional
 	SecretRefs []corev1.LocalObjectReference `json:"secretRefs,omitempty"`
+
 	// Propagate its effective configs. Other controllers (e.g. Component or Resource controller) may use this as default
 	// if they do not explicitly refer a config.
 	// +optional
 	ConfigRefs []corev1.LocalObjectReference `json:"configRefs,omitempty"`
+
 	// The secrets referred to by SecretRef (or SecretRefs) may contain ocm config data. The ocm config allows to
 	// specify sets of configuration data (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
 	// SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be

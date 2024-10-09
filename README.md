@@ -131,7 +131,7 @@ spec:
     namespace: default
     name: open-component-model-repo
   component: ocm.software/ocmcli
-  enforceDowngradability: false
+  downgradePolicy: Deny
   semver: ">= 6.1.x-0"
   semverFilter: ".*-rc.*"
   verify:
@@ -153,8 +153,8 @@ specifies where to look for the `component`.
 The `component` (required) specifies the name of the component.
 
 The `downgradePolicy` (optional) specifies whether the component may be
-downgraded. The property is an enum with the 3 states: `enforce`, `enable`,
-`disable`, with `disable` being the *default*.
+downgraded. The property is an enum with the 3 states: `Enforce`, `Allow`,
+`Deny`, with `Deny` being the *default*.
 In general, *ocm components* may specify their
 *downgradability* through a label named
 `ocm.software/ocm-k8s-toolkit/downgradable`. The value of the label has to be a

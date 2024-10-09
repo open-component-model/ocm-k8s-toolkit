@@ -147,7 +147,6 @@ func (in *ComponentSpec) DeepCopy() *ComponentSpec {
 func (in *ComponentStatus) DeepCopyInto(out *ComponentStatus) {
 	*out = *in
 	out.ArtifactRef = in.ArtifactRef
-	in.Artifact.DeepCopyInto(&out.Artifact)
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
 		*out = make([]metav1.Condition, len(*in))
@@ -472,7 +471,6 @@ func (in *ResourceSpec) DeepCopy() *ResourceSpec {
 func (in *ResourceStatus) DeepCopyInto(out *ResourceStatus) {
 	*out = *in
 	out.ArtifactRef = in.ArtifactRef
-	in.Artifact.DeepCopyInto(&out.Artifact)
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
 		*out = make([]metav1.Condition, len(*in))
@@ -480,8 +478,6 @@ func (in *ResourceStatus) DeepCopyInto(out *ResourceStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	in.Component.DeepCopyInto(&out.Component)
-	in.Resource.DeepCopyInto(&out.Resource)
 	if in.SecretRefs != nil {
 		in, out := &in.SecretRefs, &out.SecretRefs
 		*out = make([]corev1.LocalObjectReference, len(*in))

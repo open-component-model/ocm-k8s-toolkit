@@ -32,7 +32,7 @@ type OCMRepositorySpec struct {
 	// RepositorySpec is the config of an ocm repository containing component
 	// versions. This config has to be a valid ocm repository implementation
 	// specification
-	// https://github.com/open-component-model/ocm-spec/blob/main/doc/04-extensions/03-storage-backends/README.md
+	// https://github.com/open-component-model/ocm-spec/blob/main/doc/04-extensions/03-storage-backends/README.md.
 	// +required
 	RepositorySpec *apiextensionsv1.JSON `json:"repositorySpec"`
 
@@ -79,6 +79,7 @@ type OCMRepositoryStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
+	// TODO: can we delete this?
 	// RepositorySpec represents the RepositorySpec used in the last successful
 	// OCMRepository reconciliation
 	// +optional
