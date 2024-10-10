@@ -79,4 +79,6 @@ type ResourceInfo struct {
 	ExtraIdentity map[string]string `json:"extraIdentity,omitempty"`
 	// +required
 	Access apiextensionsv1.JSON `json:"access,omitempty"`
+	// +required
+	Digest string `json:"digest,omitempty"`
 }
