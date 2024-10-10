@@ -1,0 +1,16 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Localization
+metadata:
+  name: {{ .Name }}
+  namespace: {{ .Namespace }}
+spec:
+  target:
+    kind: Resource
+    name: {{ .TargetResourceName }}
+  source:
+    kind: Resource
+    name: {{ .SourceResourceName }}
+    strategy:
+      type: KustomizePatch
+      patches:
+        - path: {{ .PatchPath }}

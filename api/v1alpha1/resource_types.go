@@ -17,6 +17,9 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt"
+
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -142,6 +145,34 @@ type Resource struct {
 
 	Spec   ResourceSpec   `json:"spec,omitempty"`
 	Status ResourceStatus `json:"status,omitempty"`
+}
+
+func (in *Resource) SetObservedGeneration(v int64) {
+	in.Status.ObservedGeneration = v
+}
+
+func (in *Resource) GetVID() map[string]string {
+	vid := fmt.Sprintf("%s:%s", in.Status.Resource.Name, in.Status.Resource.Version)
+	metadata := make(map[string]string)
+	metadata[GroupVersion.Group+"/resource_version"] = vid
+
+	return metadata
+}
+
+func (in *Resource) SetConditions(conditions []metav1.Condition) {
+	in.Status.Conditions = conditions
+}
+
+func (in *Resource) GetObjectMeta() *metav1.ObjectMeta {
+	return &in.ObjectMeta
+}
+
+func (in *Resource) GetKind() string {
+	return "Resource"
+}
+
+func (in *Resource) GetConditions() []metav1.Condition {
+	return in.Status.Conditions
 }
 
 // +kubebuilder:object:root=true
