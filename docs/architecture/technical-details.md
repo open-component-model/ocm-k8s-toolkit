@@ -3,7 +3,7 @@
 ## Resource Resolution and Verification
 
 As a result of a successful reconciliation, the *component controller* produces
-an *artifact*. The *artifact* is list of all *component descriptors* contained
+an *artifact*. The *artifact* is a list of all *component descriptors* contained
 in the transitive closure (in other words, the whole tree of component
 references) of the *latest relevant version* of the *component* currently being
 reconciled.
