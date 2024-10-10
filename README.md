@@ -34,7 +34,7 @@ Together, this composition serves as a flux
 
 <img src="./docs/assets/ocm-flux-source.png" alt="ocm-flux-source" width="50%" height="50%">
 
-As the basis for the following explanations, we assume, we stored the *ocm
+As the basis for the following explanations, we assume that we stored the *ocm
 components* constructed by the
 [ocm constructor](https://ocm.software/docs/getting-started/getting-started-with-ocm/create-a-component-version/#all-in-one)
 shown below within an *ocm repository* (based on an
