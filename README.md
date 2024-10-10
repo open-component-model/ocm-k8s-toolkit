@@ -205,40 +205,6 @@ mutually exclusive.
 > **NOTE:** The other fields are common to all the custom resources and are
 > therefore explained in a separate dedicated *common fields* section below.
 
-##### Technical Details
-
-As a result of a successful reconciliation, the *component controller* produces
-an *artifact*. The *artifact* is list of all *component descriptors* contained
-in the transitive closure (in other words, the whole tree of component
-references) of the *latest relevant version* of the *component* currently being
-reconciled.
-
-The reasoning behind this is that the *component controller* has to download
-(and calculate the digest) of each *component descriptor* anyway, in order to
-(recursively) verify the signature. As this download can be a quite expensive
-process (depending on the size of the *component version tree*) it is worth
-trying to prevent repeating it.
-
-Within the *Resource* custom resource, the *ocm resource* to be downloaded and
-exposed as *artifact* by the *resource controller* is specified by a
-***relative** resource reference*, thus, by a path of *component references*
-with the *component version* currently being reconciled as the *root*. To
-resolve this path, the *resource controller* would have to download all the
-*component versions* that are part of this path of *component references*. After
-that, to verify the *resource*, the downloaded content has to be digested and
-compared with the digest in the *component descriptor*. To ensure that the
-digest within the *component descriptor* has not been tempered with, the
-*resource controller* would **again** have to verify the signature. As already
-explained above for the *component controller*, to do this, the *resource
-controller* would also have to download the *component descriptors* of the whole
-subtree of *component versions* below the *component version* containing the
-resource.
-
-Instead, the *resource controller* uses the list of already **verified**
-*component descriptors* exposed as *artifact* by the *component controller* to
-resolve the *relative resource reference* as well as to compare and verify the
-digest of the resource.
-
 #### Resource
 
 The *Resource* is a custom resource specifying an *ocm resource* to be
@@ -291,6 +257,9 @@ identity* then specifies the particular *resource* within the *component*
 specified through the *reference path*. This is analogous to a file system path,
 with the *component references* as the directories and the *resource* as the
 file.
+
+> For details about the internals of the resource resolution and verification, 
+> see [here](./docs/architecture/)
 
 > **NOTE:** The other fields are common to all the custom resources and are
 > therefore explained in a separate dedicated *common fields* section below.
