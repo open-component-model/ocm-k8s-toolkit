@@ -245,7 +245,7 @@ The *Resource* is a custom resource specifying an *ocm resource* to be
 watched.
 
 The purpose of the `Resource` and the corresponding *resource controller* is
-to expose a *resource* contained in an *ocm component* as an *artifact*.
+to expose a *resource* contained in an *ocm component* at a specific version as an *artifact*.
 
 ##### Fields
 
