@@ -17,7 +17,8 @@ TLDR; Based on [*open flux*](https://github.com/openfluxcd), the composition of
 [s3 buckets](https://fluxcd.io/flux/components/source/buckets/), and
 [helm](https://fluxcd.io/flux/components/source/helmrepositories/)), enabling
 OCM as a flux source system.  
-To be more concrete, the *OCM-K8S-Toolkit* enables the continuous
+
+Thus, the *OCM-K8S-Toolkit* enables the continuous
 deployment of plain manifests, kustomize overlays and helm charts stored in OCM
 components (so essentially, *OCMOps*).
 
