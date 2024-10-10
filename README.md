@@ -22,6 +22,12 @@ Thus, the *OCM-K8S-Toolkit* enables the continuous
 deployment of plain manifests, kustomize overlays and helm charts stored in OCM
 components (so essentially, *OCMOps*).
 
+> **Disclaimer**: This is a preliminary documentation to get a first glance at
+> the ideas and principles behind the ocm-k8s-toolkit. Consequently, it is
+> subject to significant change and might not always be uptodate. Furthermore,
+> the examples used in the explanation are currently just to make the topic
+> more tangible - they do not actually exist and are not suited to follow along.
+
 ## Tools
 
 ### Core - OCM as Flux Source System
