@@ -21,7 +21,6 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -30,19 +29,13 @@ import (
 
 // ResourceSpec defines the desired state of Resource.
 type ResourceSpec struct {
-	// +required
-	RepositoryRef ObjectKey `json:"repositoryRef"`
-
 	// ComponentRef is a reference to a Component.
 	// +required
-	ComponentRef ObjectKey `json:"componentRef"`
+	ComponentRef v1.LocalObjectReference `json:"componentRef"`
 
 	// Resource identifies the ocm resource to be fetched.
 	// +required
 	Resource ResourceID `json:"resource"`
-
-	// +optional
-	ResourceSelector *apiextensionsv1.JSON `json:"resourceSelector"`
 
 	// +optional
 	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`

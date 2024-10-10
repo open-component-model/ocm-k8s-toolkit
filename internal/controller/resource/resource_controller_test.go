@@ -102,16 +102,15 @@ var _ = Describe("Resource Controller", func() {
 					Name:      ResourceObj,
 				},
 				Spec: v1alpha1.ResourceSpec{
-					ComponentRef: v1alpha1.ObjectKey{
-						Namespace: Namespace,
-						Name:      ComponentObj,
+					ComponentRef: corev1.LocalObjectReference{
+						Name: ComponentObj,
 					},
 					Resource: v1alpha1.ResourceID{
 						ByReference: v1alpha1.ResourceReference{
 							Resource: v1.NewIdentity(ResourceObj),
 						},
 					},
-					Interval: metav1.Duration{Duration: time.Minute * 10},
+					Interval: metav1.Duration{Duration: time.Minute * 5},
 				},
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -157,6 +156,10 @@ func prepareComponent(ctx context.Context, env *Builder, ctfPath string) {
 	env.OCMCommonTransport(ctfPath, accessio.FormatDirectory, func() {
 		env.Component(Component, func() {
 			env.Version(ComponentVersion, func() {
+				// TODO: Delete before merge (test purposes)
+				//env.Resource(ResourceObj, ResourceVersion, artifacttypes.HELM_CHART, v1.LocalRelation, func() {
+				//	env.Access(ociartifact.New("ghcr.io/stefanprodan/charts/podinfo:6.7.0"))
+				//})
 				env.Resource(ResourceObj, ResourceVersion, artifacttypes.PLAIN_TEXT, v1.LocalRelation, func() {
 					env.BlobData(mime.MIME_TEXT, []byte(ResourceContent))
 				})
@@ -186,10 +189,9 @@ func prepareComponent(ctx context.Context, env *Builder, ctfPath string) {
 				Namespace: Namespace,
 				Name:      RepositoryObj,
 			},
-			Component:              Component,
-			EnforceDowngradability: false,
-			Semver:                 ComponentVersion,
-			Interval:               metav1.Duration{Duration: time.Minute * 10},
+			Component: Component,
+			Semver:    ComponentVersion,
+			Interval:  metav1.Duration{Duration: time.Minute * 10},
 		},
 	}
 	Expect(k8sClient.Create(ctx, component)).To(Succeed())
@@ -227,7 +229,7 @@ func prepareComponent(ctx context.Context, env *Builder, ctfPath string) {
 	baseComponent.Status.ArtifactRef = corev1.LocalObjectReference{Name: artifact.ObjectMeta.Name}
 	spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfPath))
 	specData := Must(spec.MarshalJSON())
-	baseComponent.Status.Component = &v1alpha1.ComponentInfo{
+	baseComponent.Status.Component = v1alpha1.ComponentInfo{
 		RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
 		Component:      Component,
 		Version:        ComponentVersion,

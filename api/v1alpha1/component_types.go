@@ -116,7 +116,7 @@ type ComponentStatus struct {
 	// fetched after based on the semver constraints during the last successful
 	// reconciliation.
 	// +optional
-	Component *ComponentInfo `json:"component,omitempty"`
+	Component ComponentInfo `json:"component,omitempty"`
 	// Propagate its effective secrets. Other controllers (e.g. Resource
 	// controller) may use this as default if they do not explicitly refer a
 	// secret.

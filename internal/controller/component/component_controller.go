@@ -125,7 +125,7 @@ func (r *Reconciler) reconcilePrepare(ctx context.Context, component *v1alpha1.C
 		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to get repository: %w", err))
 	}
 
-	if repo.GetDeletionTimestamp() != nil {
+	if repo.DeletionTimestamp != nil {
 		return ctrl.Result{}, rerror.AsNonRetryableError(errors.New("repository is being deleted, please do not use it"))
 	}
 
@@ -140,19 +140,24 @@ func (r *Reconciler) reconcilePrepare(ctx context.Context, component *v1alpha1.C
 }
 
 func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Component, repository *v1alpha1.OCMRepository) (_ ctrl.Result, retErr rerror.ReconcileError) {
+	var err error
+	var rerr rerror.ReconcileError
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
 	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
 	// instance and not at the global default context variable.
 	octx := ocmctx.New(datacontext.MODE_EXTENDED)
 	defer func() {
-		retErr = rerror.AsRetryableError(errors.Join(retErr, octx.Finalize()))
+		err = octx.Finalize()
+		if err != nil {
+			retErr = rerror.AsNonRetryableError(errors.Join(retErr, err))
+		}
 	}()
 	session := ocmctx.NewSession(datacontext.NewSession())
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
 
-	rerr := ocm.ConfigureOCMContext(ctx, r, octx, component, repository)
-	if rerr != nil {
+	rerr = ocm.ConfigureOCMContext(ctx, r, octx, component, repository)
+	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ConfigureContextFailedReason, "Configuring Context failed")
 
 		return ctrl.Result{}, rerr
@@ -197,7 +202,7 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 
 	descriptors, rerr := r.verifyComponentVersionAndListDescriptors(ctx, octx, component, cv)
 	if rerr != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.VerificationFailedReason, rerr.Error())
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.VerificationFailedReason, err.Error())
 
 		return ctrl.Result{}, rerr
 	}
@@ -211,13 +216,13 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 
 	rerr = r.createArtifactForDescriptors(ctx, octx, component, cv, descriptors)
 	if rerr != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, rerr.Error())
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, err.Error())
 
 		return ctrl.Result{}, rerr
 	}
 
 	// Update status
-	r.setComponentStatus(component, &v1alpha1.ComponentInfo{
+	r.setComponentStatus(component, v1alpha1.ComponentInfo{
 		RepositorySpec: repository.Spec.RepositorySpec,
 		Component:      component.Spec.Component,
 		Version:        version,
@@ -378,7 +383,10 @@ func (r *Reconciler) normalizeComponentVersionName(name string) string {
 	return strings.ReplaceAll(name, "/", "-")
 }
 
-func (r *Reconciler) setComponentStatus(component *v1alpha1.Component, info *v1alpha1.ComponentInfo) {
+func (r *Reconciler) setComponentStatus(
+	component *v1alpha1.Component,
+	info v1alpha1.ComponentInfo,
+) {
 	component.Status.Component = info
 
 	component.Status.ConfigRefs = slices.Clone(component.Spec.ConfigRefs)
