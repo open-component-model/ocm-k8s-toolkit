@@ -45,6 +45,7 @@ func (clnt *localStorageBackedClient) GetLocalizationTarget(ctx context.Context,
 	default:
 		err = fmt.Errorf("unsupported localization target kind: %s", ref.Kind)
 	}
+
 	return
 }
 
@@ -62,6 +63,7 @@ func (clnt *localStorageBackedClient) GetLocalizationSource(ctx context.Context,
 	default:
 		err = fmt.Errorf("unsupported localization source kind: %s", ref.Kind)
 	}
+
 	return
 }
 

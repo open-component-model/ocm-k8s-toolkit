@@ -52,11 +52,11 @@ func (in *Localization) GetVID() map[string]string {
 	vid := fmt.Sprintf("%s:%s", in.Namespace, in.Name)
 	metadata := make(map[string]string)
 	metadata[GroupVersion.Group+"/localization"] = vid
+
 	return metadata
 }
 
 type LocalizationSpec struct {
-
 	// Target that is to be localized
 	// +required
 	Target LocalizationReference `json:"target,omitempty"`

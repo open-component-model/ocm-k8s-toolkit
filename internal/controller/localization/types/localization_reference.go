@@ -9,6 +9,8 @@ import (
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 )
 
+const modeReadOnlyUser = 0o400
+
 var ErrAlreadyUnpacked = errors.New("already unpacked")
 
 type ComponentLocalizationReference struct {
@@ -19,6 +21,7 @@ type ComponentLocalizationReference struct {
 func (c *ComponentLocalizationReference) GetDigest() string {
 	return c.Artifact.Spec.Digest
 }
+
 func (c *ComponentLocalizationReference) GetRevision() string {
 	return c.Artifact.Spec.Revision
 }
@@ -26,7 +29,7 @@ func (c *ComponentLocalizationReference) GetRevision() string {
 var _ LocalizationTarget = &ComponentLocalizationReference{}
 
 func (c *ComponentLocalizationReference) Open() (io.ReadCloser, error) {
-	return os.OpenFile(c.LocalArtifactPath, os.O_RDONLY, 0o400)
+	return os.OpenFile(c.LocalArtifactPath, os.O_RDONLY, modeReadOnlyUser)
 }
 
 func (c *ComponentLocalizationReference) UnpackIntoDirectory(path string) (err error) {
@@ -35,7 +38,7 @@ func (c *ComponentLocalizationReference) UnpackIntoDirectory(path string) (err e
 		return ErrAlreadyUnpacked
 	}
 
-	if err = os.MkdirAll(path, 0o700); err != nil {
+	if err = os.MkdirAll(path, os.ModeDir); err != nil {
 		return err
 	}
 

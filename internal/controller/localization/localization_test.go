@@ -33,6 +33,8 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
+const modeReadWriteUser = 0o600
+
 //go:embed testdata/patch_test/deployment_patch_strategic_merge.yaml
 var deploymentPatch []byte
 
@@ -129,7 +131,7 @@ var _ = Describe("Localization Controller", func() {
 		Expect(localized).To(BeAnExistingFile())
 
 		memFs := vfs.New(memoryfs.New())
-		localizedArchiveData, err := os.OpenFile(localized, os.O_RDONLY, 0o600)
+		localizedArchiveData, err := os.OpenFile(localized, os.O_RDONLY, modeReadWriteUser)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(func() {
 			Expect(localizedArchiveData.Close()).To(Succeed())

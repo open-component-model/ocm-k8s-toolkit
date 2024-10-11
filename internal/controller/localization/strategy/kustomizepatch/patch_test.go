@@ -1,4 +1,4 @@
-package kustomize_patch
+package kustomizepatch
 
 import (
 	"io"

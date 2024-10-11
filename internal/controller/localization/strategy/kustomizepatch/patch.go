@@ -1,4 +1,4 @@
-package kustomize_patch
+package kustomizepatch
 
 import (
 	"bytes"
@@ -19,6 +19,8 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	loctypes "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/types"
 )
+
+const modeReadWriteUser = 0o600
 
 type Source interface {
 	UnpackIntoDirectory(path string) error
@@ -80,7 +82,7 @@ func Localize(ctx context.Context, src Source, trgt Target) (string, error) {
 		return "", fmt.Errorf("failed to marshal kustomization: %w", err)
 	}
 
-	if err = os.WriteFile(filepath.Join(workDir, "kustomization.yaml"), kustomizationYAML, 0o600); err != nil {
+	if err = os.WriteFile(filepath.Join(workDir, "kustomization.yaml"), kustomizationYAML, modeReadWriteUser); err != nil {
 		return "", fmt.Errorf("failed to write kustomization file: %w", err)
 	}
 
@@ -117,6 +119,7 @@ func convertPatches(patches []v1alpha1.LocalizationKustomizePatch, relativePathA
 		}
 		converted = append(converted, patch)
 	}
+
 	return converted
 }
 
@@ -124,6 +127,7 @@ func convertTarget(target *v1alpha1.LocalizationSelector) *types.Selector {
 	if target == nil {
 		return nil
 	}
+
 	return &types.Selector{
 		ResId: resid.ResId{
 			Gvk:       resid.NewGvk(target.Group, target.Version, target.Kind),
@@ -137,7 +141,7 @@ func convertTarget(target *v1alpha1.LocalizationSelector) *types.Selector {
 
 func writeStreamToFile(data io.Reader, path string) (err error) {
 	var outputFile *os.File
-	if outputFile, err = os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o600); err != nil {
+	if outputFile, err = os.OpenFile(path, os.O_CREATE|os.O_WRONLY, os.ModePerm); err != nil {
 		return fmt.Errorf("failed to open output file: %w", err)
 	}
 	defer func() {
@@ -161,6 +165,7 @@ func (pr *recursiveFileChecker) recursiveFiles() ([]string, error) {
 	if err := filepath.WalkDir(pr.base, pr.walk); err != nil {
 		return nil, err
 	}
+
 	return pr.patches, nil
 }
 
@@ -172,6 +177,7 @@ func (pr *recursiveFileChecker) walk(path string, d os.DirEntry, err error) erro
 		if path != pr.base {
 			return pr.walk(path, d, err)
 		}
+
 		return nil
 	}
 	rel, err := filepath.Rel(pr.base, path)
@@ -179,6 +185,7 @@ func (pr *recursiveFileChecker) walk(path string, d os.DirEntry, err error) erro
 		return err
 	}
 	pr.patches = append(pr.patches, rel)
+
 	return nil
 }
 
@@ -202,5 +209,6 @@ func AsYamlStream(resMap resmap.ResMap) (io.Reader, error) {
 			return nil, err
 		}
 	}
+
 	return buf, nil
 }

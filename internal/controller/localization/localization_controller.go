@@ -20,7 +20,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/strategy/kustomize_patch"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/types"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
@@ -96,6 +95,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 	target, err := loc.GetLocalizationTarget(ctx, localization.Spec.Target)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, localization, ReasonTargetFetchFailed, err.Error())
+
 		return ctrl.Result{}, fmt.Errorf("failed to fetch target: %w", err)
 	}
 
@@ -106,6 +106,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 	source, err := loc.GetLocalizationSource(ctx, localization.Spec.Source)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, localization, ReasonSourceFetchFailed, err.Error())
+
 		return ctrl.Result{}, fmt.Errorf("failed to fetch source: %w", err)
 	}
 
@@ -115,6 +116,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, localization, ReasonLocalizationFailed, err.Error())
 		logger.Error(err, "failed to localize, retrying later", "interval", localization.Spec.Interval.Duration)
+
 		return ctrl.Result{RequeueAfter: localization.Spec.Interval.Duration}, nil
 	}
 	localization.Status.LocalizationDigest = revisionAndDigest.Digest()
@@ -125,9 +127,9 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		revisionAndDigest.Revision(),
 		localized,
 		fmt.Sprintf("%s.tar.gz", revisionAndDigest.ToFileName()),
-		func(artifact *artifactv1.Artifact, s string) error {
+		func(artifact *artifactv1.Artifact, dir string) error {
 			// Archive directory to storage
-			if err := r.Storage.Archive(artifact, localized, func(p string, fi os.FileInfo) bool {
+			if err := r.Storage.Archive(artifact, dir, func(_ string, fi os.FileInfo) bool {
 				return fi.Name() != "localized.yaml"
 			}); err != nil {
 				return fmt.Errorf("unable to archive artifact to storage: %w", err)
@@ -158,7 +160,7 @@ func (r *Reconciler) localize(ctx context.Context,
 ) (string, error) {
 	switch src.GetStrategy().Type {
 	case v1alpha1.LocalizationStrategyTypeKustomizePatch:
-		return kustomize_patch.Localize(ctx, src, trgt)
+		return kustomizepatch.Localize(ctx, src, trgt)
 	default:
 		return "", fmt.Errorf("%w: %s", ErrUnsupportedLocalizationStrategy, src.GetStrategy().Type)
 	}
@@ -186,12 +188,13 @@ func (r MappedRevisionAndDigest) String() string {
 	return encodeJSONToString(r)
 }
 
-func encodeJSONToString[T any](any T) string {
+func encodeJSONToString[T any](toEncode T) string {
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
-	if err := encoder.Encode(any); err != nil {
+	if err := encoder.Encode(toEncode); err != nil {
 		return "invalid mapped revision: " + err.Error()
 	}
+
 	return buf.String()
 }
 
