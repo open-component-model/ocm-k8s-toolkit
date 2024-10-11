@@ -20,6 +20,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	localizationclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/client"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/strategy/kustomizepatch"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/strategy/mapped"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/types"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
@@ -31,9 +34,12 @@ const (
 	ReasonLocalizationFailed = "LocalizationFailed"
 )
 
-var ErrUnsupportedLocalizationStrategy = errors.New("unsupported localization strategy")
+var (
+	ErrUnsupportedLocalizationStrategy = errors.New("unsupported localization strategy")
+	ErrOnlyOneLocalizationStrategy     = errors.New("only one localization strategy is supported")
+)
 
-// Reconciler reconciles a Localization object.
+// Reconciler reconciles a LocalizationRules object.
 type Reconciler struct {
 	*ocm.BaseReconciler
 	*storage.Storage
@@ -86,7 +92,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1.Localization) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	loc := NewClientWithLocalStorage(r.Client, r.Storage)
+	loc := localizationclient.NewClientWithLocalStorage(r.Client, r.Storage)
 
 	if localization.Spec.Target.Namespace == "" {
 		localization.Spec.Target.Namespace = localization.Namespace
@@ -129,9 +135,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		fmt.Sprintf("%s.tar.gz", revisionAndDigest.ToFileName()),
 		func(artifact *artifactv1.Artifact, dir string) error {
 			// Archive directory to storage
-			if err := r.Storage.Archive(artifact, dir, func(_ string, fi os.FileInfo) bool {
-				return fi.Name() != "localized.yaml"
-			}); err != nil {
+			if err := r.Storage.Archive(artifact, dir, nil); err != nil {
 				return fmt.Errorf("unable to archive artifact to storage: %w", err)
 			}
 
@@ -140,7 +144,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 				Namespace: artifact.Namespace,
 			}
 
-			return nil
+			return os.RemoveAll(dir)
 		},
 	); err != nil {
 		status.MarkNotReady(r.EventRecorder, localization, v1alpha1.ReconcileArtifactFailedReason, err.Error())
@@ -155,18 +159,37 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 type RenderTarget string
 
 func (r *Reconciler) localize(ctx context.Context,
-	src types.LocalizationSource,
+	src types.LocalizationSourceWithStrategy,
 	trgt types.LocalizationTarget,
 ) (string, error) {
-	switch src.GetStrategy().Type {
-	case v1alpha1.LocalizationStrategyTypeKustomizePatch:
-		return kustomizepatch.Localize(ctx, src, trgt)
-	default:
-		return "", fmt.Errorf("%w: %s", ErrUnsupportedLocalizationStrategy, src.GetStrategy().Type)
+	strategy := src.GetStrategy()
+	instructions := 0
+	var localize func(ctx context.Context, src types.LocalizationSourceWithStrategy, trgt types.LocalizationTarget) (string, error)
+
+	if strategy.KustomizePatch != nil {
+		instructions++
+		localize = func(ctx context.Context, src types.LocalizationSourceWithStrategy, trgt types.LocalizationTarget) (string, error) {
+			return kustomizepatch.Localize(ctx, src, trgt)
+		}
 	}
+
+	if strategy.Mapped != nil {
+		instructions++
+		localize = func(ctx context.Context, src types.LocalizationSourceWithStrategy, trgt types.LocalizationTarget) (string, error) {
+			return mapped.Localize(ctx, localizationclient.NewClientWithLocalStorage(r.Client, r.Storage), r.Storage, src, trgt)
+		}
+	}
+
+	if instructions == 0 {
+		return "", fmt.Errorf("%w: %v", ErrUnsupportedLocalizationStrategy, strategy)
+	} else if instructions > 1 {
+		return "", fmt.Errorf("%w: %v", ErrOnlyOneLocalizationStrategy, strategy)
+	}
+
+	return localize(ctx, src, trgt)
 }
 
-func NewMappedRevisionAndDigest(source types.LocalizationSource, target types.LocalizationTarget) MappedRevisionAndDigest {
+func NewMappedRevisionAndDigest(source types.LocalizationSourceWithStrategy, target types.LocalizationTarget) MappedRevisionAndDigest {
 	return MappedRevisionAndDigest{
 		SourceRevision:          source.GetRevision(),
 		StrategyCustomizationID: digest.FromString(encodeJSONToString(source.GetStrategy())).String(),

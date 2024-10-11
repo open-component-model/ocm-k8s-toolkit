@@ -63,62 +63,97 @@ spec:
                     type: string
                   strategy:
                     properties:
-                      patches:
-                        items:
-                          properties:
-                            options:
-                              additionalProperties:
-                                type: boolean
-                              description: Options is a list of options for the patch_test
-                              type: object
-                            patch_test:
-                              description: Patch is the content of a patch_test.
-                              type: string
-                            path:
-                              description: Path is a relative file path to the patch_test
-                                file.
-                              type: string
-                            target:
-                              description: Target points to the resources that the
-                                patch_test is applied to
+                      kustomizePatch:
+                        properties:
+                          patches:
+                            items:
                               properties:
-                                annotationSelector:
-                                  description: |-
-                                    AnnotationSelector is a string that follows the label selection expression
-                                    https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#api
-                                    It matches with the resource annotations.
+                                options:
+                                  additionalProperties:
+                                    type: boolean
+                                  description: Options is a list of options for the
+                                    patch_test
+                                  type: object
+                                patch_test:
+                                  description: Patch is the content of a patch_test.
                                   type: string
-                                group:
+                                path:
+                                  description: Path is a relative file path to the
+                                    patch file.
                                   type: string
-                                kind:
-                                  type: string
-                                labelSelector:
-                                  description: |-
-                                    LabelSelector is a string that follows the label selection expression
-                                    https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#api
-                                    It matches with the resource labels.
-                                  type: string
-                                name:
-                                  description: Name of the resource.
-                                  type: string
-                                namespace:
-                                  description: Namespace the resource belongs to,
-                                    if it can belong to a namespace.
-                                  type: string
-                                version:
-                                  type: string
-                              required:
-                              - group
-                              - kind
-                              - version
+                                target:
+                                  description: Target points to the resources that
+                                    the patch_test is applied to
+                                  properties:
+                                    annotationSelector:
+                                      description: |-
+                                        AnnotationSelector is a string that follows the label selection expression
+                                        https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#api
+                                        It matches with the resource annotations.
+                                      type: string
+                                    group:
+                                      type: string
+                                    kind:
+                                      type: string
+                                    labelSelector:
+                                      description: |-
+                                        LabelSelector is a string that follows the label selection expression
+                                        https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#api
+                                        It matches with the resource labels.
+                                      type: string
+                                    name:
+                                      description: Name of the resource.
+                                      type: string
+                                    namespace:
+                                      description: Namespace the resource belongs
+                                        to, if it can belong to a namespace.
+                                      type: string
+                                    version:
+                                      type: string
+                                  required:
+                                  - group
+                                  - kind
+                                  - version
+                                  type: object
                               type: object
-                          type: object
-                        type: array
-                      type:
-                        type: string
-                    required:
-                    - patches
-                    - type
+                            type: array
+                          path:
+                            description: |-
+                              Path is a relative file path in the target to be patched.
+                              This Path is relative to the root of the target.
+                            type: string
+                        required:
+                        - patches
+                        - path
+                        type: object
+                      mapped:
+                        properties:
+                          config:
+                            description: LocalizationReference defines a resource
+                              which may be accessed via a snapshot or component version
+                            minProperties: 1
+                            properties:
+                              apiVersion:
+                                description: API version of the referent, if not specified
+                                  the Kubernetes preferred version will be used.
+                                type: string
+                              kind:
+                                description: Kind of the referent.
+                                type: string
+                              name:
+                                description: Name of the referent.
+                                type: string
+                              namespace:
+                                description: Namespace of the referent, when not specified
+                                  it acts as LocalObjectReference.
+                                type: string
+                            required:
+                            - kind
+                            - name
+                            type: object
+                        required:
+                        - config
+                        type: object
                     type: object
                 required:
                 - kind

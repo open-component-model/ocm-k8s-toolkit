@@ -48,7 +48,7 @@ import (
 
 const (
 	ARTIFACT_PATH   = "ocm-k8s-artifactstore--*"
-	ARTIFACT_SERVER = "localhost:8080"
+	ARTIFACT_SERVER = "localhost:0"
 )
 
 var cfg *rest.Config
@@ -61,7 +61,7 @@ var recorder record.EventRecorder
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecs(t, "Localization Controller Suite")
+	RunSpecs(t, "LocalizationRules Controller Suite")
 }
 
 var _ = BeforeSuite(func() {

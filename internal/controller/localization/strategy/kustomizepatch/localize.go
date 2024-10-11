@@ -20,6 +20,8 @@ import (
 	loctypes "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/types"
 )
 
+var ErrNoKustomizePatchSpecInStrategy = errors.New("no kustomize patch spec in strategy")
+
 const modeReadWriteUser = 0o600
 
 type Source interface {
@@ -33,6 +35,11 @@ type Target interface {
 
 func Localize(ctx context.Context, src Source, trgt Target) (string, error) {
 	logger := log.FromContext(ctx)
+
+	spec := src.GetStrategy().KustomizePatch
+	if spec == nil {
+		return "", ErrNoKustomizePatchSpecInStrategy
+	}
 
 	// DO NOT Defer remove this, it will be removed once it has been tarred.
 	basePath, err := os.MkdirTemp("", "kustomization-")
@@ -60,21 +67,14 @@ func Localize(ctx context.Context, src Source, trgt Target) (string, error) {
 		return "", fmt.Errorf("failed to get source directory: %w", err)
 	}
 
-	resources, err := (&recursiveFileChecker{base: targetDir}).recursiveFiles()
-	if err != nil {
-		return "", fmt.Errorf("failed to get target resources: %w", err)
-	}
-	for i, res := range resources {
-		resources[i] = filepath.Join("target", res)
-	}
-
+	resolvedPathToLocalize := filepath.Join("target", spec.Path)
 	kus := types.Kustomization{
 		TypeMeta: types.TypeMeta{
 			APIVersion: types.KustomizationVersion,
 			Kind:       types.KustomizationKind,
 		},
-		Resources: resources,
-		Patches:   convertPatches(src.GetStrategy().Patches, "source"),
+		Resources: []string{resolvedPathToLocalize},
+		Patches:   convertPatches(spec.Patches, "source"),
 	}
 
 	kustomizationYAML, err := yaml.Marshal(kus)
@@ -96,16 +96,11 @@ func Localize(ctx context.Context, src Source, trgt Target) (string, error) {
 		return "", fmt.Errorf("failed to convert resources to yaml stream: %w", err)
 	}
 
-	localizationFilePath := filepath.Join(basePath, "localized.yaml")
-	if err = writeStreamToFile(data, localizationFilePath); err != nil {
+	if err = rewriteStreamToFile(data, filepath.Join(workDir, resolvedPathToLocalize)); err != nil {
 		return "", fmt.Errorf("failed to write resources to file: %w", err)
 	}
 
-	if err := os.RemoveAll(workDir); err != nil {
-		return "", fmt.Errorf("failed to remove work directory: %w", err)
-	}
-
-	return filepath.Dir(localizationFilePath), nil
+	return filepath.Join(workDir, "target"), nil
 }
 
 func convertPatches(patches []v1alpha1.LocalizationKustomizePatch, relativePathAddition string) []types.Patch {
@@ -139,9 +134,9 @@ func convertTarget(target *v1alpha1.LocalizationSelector) *types.Selector {
 	}
 }
 
-func writeStreamToFile(data io.Reader, path string) (err error) {
+func rewriteStreamToFile(data io.Reader, path string) (err error) {
 	var outputFile *os.File
-	if outputFile, err = os.OpenFile(path, os.O_CREATE|os.O_WRONLY, os.ModePerm); err != nil {
+	if outputFile, err = os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModePerm); err != nil {
 		return fmt.Errorf("failed to open output file: %w", err)
 	}
 	defer func() {
@@ -153,40 +148,6 @@ func writeStreamToFile(data io.Reader, path string) (err error) {
 	}
 
 	return err
-}
-
-type recursiveFileChecker struct {
-	base    string
-	patches []string
-}
-
-func (pr *recursiveFileChecker) recursiveFiles() ([]string, error) {
-	pr.patches = pr.patches[:0]
-	if err := filepath.WalkDir(pr.base, pr.walk); err != nil {
-		return nil, err
-	}
-
-	return pr.patches, nil
-}
-
-func (pr *recursiveFileChecker) walk(path string, d os.DirEntry, err error) error {
-	if err != nil {
-		return err
-	}
-	if d.IsDir() {
-		if path != pr.base {
-			return pr.walk(path, d, err)
-		}
-
-		return nil
-	}
-	rel, err := filepath.Rel(pr.base, path)
-	if err != nil {
-		return err
-	}
-	pr.patches = append(pr.patches, rel)
-
-	return nil
 }
 
 func AsYamlStream(resMap resmap.ResMap) (io.Reader, error) {

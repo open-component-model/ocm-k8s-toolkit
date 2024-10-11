@@ -56,7 +56,7 @@ const (
 	Localization      = "test-localization"
 )
 
-var _ = Describe("Localization Controller", func() {
+var _ = Describe("LocalizationRules Controller", func() {
 	var (
 		tmp string
 		env *ocmbuilder.Builder
@@ -113,6 +113,7 @@ var _ = Describe("Localization Controller", func() {
 			"Name":               Localization,
 			"TargetResourceName": targetResource.Name,
 			"SourceResourceName": sourceResource.Name,
+			"FilePath":           "deployment.yaml",
 			"PatchPath":          "deployment_patch.yaml",
 		})
 
@@ -137,9 +138,9 @@ var _ = Describe("Localization Controller", func() {
 			Expect(localizedArchiveData.Close()).To(Succeed())
 		})
 		Expect(tarutils.UnzipTarToFs(memFs, localizedArchiveData)).To(Succeed())
-		Expect(memFs.Exists("localized.yaml")).To(BeTrue())
+		Expect(memFs.Exists("deployment.yaml")).To(BeTrue())
 
-		localizedData, err := memFs.ReadFile("localized.yaml")
+		localizedData, err := memFs.ReadFile("deployment.yaml")
 		Expect(err).ToNot(HaveOccurred())
 		Expect(localizedData).To(MatchYAML(deploymentPatchResult))
 

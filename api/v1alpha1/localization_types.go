@@ -33,7 +33,7 @@ func (in *Localization) GetObjectMeta() *metav1.ObjectMeta {
 }
 
 func (in *Localization) GetKind() string {
-	return "Localization"
+	return "LocalizationRules"
 }
 
 func (in *Localization) SetObservedGeneration(v int64) {
@@ -74,25 +74,27 @@ type LocalizationSpec struct {
 	Suspend bool `json:"suspend,omitempty"`
 }
 
-type LocalizationStrategyType string
-
-const (
-	LocalizationStrategyTypeKustomizePatch LocalizationStrategyType = "KustomizePatch"
-)
-
 type LocalizationStrategy struct {
-	// +required
-	Type LocalizationStrategyType `json:"type"`
 	// +optional
-	*LocalizationStrategyKustomizePatch `json:",inline"`
+	KustomizePatch *LocalizationStrategyKustomizePatch `json:"kustomizePatch,omitempty"`
+	// +optional
+	Mapped *LocalizationStrategyMapped `json:"mapped,omitempty"`
+}
+
+type LocalizationStrategyMapped struct {
+	// +required
+	Config LocalizationReference `json:"config"`
 }
 
 type LocalizationStrategyKustomizePatch struct {
+	// Path is a relative file path in the target to be patched.
+	// This Path is relative to the root of the target.
+	Path    string                       `json:"path"`
 	Patches []LocalizationKustomizePatch `json:"patches"`
 }
 
 type LocalizationKustomizePatch struct {
-	// Path is a relative file path to the patch_test file.
+	// Path is a relative file path to the patch file.
 	Path string `json:"path,omitempty" yaml:"path,omitempty"`
 
 	// Patch is the content of a patch_test.

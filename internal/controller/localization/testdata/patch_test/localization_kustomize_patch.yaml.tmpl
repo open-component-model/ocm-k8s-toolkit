@@ -11,6 +11,7 @@ spec:
     kind: Resource
     name: {{ .SourceResourceName }}
     strategy:
-      type: KustomizePatch
-      patches:
+      kustomizePatch:
+        path: {{ .FilePath }}
+        patches:
         - path: {{ .PatchPath }}

@@ -9,7 +9,6 @@ import (
 type LocalizationSource interface {
 	Open() (io.ReadCloser, error)
 	UnpackIntoDirectory(path string) (err error)
-	GetStrategy() v1alpha1.LocalizationStrategy
 
 	// GetDigest is the digest of the packed target in the form of '<algorithm>:<checksum>'.
 	GetDigest() string
@@ -18,13 +17,18 @@ type LocalizationSource interface {
 	GetRevision() string
 }
 
-type ComponentLocalizationSource struct {
-	*ComponentLocalizationReference
+type LocalizationSourceWithStrategy interface {
+	LocalizationSource
+	GetStrategy() v1alpha1.LocalizationStrategy
+}
+
+type ResourceLocalizationSource struct {
+	LocalizationSource
 	Strategy v1alpha1.LocalizationStrategy
 }
 
-var _ LocalizationSource = &ComponentLocalizationSource{}
+var _ LocalizationSource = &ResourceLocalizationSource{}
 
-func (c *ComponentLocalizationSource) GetStrategy() v1alpha1.LocalizationStrategy {
+func (c *ResourceLocalizationSource) GetStrategy() v1alpha1.LocalizationStrategy {
 	return c.Strategy
 }

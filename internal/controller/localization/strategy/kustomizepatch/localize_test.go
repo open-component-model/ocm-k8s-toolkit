@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	_ "embed"
+
 	"github.com/mandelsoft/vfs/pkg/memoryfs"
 	"github.com/mandelsoft/vfs/pkg/vfs"
 	. "github.com/onsi/ginkgo/v2"
@@ -13,21 +15,31 @@ import (
 	"ocm.software/ocm/api/utils/tarutils"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	types2 "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/types"
+	localizationTypes "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/types"
 )
+
+//go:embed testdata/deployment.yaml
+var deploymentYAML []byte
+
+//go:embed testdata/deployment_patch_strategic_merge.yaml
+var deploymentPatchYAML []byte
+
+//go:embed testdata/deployment_patch_strategic_merge_result.yaml
+var deploymentPatchStrategicMergeResultYAML []byte
 
 var _ = Describe("StrategicMerge", func() {
 
 	It("should localize strategic merge patch_test", func(ctx SpecContext) {
+
 		tmp := GinkgoT().TempDir()
 
-		cls := types2.ComponentLocalizationSource{
-			ComponentLocalizationReference: &types2.ComponentLocalizationReference{
-				LocalArtifactPath: GenerateDeployPatch(tmp),
+		cls := localizationTypes.ResourceLocalizationSource{
+			LocalizationSource: &localizationTypes.StaticLocalizationReference{
+				Path: GenerateDeployPatch(tmp, deploymentPatchYAML),
 			},
 			Strategy: v1alpha1.LocalizationStrategy{
-				Type: v1alpha1.LocalizationStrategyTypeKustomizePatch,
-				LocalizationStrategyKustomizePatch: &v1alpha1.LocalizationStrategyKustomizePatch{
+				KustomizePatch: &v1alpha1.LocalizationStrategyKustomizePatch{
+					Path: "deployment.yaml",
 					Patches: []v1alpha1.LocalizationKustomizePatch{
 						{
 							Path: "deployment_patch.yaml",
@@ -44,28 +56,27 @@ var _ = Describe("StrategicMerge", func() {
 			},
 		}
 
-		clt := types2.ComponentLocalizationReference{
-			LocalArtifactPath: GenerateDeploy(tmp),
+		clt := localizationTypes.StaticLocalizationReference{
+			Path: GenerateDeploy(tmp, deploymentYAML),
 		}
 
 		target, err := Localize(ctx, &cls, &clt)
 		Expect(err).ToNot(HaveOccurred())
 
 		Expect(target).ToNot(BeEmpty())
+
+		Expect(target).To(BeAnExistingFile())
+		data, err := os.ReadFile(filepath.Join(target, "deployment.yaml"))
+		Expect(err).ToNot(HaveOccurred())
+		Expect(string(data)).To(MatchYAML(deploymentPatchStrategicMergeResultYAML))
 	})
 
 })
 
-func GenerateDeployPatch(base string) string {
+func GenerateDeployPatch(base string, data []byte) string {
 	memVFS := vfs.New(memoryfs.New())
-	Expect(memVFS.WriteFile("deployment_patch.yaml", []byte(`
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-deployment
-spec:
-  replicas: 3
-`), os.ModePerm)).ToNot(HaveOccurred())
+	Expect(memVFS.WriteFile("deployment_patch.yaml", data, os.ModePerm)).
+		ToNot(HaveOccurred())
 
 	srcPatches := filepath.Join(base, "source_patches")
 	Expect(os.Mkdir(srcPatches, os.ModePerm)).To(Succeed())
@@ -81,21 +92,9 @@ spec:
 	return patchPath
 }
 
-func GenerateDeploy(base string) string {
+func GenerateDeploy(base string, data []byte) string {
 	memVFS := vfs.New(memoryfs.New())
-	Expect(memVFS.WriteFile("deployment.yaml", []byte(`
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-deployment
-spec:
-  replicas: 1
-  template:
-    spec:
-      containers:
-      - name: my-container
-        image: my-image
-`), os.ModePerm)).ToNot(HaveOccurred())
+	Expect(memVFS.WriteFile("deployment.yaml", data, os.ModePerm)).ToNot(HaveOccurred())
 
 	targets := filepath.Join(base, "targets")
 	Expect(os.Mkdir(targets, os.ModePerm)).To(Succeed())
