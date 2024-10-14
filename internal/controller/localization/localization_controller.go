@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/opencontainers/go-digest"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
@@ -117,6 +118,13 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 	}
 
 	revisionAndDigest := NewMappedRevisionAndDigest(source, target)
+
+	if alreadyLocalized := conditions.IsReady(localization) &&
+		localization.Status.LocalizationDigest == revisionAndDigest.Digest(); alreadyLocalized {
+		logger.V(1).Info("no new localization needed, skipping", "digest", revisionAndDigest.Digest())
+
+		return ctrl.Result{RequeueAfter: localization.Spec.Interval.Duration}, nil
+	}
 
 	localized, err := r.localize(ctx, source, target)
 	if err != nil {
