@@ -19,7 +19,6 @@ package v1alpha1
 import (
 	"fmt"
 
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -152,7 +151,7 @@ func (in *Resource) SetObservedGeneration(v int64) {
 }
 
 func (in *Resource) GetVID() map[string]string {
-	vid := fmt.Sprintf("%s:%s", in.Status.Resource.Name, in.Status.Resource.Version)
+	vid := fmt.Sprintf("%s:%s:%s", in.GetNamespace(), in.GetName(), in.GetResourceVersion())
 	metadata := make(map[string]string)
 	metadata[GroupVersion.Group+"/resource_version"] = vid
 
