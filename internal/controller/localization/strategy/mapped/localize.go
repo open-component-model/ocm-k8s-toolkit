@@ -6,16 +6,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"text/template"
 
+	"github.com/Masterminds/sprig/v3"
 	"github.com/go-jose/go-jose/v4/json"
 	"github.com/mandelsoft/vfs/pkg/osfs"
 	"github.com/mandelsoft/vfs/pkg/projectionfs"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"ocm.software/ocm/api/ocm/compdesc"
 	"ocm.software/ocm/api/ocm/ocmutils/localize"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -103,6 +106,7 @@ func Localize(ctx context.Context,
 	for i, rule := range config.Spec.Rules {
 		if rule.Transformation.Type == v1alpha1.TransformationTypeGoTemplate {
 			tplRules = append(tplRules, rule)
+
 			continue
 		}
 
@@ -122,30 +126,8 @@ func Localize(ctx context.Context,
 	}
 
 	if len(tplRules) > 0 {
-		if err := executeGoTemplateTransformation(targetDir, tplRules, template.FuncMap{
-			"OCMResourceReference": func(resource string, transformationType v1alpha1.TransformationType) (string, error) {
-				unresolved := unresolvedRefFromSource(resource, targetResource.Spec.Resource.ExtraIdentity)
-				resolved, err := resolveResourceReferenceFromComponentDescriptor(unresolved, componentDescriptor, componentSet)
-				if err != nil {
-					return "", fmt.Errorf("failed to get resource reference from component descriptor: %w", err)
-				}
-				return valueFromTransformation(resolved, transformationType)
-			},
-			"KubernetesObjectReference": func(namespace, name, path string) (string, error) {
-				data := &unstructured.Unstructured{}
-				if err := clnt.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, data); err != nil {
-					return "", fmt.Errorf("failed to get object: %w", err)
-				}
-				stringVal, found, err := unstructured.NestedString(data.UnstructuredContent(), path)
-				if err != nil {
-					return "", fmt.Errorf("failed to get nested string: %w", err)
-				}
-				if !found {
-					return "", fmt.Errorf("nested string not found")
-				}
-				return stringVal, nil
-			},
-		}); err != nil {
+		funcs := goTemplateFuncs(ctx, clnt, targetResource, componentDescriptor, componentSet)
+		if err := executeGoTemplateTransformation(targetDir, tplRules, funcs); err != nil {
 			return "", fmt.Errorf("failed to execute go template transformation: %w", err)
 		}
 	}
@@ -165,17 +147,57 @@ func Localize(ctx context.Context,
 	return targetDir, nil
 }
 
+func goTemplateFuncs(
+	ctx context.Context,
+	clnt Client,
+	targetResource *v1alpha1.Resource,
+	componentDescriptor *compdesc.ComponentDescriptor,
+	componentSet *compdesc.ComponentVersionSet,
+) template.FuncMap {
+	return template.FuncMap{
+		"OCMResourceReference": func(resource string, transformationType v1alpha1.TransformationType) (string, error) {
+			unresolved := unresolvedRefFromSource(resource, targetResource.Spec.Resource.ExtraIdentity)
+			resolved, err := resolveResourceReferenceFromComponentDescriptor(unresolved, componentDescriptor, componentSet)
+			if err != nil {
+				return "", fmt.Errorf("failed to get resource reference from component descriptor: %w", err)
+			}
+
+			return valueFromTransformation(resolved, transformationType)
+		},
+		"KubernetesObjectReference": func(namespace, name string) (string, error) {
+			obj := &unstructured.Unstructured{}
+			if err := clnt.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, obj); err != nil {
+				return "", fmt.Errorf("failed to get object: %w", err)
+			}
+			data, err := json.Marshal(obj)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal object: %w", err)
+			}
+
+			return string(data), nil
+		},
+	}
+}
+
 func executeGoTemplateTransformation(base string, rules []v1alpha1.LocalizationRule, funcs template.FuncMap) (err error) {
 	for _, rule := range rules {
 		pathSpec := filepath.Join(base, rule.Target.FileTarget.Path)
-		tpl, err := template.New(pathSpec).Funcs(funcs).ParseFiles(pathSpec)
+
+		allFuncs := sprig.FuncMap()
+		maps.Copy(allFuncs, funcs)
+
+		tpl, err := template.New(filepath.Base(pathSpec)).Funcs(allFuncs).Delims("ocm{", "}").ParseFiles(pathSpec)
 		if err != nil {
 			return fmt.Errorf("failed to parse template: %w", err)
 		}
 
-		var data any
+		if len(tpl.Templates()) == 0 {
+			return fmt.Errorf("no templates found in file %s", pathSpec)
+		}
+
+		var data map[string]any
 		if rule.Transformation.GoTemplate != nil {
-			if err := json.Unmarshal(rule.Transformation.GoTemplate.Data.Raw, data); err != nil {
+			if err := json.Unmarshal(rule.Transformation.GoTemplate.Data.Raw, &data); err != nil {
 				return fmt.Errorf("failed to unmarshal data: %w", err)
 			}
 		}
@@ -189,5 +211,6 @@ func executeGoTemplateTransformation(base string, rules []v1alpha1.LocalizationR
 			return fmt.Errorf("failed to write template result back to file: %w", err)
 		}
 	}
+
 	return nil
 }

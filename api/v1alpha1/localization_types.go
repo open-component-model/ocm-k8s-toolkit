@@ -10,45 +10,45 @@ import (
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// Localization is the Schema for the localizations API.
-type Localization struct {
+// LocalizedResource is the Schema for the localizations API.
+type LocalizedResource struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   LocalizationSpec   `json:"spec,omitempty"`
-	Status LocalizationStatus `json:"status,omitempty"`
+	Spec   LocalizedResourceSpec   `json:"spec,omitempty"`
+	Status LocalizedResourceStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// LocalizationList contains a list of Localization.
-type LocalizationList struct {
+// LocalizedResourceList contains a list of LocalizedResource.
+type LocalizedResourceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Localization `json:"items"`
+	Items           []LocalizedResource `json:"items"`
 }
 
-func (in *Localization) GetObjectMeta() *metav1.ObjectMeta {
+func (in *LocalizedResource) GetObjectMeta() *metav1.ObjectMeta {
 	return &in.ObjectMeta
 }
 
-func (in *Localization) GetKind() string {
+func (in *LocalizedResource) GetKind() string {
 	return "LocalizationRules"
 }
 
-func (in *Localization) SetObservedGeneration(v int64) {
+func (in *LocalizedResource) SetObservedGeneration(v int64) {
 	in.Status.ObservedGeneration = v
 }
 
-func (in *Localization) GetConditions() []metav1.Condition {
+func (in *LocalizedResource) GetConditions() []metav1.Condition {
 	return in.Status.Conditions
 }
 
-func (in *Localization) SetConditions(conditions []metav1.Condition) {
+func (in *LocalizedResource) SetConditions(conditions []metav1.Condition) {
 	in.Status.Conditions = conditions
 }
 
-func (in *Localization) GetVID() map[string]string {
+func (in *LocalizedResource) GetVID() map[string]string {
 	vid := fmt.Sprintf("%s:%s", in.Namespace, in.Name)
 	metadata := make(map[string]string)
 	metadata[GroupVersion.Group+"/localization"] = vid
@@ -56,7 +56,7 @@ func (in *Localization) GetVID() map[string]string {
 	return metadata
 }
 
-type LocalizationSpec struct {
+type LocalizedResourceSpec struct {
 	// Target that is to be localized
 	// +required
 	Target LocalizationReference `json:"target,omitempty"`
@@ -142,7 +142,7 @@ type LocalizationReference struct {
 	meta.NamespacedObjectKindReference `json:",inline"`
 }
 
-type LocalizationStatus struct {
+type LocalizedResourceStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// +optional
@@ -158,5 +158,5 @@ type LocalizationStatus struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&Localization{}, &LocalizationList{})
+	SchemeBuilder.Register(&LocalizedResource{}, &LocalizedResourceList{})
 }

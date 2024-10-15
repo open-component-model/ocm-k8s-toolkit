@@ -1,4 +1,4 @@
-apiVersion: v1alpha1
+apiVersion: delivery.ocm.software/v1alpha1
 kind: LocalizationConfig
 metadata:
   name: deployment-localization
@@ -11,3 +11,15 @@ spec:
       file:
         path: values.yaml
         value: deploy.image
+  - target:
+      file:
+        path: templates/deployment.yaml
+    transformation:
+      type: GoTemplate
+      goTemplate:
+        delimiters:
+          left: "ocm{"
+          right: "}"
+        data:
+          Replicas: 3
+

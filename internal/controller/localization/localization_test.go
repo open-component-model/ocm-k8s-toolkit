@@ -83,8 +83,7 @@ var _ = Describe("LocalizationRules Controller", func() {
 		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 	})
 
-	It("should localize an artifact from a resource", func(ctx SpecContext) {
-
+	It("should localize an artifact from a resource based on kustomize", func(ctx SpecContext) {
 		targetResource = SetupMockResourceWithData(ctx,
 			TargetResourceObj,
 			Namespace,
@@ -227,12 +226,12 @@ func SetupMockResourceWithData(ctx context.Context,
 	return res
 }
 
-func SetupKustomizePatchLocalization(ctx context.Context, data map[string]string) *v1alpha1.Localization {
+func SetupKustomizePatchLocalization(ctx context.Context, data map[string]string) *v1alpha1.LocalizedResource {
 	localizationTemplate, err := template.New("localization").Parse(localizationTemplateKustomizePatch)
 	Expect(err).ToNot(HaveOccurred())
 	var ltpl bytes.Buffer
 	Expect(localizationTemplate.ExecuteTemplate(&ltpl, "localization", data)).To(Succeed())
-	localization := &v1alpha1.Localization{}
+	localization := &v1alpha1.LocalizedResource{}
 	serializer := serializer.NewCodecFactory(k8sClient.Scheme()).UniversalDeserializer()
 	_, _, err = serializer.Decode(ltpl.Bytes(), nil, localization)
 	Expect(err).To(Not(HaveOccurred()))

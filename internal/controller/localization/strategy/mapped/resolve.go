@@ -94,12 +94,15 @@ func valueFromTransformation(ref string, transformationType v1alpha1.Transformat
 		value = parsed.Context().RepositoryStr()
 	case v1alpha1.TransformationTypeTag:
 		value = parsed.Identifier()
+	case v1alpha1.TransformationTypeGoTemplate:
+		return "", fmt.Errorf("unsupported transformation type for reference resolution: %s", transformationType)
 	case v1alpha1.TransformationTypeImage:
 		// By default treat the reference as a full image reference
 		fallthrough
 	default:
 		value = parsed.Name()
 	}
+
 	return
 }
 
@@ -109,6 +112,7 @@ func addResolvedRule(substitutions *localize.Substitutions, rule v1alpha1.Locali
 	if err != nil {
 		return fmt.Errorf("failed to get value for resolving a localization rule: %w", err)
 	}
+
 	return substitutions.Add("resource-reference", rule.Target.FileTarget.Path, rule.Target.FileTarget.Value, val)
 }
 

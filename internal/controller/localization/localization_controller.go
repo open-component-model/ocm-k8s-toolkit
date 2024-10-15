@@ -51,7 +51,7 @@ var _ ocm.Reconciler = (*Reconciler)(nil)
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.Localization{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&v1alpha1.LocalizedResource{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
 }
 
@@ -69,7 +69,7 @@ func (r *Reconciler) GetStorage() *storage.Storage {
 
 // Reconcile the component object.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
-	localization := &v1alpha1.Localization{}
+	localization := &v1alpha1.LocalizedResource{}
 	if err := r.Get(ctx, req.NamespacedName, localization); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -87,6 +87,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		}
 		if artifact == nil {
 			log.FromContext(ctx).Info("artifact belonging to localization not found, skipping deletion")
+
 			return ctrl.Result{}, nil
 		}
 		if err := r.Storage.Remove(*artifact); err != nil {
@@ -106,7 +107,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	return r.reconcileExists(ctx, localization)
 }
 
-func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1.Localization) (ctrl.Result, error) {
+func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1.LocalizedResource) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if err := r.Storage.ReconcileStorage(ctx, localization); err != nil {
@@ -264,7 +265,7 @@ func (r MappedRevisionAndDigest) ToArchiveFileName() string {
 	return strings.ReplaceAll(r.Digest(), ":", "_") + ".tar.gz"
 }
 
-func hasValidArtifact(ctx context.Context, reader client.Reader, strg *storage.Storage, localization *v1alpha1.Localization, revisionAndDigest MappedRevisionAndDigest) (bool, error) {
+func hasValidArtifact(ctx context.Context, reader client.Reader, strg *storage.Storage, localization *v1alpha1.LocalizedResource, revisionAndDigest MappedRevisionAndDigest) (bool, error) {
 	artifact, err := ocm.GetAndVerifyArtifactForCollectable(ctx, reader, strg, localization)
 	if client.IgnoreNotFound(err) != nil {
 		return false, fmt.Errorf("failed to get artifact: %w", err)

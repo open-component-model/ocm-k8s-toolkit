@@ -3,11 +3,11 @@ kind: Deployment
 metadata:
   name: my-deployment
 spec:
-  replicas: ocm{ .Replicas }
+  replicas: 3
   template:
     spec:
       containers:
         - name: my-container
           image: {{ .Values.deploy.image }}
         - name: my-other-container
-          image: ocm{ OCMResourceReference "image" "Image" }
+          image: ghcr.io/stefanprodan/podinfo:6.2.0

@@ -31,6 +31,9 @@ var descriptorListYAML []byte
 //go:embed testdata/replaced-values.yaml
 var replacedValuesYAML []byte
 
+//go:embed testdata/replaced-deployment.yaml
+var replacedDeploymentYAML []byte
+
 //go:embed testdata/localization-config.yaml
 var configYAML []byte
 
@@ -155,6 +158,10 @@ var _ = Describe("mapped localize", func() {
 				valuesData, err := os.ReadFile(filepath.Join(path, "values.yaml"))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(valuesData).To(MatchYAML(replacedValuesYAML))
+
+				deploymentData, err := os.ReadFile(filepath.Join(path, "templates", "deployment.yaml"))
+				Expect(err).ToNot(HaveOccurred())
+				Expect(deploymentData).To(BeEquivalentTo(replacedDeploymentYAML))
 			})
 		})
 	})

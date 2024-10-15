@@ -20,7 +20,6 @@ type Client interface {
 	client.Reader
 	GetLocalizationTarget(ctx context.Context, ref v1alpha1.LocalizationReference) (target types.LocalizationTarget, err error)
 	GetLocalizationSource(ctx context.Context, ref v1alpha1.LocalizationSource) (source types.LocalizationSourceWithStrategy, err error)
-	GetComponentLocalizationReferenceFromResource(ctx context.Context, ref v1alpha1.LocalizationReference) (*types.LocalStorageResourceLocalizationReference, error)
 }
 
 func NewClientWithLocalStorage(r client.Reader, s *storage.Storage) Client {
@@ -38,8 +37,10 @@ type localStorageBackedClient struct {
 var _ Client = &localStorageBackedClient{}
 
 func (clnt *localStorageBackedClient) GetLocalizationTarget(ctx context.Context, ref v1alpha1.LocalizationReference) (types.LocalizationTarget, error) {
-	mapped := map[string]func(context.Context, v1alpha1.LocalizationReference) (*types.LocalStorageResourceLocalizationReference, error){
-		"Resource": clnt.GetComponentLocalizationReferenceFromResource,
+	mapped := map[string]func(context.Context, v1alpha1.LocalizationReference) (types.LocalizationTarget, error){
+		"Resource": func(ctx context.Context, reference v1alpha1.LocalizationReference) (types.LocalizationTarget, error) {
+			return clnt.GetComponentLocalizationReferenceFromResource(ctx, reference)
+		},
 	}
 
 	if fn, ok := mapped[ref.Kind]; ok {
@@ -50,8 +51,13 @@ func (clnt *localStorageBackedClient) GetLocalizationTarget(ctx context.Context,
 }
 
 func (clnt *localStorageBackedClient) GetLocalizationSource(ctx context.Context, ref v1alpha1.LocalizationSource) (source types.LocalizationSourceWithStrategy, err error) {
-	mapped := map[string]func(context.Context, v1alpha1.LocalizationReference) (*types.LocalStorageResourceLocalizationReference, error){
-		"Resource": clnt.GetComponentLocalizationReferenceFromResource,
+	mapped := map[string]func(context.Context, v1alpha1.LocalizationReference) (types.LocalizationSource, error){
+		"Resource": func(ctx context.Context, reference v1alpha1.LocalizationReference) (types.LocalizationSource, error) {
+			return clnt.GetComponentLocalizationReferenceFromResource(ctx, reference)
+		},
+		"LocalizationConfig": func(ctx context.Context, reference v1alpha1.LocalizationReference) (types.LocalizationSource, error) {
+			return clnt.GetFromLocalizationConfigInKubernetes(ctx, reference)
+		},
 	}
 
 	if fn, ok := mapped[ref.Kind]; ok {
@@ -69,7 +75,7 @@ func (clnt *localStorageBackedClient) GetLocalizationSource(ctx context.Context,
 func (clnt *localStorageBackedClient) GetComponentLocalizationReferenceFromResource(
 	ctx context.Context,
 	ref v1alpha1.LocalizationReference,
-) (*types.LocalStorageResourceLocalizationReference, error) {
+) (types.LocalizationReference, error) {
 	if ref.APIVersion == "" {
 		ref.APIVersion = v1alpha1.GroupVersion.String()
 	}
@@ -110,4 +116,23 @@ func (clnt *localStorageBackedClient) GetComponentLocalizationReferenceFromResou
 		Artifact: &artifact,
 		Resource: &resource,
 	}, nil
+}
+
+func (clnt *localStorageBackedClient) GetFromLocalizationConfigInKubernetes(ctx context.Context, reference v1alpha1.LocalizationReference) (types.LocalizationSource, error) {
+	if reference.APIVersion == "" {
+		reference.APIVersion = v1alpha1.GroupVersion.String()
+	}
+	if reference.APIVersion != v1alpha1.GroupVersion.String() || reference.Kind != "LocalizationConfig" {
+		return nil, fmt.Errorf("unsupported localization target reference: %s/%s", reference.APIVersion, reference.Kind)
+	}
+
+	cfg := v1alpha1.LocalizationConfig{}
+	if err := clnt.Get(ctx, client.ObjectKey{
+		Namespace: reference.Namespace,
+		Name:      reference.Name,
+	}, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to fetch localization source %s: %w", reference.Name, err)
+	}
+
+	return &cfg, nil
 }

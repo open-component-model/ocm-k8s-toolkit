@@ -8,11 +8,13 @@ replace github.com/opencontainers/go-digest => github.com/opencontainers/go-dige
 
 require (
 	github.com/Masterminds/semver/v3 v3.3.0
+	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/fluxcd/pkg/apis/event v0.9.0
 	github.com/fluxcd/pkg/apis/meta v1.5.0
 	github.com/fluxcd/pkg/kustomize v1.13.0
 	github.com/fluxcd/pkg/runtime v0.47.1
 	github.com/fluxcd/pkg/tar v0.7.0
+	github.com/go-jose/go-jose/v4 v4.0.2
 	github.com/google/go-containerregistry v0.20.2
 	github.com/mandelsoft/filepath v0.0.0-20240223090642-3e2777258aa3
 	github.com/mandelsoft/goutils v0.0.0-20240910114310-fc2a9de4c494
@@ -53,6 +55,7 @@ require (
 	github.com/Azure/go-autorest/tracing v0.6.0 // indirect
 	github.com/DataDog/gostackparse v0.7.0 // indirect
 	github.com/InfiniteLoopSpace/go_S-MIME v0.0.0-20181221134359-3f58f9a4b2b6 // indirect
+	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.0.0 // indirect
 	github.com/ThalesIgnite/crypto11 v1.2.5 // indirect
@@ -156,7 +159,6 @@ require (
 	github.com/go-git/go-billy/v5 v5.5.0 // indirect
 	github.com/go-git/go-git/v5 v5.12.0 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.3 // indirect
-	github.com/go-jose/go-jose/v4 v4.0.2 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
@@ -205,6 +207,7 @@ require (
 	github.com/hashicorp/golang-lru/arc/v2 v2.0.7 // indirect
 	github.com/hashicorp/hcl v1.0.1-vault-5 // indirect
 	github.com/hashicorp/vault-client-go v0.4.3 // indirect
+	github.com/huandu/xstrings v1.4.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/in-toto/in-toto-golang v0.9.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -269,6 +272,7 @@ require (
 	github.com/secure-systems-lab/go-securesystemslib v0.8.0 // indirect
 	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/shibumi/go-pathspec v1.3.0 // indirect
+	github.com/shopspring/decimal v1.3.1 // indirect
 	github.com/sigstore/cosign/v2 v2.4.0 // indirect
 	github.com/sigstore/fulcio v1.5.1 // indirect
 	github.com/sigstore/protobuf-specs v0.3.2 // indirect

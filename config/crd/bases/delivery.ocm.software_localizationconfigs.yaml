@@ -79,14 +79,24 @@ spec:
                           properties:
                             data:
                               x-kubernetes-preserve-unknown-fields: true
-                          required:
-                          - data
+                            delimiters:
+                              properties:
+                                left:
+                                  type: string
+                                right:
+                                  type: string
+                              required:
+                              - left
+                              - right
+                              type: object
                           type: object
                         type:
                           type: string
                       required:
                       - type
                       type: object
+                  required:
+                  - target
                   type: object
                 type: array
             type: object
@@ -95,3 +105,5 @@ spec:
         type: object
     served: true
     storage: true
+    subresources:
+      status: {}

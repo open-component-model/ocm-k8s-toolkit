@@ -23,6 +23,11 @@ type LocalStorageResourceLocalizationReference struct {
 	Resource *v1alpha1.Resource
 }
 
+type LocalizationReference interface {
+	LocalizationSource
+	LocalizationTarget
+}
+
 var (
 	_ LocalizationSource = &LocalStorageResourceLocalizationReference{}
 	_ LocalizationTarget = &LocalStorageResourceLocalizationReference{}
