@@ -1,18 +1,23 @@
 package mapped
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"text/template"
 
+	"github.com/go-jose/go-jose/v4/json"
 	"github.com/mandelsoft/vfs/pkg/osfs"
 	"github.com/mandelsoft/vfs/pkg/projectionfs"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"ocm.software/ocm/api/ocm/ocmutils/localize"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
@@ -93,31 +98,96 @@ func Localize(ctx context.Context,
 	}
 
 	substitutions := make(localize.Substitutions, 0)
+	tplRules := make([]v1alpha1.LocalizationRule, 0)
 
 	for i, rule := range config.Spec.Rules {
-		unresolved := unresolvedRefFromRule(rule, targetResource.Status.Resource.ExtraIdentity)
+		if rule.Transformation.Type == v1alpha1.TransformationTypeGoTemplate {
+			tplRules = append(tplRules, rule)
+			continue
+		}
+
+		unresolved := unresolvedRefFromSource(rule.Source.Resource.Name, targetResource.Spec.Resource.ExtraIdentity)
 		resolved, err := resolveResourceReferenceFromComponentDescriptor(unresolved, componentDescriptor, componentSet)
 		if err != nil {
 			return "", fmt.Errorf("failed to get targetResource reference from component descriptor based on rule at index %d: %w", i, err)
 		}
+
 		if err := addResolvedRule(&substitutions, rule, resolved); err != nil {
 			return "", fmt.Errorf("failed to add resolved rule: %w", err)
 		}
 	}
 
-	if len(substitutions) == 0 {
+	if len(substitutions) == 0 && len(tplRules) == 0 {
 		return "", fmt.Errorf("no substitutions were applied, most likely caused by an incorrect configuration")
 	}
 
-	// now localize the target with the resolved rules
-	// this will substitute the references from the rules in the target with the actual image references
-	targetFs, err := projectionfs.New(osfs.New(), targetDir)
-	if err != nil {
-		return "", fmt.Errorf("failed to create target filesystem: %w", err)
+	if len(tplRules) > 0 {
+		if err := executeGoTemplateTransformation(targetDir, tplRules, template.FuncMap{
+			"OCMResourceReference": func(resource string, transformationType v1alpha1.TransformationType) (string, error) {
+				unresolved := unresolvedRefFromSource(resource, targetResource.Spec.Resource.ExtraIdentity)
+				resolved, err := resolveResourceReferenceFromComponentDescriptor(unresolved, componentDescriptor, componentSet)
+				if err != nil {
+					return "", fmt.Errorf("failed to get resource reference from component descriptor: %w", err)
+				}
+				return valueFromTransformation(resolved, transformationType)
+			},
+			"KubernetesObjectReference": func(namespace, name, path string) (string, error) {
+				data := &unstructured.Unstructured{}
+				if err := clnt.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, data); err != nil {
+					return "", fmt.Errorf("failed to get object: %w", err)
+				}
+				stringVal, found, err := unstructured.NestedString(data.UnstructuredContent(), path)
+				if err != nil {
+					return "", fmt.Errorf("failed to get nested string: %w", err)
+				}
+				if !found {
+					return "", fmt.Errorf("nested string not found")
+				}
+				return stringVal, nil
+			},
+		}); err != nil {
+			return "", fmt.Errorf("failed to execute go template transformation: %w", err)
+		}
 	}
-	if err := localize.Substitute(substitutions, targetFs); err != nil {
-		return "", fmt.Errorf("failed to localize: %w", err)
+
+	if len(substitutions) > 0 {
+		// now localize the target with the resolved rules
+		// this will substitute the references from the rules in the target with the actual image references
+		targetFs, err := projectionfs.New(osfs.New(), targetDir)
+		if err != nil {
+			return "", fmt.Errorf("failed to create target filesystem: %w", err)
+		}
+		if err := localize.Substitute(substitutions, targetFs); err != nil {
+			return "", fmt.Errorf("failed to localize: %w", err)
+		}
 	}
 
 	return targetDir, nil
+}
+
+func executeGoTemplateTransformation(base string, rules []v1alpha1.LocalizationRule, funcs template.FuncMap) (err error) {
+	for _, rule := range rules {
+		pathSpec := filepath.Join(base, rule.Target.FileTarget.Path)
+		tpl, err := template.New(pathSpec).Funcs(funcs).ParseFiles(pathSpec)
+		if err != nil {
+			return fmt.Errorf("failed to parse template: %w", err)
+		}
+
+		var data any
+		if rule.Transformation.GoTemplate != nil {
+			if err := json.Unmarshal(rule.Transformation.GoTemplate.Data.Raw, data); err != nil {
+				return fmt.Errorf("failed to unmarshal data: %w", err)
+			}
+		}
+
+		var buf bytes.Buffer
+		if err := tpl.Execute(&buf, data); err != nil {
+			return fmt.Errorf("failed to execute template: %w", err)
+		}
+
+		if err := os.WriteFile(pathSpec, buf.Bytes(), os.ModePerm); err != nil {
+			return fmt.Errorf("failed to write template result back to file: %w", err)
+		}
+	}
+	return nil
 }

@@ -81,10 +81,7 @@ type LocalizationStrategy struct {
 	Mapped *LocalizationStrategyMapped `json:"mapped,omitempty"`
 }
 
-type LocalizationStrategyMapped struct {
-	// +required
-	Config LocalizationReference `json:"config"`
-}
+type LocalizationStrategyMapped struct{}
 
 type LocalizationStrategyKustomizePatch struct {
 	// Path is a relative file path in the target to be patched.

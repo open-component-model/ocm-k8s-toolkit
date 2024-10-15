@@ -22,13 +22,20 @@ type LocalizationSourceWithStrategy interface {
 	GetStrategy() v1alpha1.LocalizationStrategy
 }
 
-type ResourceLocalizationSource struct {
+func NewLocalizationSourceWithStrategy(source LocalizationSource, strategy v1alpha1.LocalizationStrategy) LocalizationSourceWithStrategy {
+	return &localizationSourceWithStrategyImpl{
+		LocalizationSource: source,
+		Strategy:           strategy,
+	}
+}
+
+type localizationSourceWithStrategyImpl struct {
 	LocalizationSource
 	Strategy v1alpha1.LocalizationStrategy
 }
 
-var _ LocalizationSource = &ResourceLocalizationSource{}
+var _ LocalizationSource = &localizationSourceWithStrategyImpl{}
 
-func (c *ResourceLocalizationSource) GetStrategy() v1alpha1.LocalizationStrategy {
+func (c *localizationSourceWithStrategyImpl) GetStrategy() v1alpha1.LocalizationStrategy {
 	return c.Strategy
 }

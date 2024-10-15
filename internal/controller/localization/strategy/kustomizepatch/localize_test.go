@@ -33,34 +33,31 @@ var _ = Describe("StrategicMerge", func() {
 
 		tmp := GinkgoT().TempDir()
 
-		cls := localizationTypes.ResourceLocalizationSource{
-			LocalizationSource: &localizationTypes.StaticLocalizationReference{
-				Path: GenerateDeployPatch(tmp, deploymentPatchYAML),
-			},
-			Strategy: v1alpha1.LocalizationStrategy{
-				KustomizePatch: &v1alpha1.LocalizationStrategyKustomizePatch{
-					Path: "deployment.yaml",
-					Patches: []v1alpha1.LocalizationKustomizePatch{
-						{
-							Path: "deployment_patch.yaml",
-							Target: &v1alpha1.LocalizationSelector{
-								LocalizationSelectorReference: v1alpha1.LocalizationSelectorReference{
-									GroupVersionKind: v1.GroupVersionKind{
-										Kind: "Deployment",
-									},
+		cls := localizationTypes.NewLocalizationSourceWithStrategy(&localizationTypes.StaticLocalizationReference{
+			Path: GenerateDeployPatch(tmp, deploymentPatchYAML),
+		}, v1alpha1.LocalizationStrategy{
+			KustomizePatch: &v1alpha1.LocalizationStrategyKustomizePatch{
+				Path: "deployment.yaml",
+				Patches: []v1alpha1.LocalizationKustomizePatch{
+					{
+						Path: "deployment_patch.yaml",
+						Target: &v1alpha1.LocalizationSelector{
+							LocalizationSelectorReference: v1alpha1.LocalizationSelectorReference{
+								GroupVersionKind: v1.GroupVersionKind{
+									Kind: "Deployment",
 								},
 							},
 						},
 					},
 				},
 			},
-		}
+		})
 
 		clt := localizationTypes.StaticLocalizationReference{
 			Path: GenerateDeploy(tmp, deploymentYAML),
 		}
 
-		target, err := Localize(ctx, &cls, &clt)
+		target, err := Localize(ctx, cls, &clt)
 		Expect(err).ToNot(HaveOccurred())
 
 		Expect(target).ToNot(BeEmpty())

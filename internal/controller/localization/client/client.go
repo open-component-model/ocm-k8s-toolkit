@@ -60,10 +60,7 @@ func (clnt *localStorageBackedClient) GetLocalizationSource(ctx context.Context,
 			return nil, err
 		}
 
-		return &types.ResourceLocalizationSource{
-			LocalizationSource: clr,
-			Strategy:           ref.Strategy,
-		}, nil
+		return types.NewLocalizationSourceWithStrategy(clr, ref.Strategy), nil
 	}
 
 	return nil, fmt.Errorf("unsupported localization target kind: %s", ref.Kind)

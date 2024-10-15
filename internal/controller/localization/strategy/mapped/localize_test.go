@@ -39,15 +39,15 @@ var _ = Describe("mapped localize", func() {
 		It("and map as well as successfully substitute correctly", func(ctx SpecContext) {
 			tmp := GinkgoT().TempDir()
 
-			var ls localizationTypes.ResourceLocalizationSource
+			var ls localizationTypes.LocalizationSourceWithStrategy
 
 			By("reading in the localization config as source", func() {
 				configDir := filepath.Join(tmp, "config")
 				Expect(os.Mkdir(configDir, os.ModePerm|os.ModeDir))
 				configPath := filepath.Join(configDir, "localization.yaml")
 				Expect(os.WriteFile(configPath, configYAML, os.ModePerm)).To(Succeed())
-				ls = localizationTypes.ResourceLocalizationSource{
-					LocalizationSource: &localizationTypes.StaticLocalizationReference{
+				ls = localizationTypes.NewLocalizationSourceWithStrategy(
+					&localizationTypes.StaticLocalizationReference{
 						Resource: &v1alpha1.Resource{
 							ObjectMeta: metav1.ObjectMeta{
 								Name:      "deployment-localization",
@@ -62,7 +62,10 @@ var _ = Describe("mapped localize", func() {
 						},
 						Path: configPath,
 					},
-				}
+					v1alpha1.LocalizationStrategy{
+						Mapped: &v1alpha1.LocalizationStrategyMapped{},
+					},
+				)
 			})
 
 			var trgt localizationTypes.StaticLocalizationReference
@@ -142,7 +145,7 @@ var _ = Describe("mapped localize", func() {
 				strg, err := storage.NewStorage(clnt, scheme.Scheme, tmp, "localhost", 0, 0)
 				Expect(err).ToNot(HaveOccurred())
 
-				path, err := Localize(ctx, localizationclient.NewClientWithLocalStorage(clnt, strg), strg, &ls, &trgt)
+				path, err := Localize(ctx, localizationclient.NewClientWithLocalStorage(clnt, strg), strg, ls, &trgt)
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(path).ToNot(BeEmpty())

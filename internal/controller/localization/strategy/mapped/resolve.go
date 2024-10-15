@@ -15,11 +15,11 @@ import (
 	"ocm.software/ocm/api/ocm/ocmutils/localize"
 	"ocm.software/ocm/api/utils/runtime"
 
-	localizationv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/pkg/localization/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
-func unresolvedRefFromRule(rule localizationv1alpha1.Rule, extraIdentity ocmmetav1.Identity) ocmmetav1.ResourceReference {
-	identity := ocmmetav1.NewIdentity(rule.Source.Resource.Name)
+func unresolvedRefFromSource(source string, extraIdentity ocmmetav1.Identity) ocmmetav1.ResourceReference {
+	identity := ocmmetav1.NewIdentity(source)
 	var resourceReference ocmmetav1.ResourceReference
 	if extraIdentity != nil {
 		resourceReference = ocmmetav1.NewResourceRef(identity, extraIdentity)
@@ -82,32 +82,37 @@ func resolveResourceReferenceFromComponentDescriptor(
 	return ref, nil
 }
 
-// addResolvedRule adds the resolved rule to the substitutions that later work on the target files.
-func addResolvedRule(substitutions *localize.Substitutions, rule localizationv1alpha1.Rule, ref string) error {
-	var value string
-
+func valueFromTransformation(ref string, transformationType v1alpha1.TransformationType) (value string, err error) {
 	parsed, err := name.ParseReference(ref)
 	if err != nil {
-		return fmt.Errorf("failed to parse access reference: %w", err)
+		return "", fmt.Errorf("failed to parse access reference: %w", err)
 	}
-	switch rule.Transformation.Type {
-	case localizationv1alpha1.Registry:
+	switch transformationType {
+	case v1alpha1.TransformationTypeRegistry:
 		value = parsed.Context().Registry.Name()
-	case localizationv1alpha1.Repository:
+	case v1alpha1.TransformationTypeRepository:
 		value = parsed.Context().RepositoryStr()
-	case localizationv1alpha1.Tag:
+	case v1alpha1.TransformationTypeTag:
 		value = parsed.Identifier()
-	case localizationv1alpha1.Image:
+	case v1alpha1.TransformationTypeImage:
 		// By default treat the reference as a full image reference
 		fallthrough
 	default:
 		value = parsed.Name()
 	}
-
-	return substitutions.Add("resource-reference", rule.Target.FileTarget.Path, rule.Target.FileTarget.Value, value)
+	return
 }
 
-func localizationConfigFromSource(source Source) (config *localizationv1alpha1.LocalizationConfig, err error) {
+// addResolvedRule adds the resolved rule to the substitutions that later work on the target files.
+func addResolvedRule(substitutions *localize.Substitutions, rule v1alpha1.LocalizationRule, ref string) error {
+	val, err := valueFromTransformation(ref, rule.Transformation.Type)
+	if err != nil {
+		return fmt.Errorf("failed to get value for resolving a localization rule: %w", err)
+	}
+	return substitutions.Add("resource-reference", rule.Target.FileTarget.Path, rule.Target.FileTarget.Value, val)
+}
+
+func localizationConfigFromSource(source Source) (config *v1alpha1.LocalizationConfig, err error) {
 	cfgReader, err := source.Open()
 	defer func() {
 		err = errors.Join(err, cfgReader.Close())

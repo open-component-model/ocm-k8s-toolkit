@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
-	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/opencontainers/go-digest"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
@@ -78,6 +78,22 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, nil
 	}
 
+	// no need for a dedicated finalizer since gc should also be able to take care of it
+	// TODO check if that actually happens or if we in fact do need a finalizer
+	if !localization.GetDeletionTimestamp().IsZero() {
+		artifact, err := ocm.GetAndVerifyArtifactForCollectable(ctx, r, r.Storage, localization)
+		if client.IgnoreNotFound(err) != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to get artifact: %w", err)
+		}
+		if artifact == nil {
+			log.FromContext(ctx).Info("artifact belonging to localization not found, skipping deletion")
+			return ctrl.Result{}, nil
+		}
+		if err := r.Storage.Remove(*artifact); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to remove artifact: %w", err)
+		}
+	}
+
 	patchHelper := patch.NewSerialPatcher(localization, r.Client)
 
 	// Always attempt to patch_test the object and status after each reconciliation.
@@ -92,6 +108,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1.Localization) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+
+	if err := r.Storage.ReconcileStorage(ctx, localization); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to reconcile storage: %w", err)
+	}
 
 	loc := localizationclient.NewClientWithLocalStorage(r.Client, r.Storage)
 
@@ -119,20 +139,21 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 
 	revisionAndDigest := NewMappedRevisionAndDigest(source, target)
 
-	if alreadyLocalized := conditions.IsReady(localization) &&
-		localization.Status.LocalizationDigest == revisionAndDigest.Digest(); alreadyLocalized {
-		logger.V(1).Info("no new localization needed, skipping", "digest", revisionAndDigest.Digest())
-
-		return ctrl.Result{RequeueAfter: localization.Spec.Interval.Duration}, nil
-	}
-
-	localized, err := r.localize(ctx, source, target)
+	hasValidArtifact, err := hasValidArtifact(ctx, r.Client, r.Storage, localization, revisionAndDigest)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, localization, ReasonLocalizationFailed, err.Error())
-		logger.Error(err, "failed to localize, retrying later", "interval", localization.Spec.Interval.Duration)
-
-		return ctrl.Result{RequeueAfter: localization.Spec.Interval.Duration}, nil
+		return ctrl.Result{}, fmt.Errorf("failed to check if artifact is valid: %w", err)
 	}
+
+	var localized string
+	if !hasValidArtifact {
+		if localized, err = r.localize(ctx, source, target); err != nil {
+			status.MarkNotReady(r.EventRecorder, localization, ReasonLocalizationFailed, err.Error())
+			logger.Error(err, "failed to localize, retrying later", "interval", localization.Spec.Interval.Duration)
+
+			return ctrl.Result{RequeueAfter: localization.Spec.Interval.Duration}, nil
+		}
+	}
+
 	localization.Status.LocalizationDigest = revisionAndDigest.Digest()
 
 	if err := r.Storage.ReconcileArtifact(
@@ -140,11 +161,13 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		localization,
 		revisionAndDigest.Revision(),
 		localized,
-		fmt.Sprintf("%s.tar.gz", revisionAndDigest.ToFileName()),
+		revisionAndDigest.ToArchiveFileName(),
 		func(artifact *artifactv1.Artifact, dir string) error {
-			// Archive directory to storage
-			if err := r.Storage.Archive(artifact, dir, nil); err != nil {
-				return fmt.Errorf("unable to archive artifact to storage: %w", err)
+			if !hasValidArtifact {
+				// Archive directory to storage
+				if err := r.Storage.Archive(artifact, dir, nil); err != nil {
+					return fmt.Errorf("unable to archive artifact to storage: %w", err)
+				}
 			}
 
 			localization.Status.ArtifactRef = &v1alpha1.ObjectKey{
@@ -237,6 +260,20 @@ func (r MappedRevisionAndDigest) Revision() string {
 	return fmt.Sprintf("%s localized with %s (strategy customization id %s)", r.SourceRevision, r.TargetRevision, r.StrategyCustomizationID)
 }
 
-func (r MappedRevisionAndDigest) ToFileName() string {
-	return strings.ReplaceAll(r.Digest(), ":", "_")
+func (r MappedRevisionAndDigest) ToArchiveFileName() string {
+	return strings.ReplaceAll(r.Digest(), ":", "_") + ".tar.gz"
+}
+
+func hasValidArtifact(ctx context.Context, reader client.Reader, strg *storage.Storage, localization *v1alpha1.Localization, revisionAndDigest MappedRevisionAndDigest) (bool, error) {
+	artifact, err := ocm.GetAndVerifyArtifactForCollectable(ctx, reader, strg, localization)
+	if client.IgnoreNotFound(err) != nil {
+		return false, fmt.Errorf("failed to get artifact: %w", err)
+	}
+	if artifact == nil {
+		return false, nil
+	}
+
+	existingFile := filepath.Base(strg.LocalPath(*artifact))
+
+	return existingFile != revisionAndDigest.Digest(), nil
 }

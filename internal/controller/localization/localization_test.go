@@ -23,8 +23,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	ocmbuilder "ocm.software/ocm/api/helper/builder"
 	"ocm.software/ocm/api/utils/tarutils"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
-	//. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
 	"github.com/mandelsoft/vfs/pkg/osfs"
 	environment "ocm.software/ocm/api/helper/env"
@@ -96,6 +96,9 @@ var _ = Describe("LocalizationRules Controller", func() {
 				basePath: tmp,
 			},
 		)
+		DeferCleanup(func(ctx SpecContext) {
+			Expect(k8sClient.Delete(ctx, targetResource, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
+		})
 		sourceResource = SetupMockResourceWithData(ctx,
 			SourceResourceObj,
 			Namespace,
@@ -107,8 +110,11 @@ var _ = Describe("LocalizationRules Controller", func() {
 				basePath: tmp,
 			},
 		)
+		DeferCleanup(func(ctx SpecContext) {
+			Expect(k8sClient.Delete(ctx, sourceResource, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
+		})
 
-		localization := SetupKustomizePatchLocalization(map[string]string{
+		localization := SetupKustomizePatchLocalization(ctx, map[string]string{
 			"Namespace":          Namespace,
 			"Name":               Localization,
 			"TargetResourceName": targetResource.Name,
@@ -116,8 +122,9 @@ var _ = Describe("LocalizationRules Controller", func() {
 			"FilePath":           "deployment.yaml",
 			"PatchPath":          "deployment_patch.yaml",
 		})
-
-		Expect(k8sClient.Create(ctx, localization)).To(Succeed())
+		DeferCleanup(func(ctx SpecContext) {
+			Expect(k8sClient.Delete(ctx, localization, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
+		})
 
 		Eventually(Object(localization), "10s").Should(
 			HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
@@ -220,7 +227,7 @@ func SetupMockResourceWithData(ctx context.Context,
 	return res
 }
 
-func SetupKustomizePatchLocalization(data map[string]string) *v1alpha1.Localization {
+func SetupKustomizePatchLocalization(ctx context.Context, data map[string]string) *v1alpha1.Localization {
 	localizationTemplate, err := template.New("localization").Parse(localizationTemplateKustomizePatch)
 	Expect(err).ToNot(HaveOccurred())
 	var ltpl bytes.Buffer
@@ -229,5 +236,6 @@ func SetupKustomizePatchLocalization(data map[string]string) *v1alpha1.Localizat
 	serializer := serializer.NewCodecFactory(k8sClient.Scheme()).UniversalDeserializer()
 	_, _, err = serializer.Decode(ltpl.Bytes(), nil, localization)
 	Expect(err).To(Not(HaveOccurred()))
+	Expect(k8sClient.Create(ctx, localization)).To(Succeed())
 	return localization
 }
