@@ -8,8 +8,8 @@ Technical Story:
 
 Configuration is done before deployment. It has various way from plain substitution to
 more complex CUE based configuration approaches. The reasons for configuration is quite
-obvious. It gives a chance to provide multiple environments for the same ComponentVersion.
-This means that there can be more than one `Configuration` object for a single ComponentVersion
+obvious. It gives a chance to provide multiple environments for the same Component.
+This means that there can be more than one `Configuration` object for a single Component
 depending on how many environments we would like to set up / deploy to.
 
 Let's walk through the current way of providing configuration options. There a plenty.
@@ -33,14 +33,12 @@ metadata:
 spec:
   interval: 5s
   sourceRef:
-    kind: Localization
-    name: localization-signed-backend
+    ...
   configRef:
-    kind: ComponentVersion
+    kind: Resource
     name: podinfo-signed
     resourceRef:
       name: config
-      version: 1.0.0
       referencePath:
         - name: backend
   values:
@@ -86,7 +84,7 @@ configMapSource:
 
 Again, an optional `subPath` can be further used to refine value substitution.
 
-#### ComponentVersion or Snapshot provider
+#### Component, Resource or Artifact provider
 
 This one can be used of values are provided through another resource. This option
 is convenient if values are bundled with another component and are shipped together
@@ -96,7 +94,7 @@ that can provide a Snapshot can provide values.
 ```yaml
   sourceRef:
     apiVersion: delivery.ocm.software/v1alpha1
-    kind: ComponentVersion
+    kind: Resource
     name: podinfo
     namespace: ocm-system
     resourceRef:
@@ -125,6 +123,7 @@ is important because Default values need to be handled correctly. Meaning users'
 correctly merged with defaults taken from the component version itself.
 
 The current Configuration object looks like this:
+
 ```yaml
 apiVersion: delivery.ocm.software/v1alpha1
 kind: Configuration
@@ -134,10 +133,9 @@ metadata:
 spec:
   interval: 5s
   sourceRef: # defines where to get what we want to configure
-    kind: Localization
-    name: localization-signed-backend
+    ...
   configRef:
-    kind: ComponentVersion
+    kind: Resource
     name: podinfo-signed
     resourceRef:
       name: config
@@ -214,11 +212,14 @@ At the end of the day, no matter where the configuration values are coming from,
   sets up the configuration similar to helm values. User's only need to consider
   the values they would like to set up.
 - can be used multiple times
+- the deployment works out of the box, because the configuration is not part of
+  the actual manifest.
 
 **Cons**:
 
 - proprietary configuration is difficult to understand and yet another templating
   language users will need to understand and get used to
+- only works with YAML and nothing else
 
 
 ## Option 2 - Go Templating
@@ -272,7 +273,7 @@ spec:
   configRef:
     ...
   values:
-    .image: "myregistry.io/org/ocm-k8s-toolkit:v0.0.1"
+    Image: "myregistry.io/org/ocm-k8s-toolkit:v0.0.1"
 ```
 
 Once templating run using the user's configuration values are loaded into the right struct and
@@ -331,3 +332,63 @@ patchStrategicMerge:
 - rigid patching
 - no default values
 - possible to overwrite existing values
+- needs a valid yaml to work
+
+## Option 3.5 - Combining Patch Strategic Merge with Go Templating
+
+In order to avoid people having to templatize their manifests, we can offer an alternative
+solution where we combine the patch strategic merge option with a version of the Manifest
+that is templated.
+
+Consider a component version providing the following Deployment manifest:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-deployment
+spec:
+  replicas: 2
+```
+
+The user would provide a strategic merge patch like this:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-deployment
+spec:
+  replicas: {{ .Replicas }}
+```
+
+Then we would provide a configuration:
+
+```yaml
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Configuration
+metadata:
+  name: configuration-signed-backend
+  namespace: ocm-system
+spec:
+  interval: 5s
+  sourceRef: # defines the original chart, should probably also contain the path to the resource
+    ...
+  configRef: # defines the strategic merge patch file, can come from anywhere
+    ...
+  values:
+    Replicas: 3 # gets injected automatically
+```
+
+And after merging we would perform the templating.
+
+**Pros**:
+
+- the deployment remains compatible and applyable
+- the provider doesn't have to bother with templating
+
+**Cons**:
+
+- the same rigidness as with strategic merge patch, meaning it only works with valid YAML
+- the user needs to be completely aware of how the manifest looks like in order to do a
+  valid merge
