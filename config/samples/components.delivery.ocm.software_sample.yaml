@@ -1,11 +1,24 @@
 apiVersion: delivery.ocm.software/v1alpha1
 kind: Component
 metadata:
-  name: ocmcli-component
+  namespace: default
+  name: ocm-comp
 spec:
-  component: ocm.software/ocmcli
-  interval: 10m
   repositoryRef:
-    name: open-component-model-repo
     namespace: default
-  semver: 0.13.0
+    name: open-component-model-repo
+  component: ocm.software/ocmcli
+  enforceDowngradability: false
+  semver: ">= 6.1.x-0"
+  semverFilter: ".*-rc.*"
+  verify:
+  - signature: ocm
+    secretRef:
+      name: ocm-pk-secret
+  secretRefs:
+  - name: ocm-secret
+  configRefs:
+  - name: ocm-config
+  configSet: standard
+  interval: 10m
+  suspend: false

@@ -171,7 +171,6 @@ var _ = Describe("Component Controller", func() {
 			descs := &ocm.Descriptors{}
 			MustBeSuccessful(yaml.Unmarshal(data, descs))
 			Expect(descs).To(YAMLEqual(expecteddescs))
-			Expect(component.Status.Artifact).To(Equal(artifact.Spec))
 		})
 
 		It("does not reconcile when the repository is not ready", func() {

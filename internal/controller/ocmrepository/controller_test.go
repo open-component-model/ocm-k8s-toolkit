@@ -82,7 +82,6 @@ var _ = Describe("OCMRepository Controller", func() {
 
 				By("check that repository status has been updated successfully")
 				Eventually(komega.Object(ocmRepo), "1m").Should(And(
-					HaveField("Status.RepositorySpec.Raw", Equal(specdata)),
 					HaveField("Status.Conditions", ContainElement(
 						And(HaveField("Type", Equal(meta.ReadyCondition)), HaveField("Status", Equal(metav1.ConditionTrue))),
 					)),
@@ -102,7 +101,6 @@ var _ = Describe("OCMRepository Controller", func() {
 
 				By("check that repository status has NOT been updated successfully")
 				Eventually(komega.Object(ocmRepo), "1m").Should(And(
-					HaveField("Status.RepositorySpec", BeNil()),
 					HaveField("Status.Conditions", ContainElement(
 						And(HaveField("Type", Equal(meta.ReadyCondition)), HaveField("Status", Equal(metav1.ConditionFalse))),
 					)),
@@ -132,7 +130,6 @@ var _ = Describe("OCMRepository Controller", func() {
 
 				By("check that repository status has NOT been updated successfully")
 				Eventually(komega.Object(ocmRepo), "1m").Should(And(
-					HaveField("Status.RepositorySpec", BeNil()),
 					HaveField("Status.Conditions", ContainElement(
 						And(HaveField("Type", Equal(meta.ReadyCondition)), HaveField("Status", Equal(metav1.ConditionFalse))),
 					)),
@@ -174,7 +171,6 @@ var _ = Describe("OCMRepository Controller", func() {
 
 				By("check that the SecretRefs and ConfigRefs are in the status")
 				Eventually(komega.Object(ocmRepo), "1m").Should(And(
-					HaveField("Status.RepositorySpec.Raw", Equal(specdata)),
 					HaveField("Status.Conditions", ContainElement(
 						And(HaveField("Type", Equal(meta.ReadyCondition)), HaveField("Status", Equal(metav1.ConditionTrue))),
 					)),

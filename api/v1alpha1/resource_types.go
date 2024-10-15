@@ -17,7 +17,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,60 +29,81 @@ import (
 type ResourceSpec struct {
 	// +required
 	RepositoryRef ObjectKey `json:"repositoryRef"`
+
+	// ComponentRef is a reference to a Component.
 	// +required
 	ComponentRef ObjectKey `json:"componentRef"`
+
+	// Resource identifies the ocm resource to be fetched.
 	// +required
 	Resource ResourceID `json:"resource"`
+
 	// +optional
 	ResourceSelector *apiextensionsv1.JSON `json:"resourceSelector"`
+
 	// +optional
 	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
+
 	// +optional
 	ConfigRefs []v1.LocalObjectReference `json:"configRefs,omitempty"`
+
 	// The secrets and configs referred to by SecretRef (or SecretRefs) and Config (or ConfigRefs) may contain ocm
 	// config data. The  ocm config allows to specify sets of configuration data
 	// (s. https://ocm.software/docs/cli-reference/help/configfile/). If the SecretRef (or SecretRefs) and ConfigRef and
 	// ConfigRefs contain ocm config sets, the user may specify which config set he wants to be effective.
 	// +optional
 	ConfigSet *string `json:"configSet,omitempty"`
+
+	// Interval at which the resource is checked for updates.
 	// +required
 	Interval metav1.Duration `json:"interval"`
+
+	// Suspend tells the controller to suspend the reconciliation of this
+	// Resource.
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
 }
 
 // ResourceStatus defines the observed state of Resource.
 type ResourceStatus struct {
-	// +optional
-	State string `json:"state,omitempty"`
-	// +optional
-	Message string `json:"message,omitempty"`
+	// ObservedGeneration is the last observed generation of the Resource
+	// object.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-	// The component controller generates an artifact which is a list of component descriptors. If the components were
-	// verified, other controllers (e.g. Resource controller) can use this without having to verify the signature again
-	// +optional
-	ArtifactRef v1.LocalObjectReference `json:"artifactRef,omitempty"`
-	// +optional
-	Artifact artifactv1.ArtifactSpec `json:"artifact,omitempty"`
+
+	// Conditions holds the conditions for the Resource.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// ArtifactRef points to the Artifact which represents the output of the
+	// last successful Resource sync.
 	// +optional
-	Component ComponentInfo `json:"component,omitempty"`
-	// +optional
-	Resource ResourceInfo `json:"resource,omitempty"`
-	// Propagate its effective secrets. Other controllers (e.g. Resource controller) may use this as default
-	// if they do not explicitly refer a secret.
+	ArtifactRef v1.LocalObjectReference `json:"artifactRef,omitempty"`
+
+	// Propagate its effective secrets. Other controllers (e.g. Resource
+	// controller) may use this as default if they do not explicitly refer a
+	// secret.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
 	// +optional
 	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
-	// Propagate its effective configs. Other controllers (e.g. Component or Resource controller) may use this as default
-	// if they do not explicitly refer a config.
+
+	// Propagate its effective configs. Other controllers (e.g. Component or
+	// Resource controller) may use this as default if they do not explicitly
+	// refer a config.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
 	// +optional
 	ConfigRefs []v1.LocalObjectReference `json:"configRefs,omitempty"`
-	// The secrets referred to by SecretRef (or SecretRefs) may contain ocm config data. The ocm config allows to
-	// specify sets of configuration data (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
-	// SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be
-	// effective.
+
+	// Propagate its effective config set. Other controllers (e.g. Component or
+	// Resource controller) may use this as default if they do not explicitly
+	// specify a config set.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
 	// +optional
 	ConfigSet string `json:"configSet,omitempty"`
 }

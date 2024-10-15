@@ -29,50 +29,80 @@ import (
 
 // OCMRepositorySpec defines the desired state of OCMRepository.
 type OCMRepositorySpec struct {
-	// RepositorySpec is the config of the repository containing the component version.
-	// Used by RepositoryForConfig to initialize the needed
+	// RepositorySpec is the config of an ocm repository containing component
+	// versions. This config has to be a valid ocm repository implementation
+	// specification
+	// https://github.com/open-component-model/ocm-spec/blob/main/doc/04-extensions/03-storage-backends/README.md.
 	// +required
 	RepositorySpec *apiextensionsv1.JSON `json:"repositorySpec"`
+
+	// SecretRefs are references to one or multiple secrets that contain
+	// credentials or ocm configurations
+	// (https://github.com/open-component-model/ocm/blob/main/docs/reference/ocm_configfile.md).
 	// +optional
 	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
+
+	// ConfigRefs are references to one or multiple config maps that contain
+	// ocm configurations
+	// (https://github.com/open-component-model/ocm/blob/main/docs/reference/ocm_configfile.md).
 	// +optional
 	ConfigRefs []v1.LocalObjectReference `json:"configRefs,omitempty"`
-	// The secrets and configs referred to by SecretRef (or SecretRefs) and Config (or ConfigRefs) may contain ocm
-	// config data. The  ocm config allows to specify sets of configuration data
-	// (s. https://ocm.software/docs/cli-reference/help/configfile/). If the SecretRef (or SecretRefs) and ConfigRef and
-	// ConfigRefs contain ocm config sets, the user may specify which config set he wants to be effective.
+
+	// The secrets and configs referred to by SecretRef (or SecretRefs) and
+	// Config (or ConfigRefs) may contain ocm config data. The  ocm config
+	// allows to specify sets of configuration data
+	// (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
+	// SecretRef (or SecretRefs) and ConfigRef and ConfigRefs contain ocm config
+	// sets, the user may specify which config set he wants to be effective.
 	// +optional
 	ConfigSet *string `json:"configSet"`
+
+	// Interval at which the ocm repository specified by the RepositorySpec
+	// validated.
 	// +required
 	Interval metav1.Duration `json:"interval"`
+
+	// Suspend tells the controller to suspend the reconciliation of this
+	// OCMRepository.
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
 }
 
 // OCMRepositoryStatus defines the observed state of OCMRepository.
 type OCMRepositoryStatus struct {
-	// +optional
-	State string `json:"state,omitempty"`
-	// +optional
-	Message string `json:"message,omitempty"`
+	// ObservedGeneration is the last observed generation of the OCMRepository
+	// object.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// Conditions holds the conditions for the OCMRepository.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
-	// +optional
-	RepositorySpec *apiextensionsv1.JSON `json:"repositorySpec,omitempty"`
-	// Propagate its effective secrets. Other controllers (e.g. Component or Resource controller) may use this as default
-	// if they do not explicitly refer a secret.
+
+	// Propagate its effective secrets. Other controllers (e.g. Component or
+	// Resource controller) may use this as default if they do not explicitly
+	// refer a secret.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
 	// +optional
 	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
-	// Propagate its effective configs. Other controllers (e.g. Component or Resource controller) may use this as default
-	// if they do not explicitly refer a config.
+
+	// Propagate its effective configs. Other controllers (e.g. Component or
+	// Resource controller) may use this as default if they do not explicitly
+	// refer a config.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
 	// +optional
 	ConfigRefs []v1.LocalObjectReference `json:"configRefs,omitempty"`
-	// The secrets referred to by SecretRef (or SecretRefs) may contain ocm config data. The ocm config allows to
-	// specify sets of configuration data (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
-	// SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be
-	// effective.
+
+	// Propagate its effective config set. Other controllers (e.g. Component or
+	// Resource controller) may use this as default if they do not explicitly
+	// specify a config set.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
 	// +optional
 	ConfigSet string `json:"configSets,omitempty"`
 }
@@ -104,12 +134,6 @@ func (in *OCMRepository) GetVID() map[string]string {
 
 func (in *OCMRepository) SetObservedGeneration(v int64) {
 	in.Status.ObservedGeneration = v
-}
-
-func (in *OCMRepository) SetEffectiveRepositorySpec() {
-	if in.Spec.RepositorySpec != nil {
-		in.Status.RepositorySpec = in.Spec.RepositorySpec
-	}
 }
 
 func (in *OCMRepository) GetSecretRefs() []v1.LocalObjectReference {

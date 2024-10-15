@@ -412,7 +412,5 @@ func (r *Reconciler) setComponentStatus(
 		return rerror.AsRetryableError(fmt.Errorf("failed to fetch artifact: %w", err))
 	}
 
-	component.Status.Artifact = artifact.Spec
-
 	return nil
 }
