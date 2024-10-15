@@ -222,15 +222,11 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 	}
 
 	// Update status
-	if rerr = r.setComponentStatus(component, v1alpha1.ComponentInfo{
+	r.setComponentStatus(component, v1alpha1.ComponentInfo{
 		RepositorySpec: repository.Spec.RepositorySpec,
 		Component:      component.Spec.Component,
 		Version:        version,
-	}); rerr != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.StatusSetFailedReason, err.Error())
-
-		return ctrl.Result{}, rerr
-	}
+	})
 
 	status.MarkReady(r.EventRecorder, component, "Applied version %s", version)
 
@@ -390,7 +386,7 @@ func (r *Reconciler) normalizeComponentVersionName(name string) string {
 func (r *Reconciler) setComponentStatus(
 	component *v1alpha1.Component,
 	info v1alpha1.ComponentInfo,
-) rerror.ReconcileError {
+) {
 	component.Status.Component = info
 
 	component.Status.ConfigRefs = slices.Clone(component.Spec.ConfigRefs)
@@ -399,6 +395,4 @@ func (r *Reconciler) setComponentStatus(
 	if component.Spec.ConfigSet != nil {
 		component.Status.ConfigSet = *component.Spec.ConfigSet
 	}
-
-	return nil
 }
