@@ -98,7 +98,6 @@ linters:
     - goerr113
     - golint
     - gomoddirectives
-    - govet
     - ifshort
     - interfacer
     - ireturn
