@@ -53,7 +53,4 @@ const (
 
 	// ReconcileArtifactFailedReason is used when we fail in creating an Artifact.
 	ReconcileArtifactFailedReason = "ReconcileArtifactFailed"
-
-	// StatusSetFailedReason is used when we fail to set the component status.
-	StatusSetFailedReason = "StatusSetFailed"
 )

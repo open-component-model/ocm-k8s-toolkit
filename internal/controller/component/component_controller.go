@@ -32,7 +32,6 @@ import (
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
 	ocmctx "ocm.software/ocm/api/ocm"
@@ -223,15 +222,11 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 	}
 
 	// Update status
-	if rerr = r.setComponentStatus(ctx, component, v1alpha1.ComponentInfo{
+	r.setComponentStatus(component, v1alpha1.ComponentInfo{
 		RepositorySpec: repository.Spec.RepositorySpec,
 		Component:      component.Spec.Component,
 		Version:        version,
-	}); rerr != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.StatusSetFailedReason, err.Error())
-
-		return ctrl.Result{}, rerr
-	}
+	})
 
 	status.MarkReady(r.EventRecorder, component, "Applied version %s", version)
 
@@ -389,10 +384,9 @@ func (r *Reconciler) normalizeComponentVersionName(name string) string {
 }
 
 func (r *Reconciler) setComponentStatus(
-	ctx context.Context,
 	component *v1alpha1.Component,
 	info v1alpha1.ComponentInfo,
-) rerror.ReconcileError {
+) {
 	component.Status.Component = info
 
 	component.Status.ConfigRefs = slices.Clone(component.Spec.ConfigRefs)
@@ -401,16 +395,4 @@ func (r *Reconciler) setComponentStatus(
 	if component.Spec.ConfigSet != nil {
 		component.Status.ConfigSet = *component.Spec.ConfigSet
 	}
-
-	artifact := &artifactv1.Artifact{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      component.Status.ArtifactRef.Name,
-			Namespace: component.Namespace,
-		},
-	}
-	if err := r.Get(ctx, client.ObjectKeyFromObject(artifact), artifact); err != nil {
-		return rerror.AsRetryableError(fmt.Errorf("failed to fetch artifact: %w", err))
-	}
-
-	return nil
 }
