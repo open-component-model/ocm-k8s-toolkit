@@ -22,7 +22,6 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	localizationclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/client"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/strategy/kustomizepatch"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/strategy/mapped"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/types"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
@@ -197,13 +196,6 @@ func (r *Reconciler) localize(ctx context.Context,
 	strategy := src.GetStrategy()
 	instructions := 0
 	var localize func(ctx context.Context, src types.LocalizationSourceWithStrategy, trgt types.LocalizationTarget) (string, error)
-
-	if strategy.KustomizePatch != nil {
-		instructions++
-		localize = func(ctx context.Context, src types.LocalizationSourceWithStrategy, trgt types.LocalizationTarget) (string, error) {
-			return kustomizepatch.Localize(ctx, src, trgt)
-		}
-	}
 
 	if strategy.Mapped != nil {
 		instructions++

@@ -11,7 +11,6 @@ require (
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/fluxcd/pkg/apis/event v0.9.0
 	github.com/fluxcd/pkg/apis/meta v1.5.0
-	github.com/fluxcd/pkg/kustomize v1.13.0
 	github.com/fluxcd/pkg/runtime v0.47.1
 	github.com/fluxcd/pkg/tar v0.7.0
 	github.com/go-jose/go-jose/v4 v4.0.2
@@ -31,8 +30,6 @@ require (
 	k8s.io/client-go v0.31.0
 	ocm.software/ocm v0.14.1-0.20240912152121-7c14e9d135e0
 	sigs.k8s.io/controller-runtime v0.19.0
-	sigs.k8s.io/kustomize/api v0.17.3
-	sigs.k8s.io/kustomize/kyaml v0.17.2
 	sigs.k8s.io/yaml v1.4.0
 )
 
@@ -144,8 +141,6 @@ require (
 	github.com/fatih/color v1.17.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fluxcd/pkg/apis/acl v0.3.0 // indirect
-	github.com/fluxcd/pkg/apis/kustomize v1.6.0 // indirect
-	github.com/fluxcd/pkg/envsubst v1.1.0 // indirect
 	github.com/fluxcd/pkg/lockedfile v0.3.0 // indirect
 	github.com/fluxcd/pkg/sourceignore v0.8.0 // indirect
 	github.com/fluxcd/source-controller/api v1.3.0 // indirect
@@ -361,6 +356,8 @@ require (
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8 // indirect
 	oras.land/oras-go v1.2.5 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
+	sigs.k8s.io/kustomize/api v0.17.3 // indirect
+	sigs.k8s.io/kustomize/kyaml v0.17.2 // indirect
 	sigs.k8s.io/release-utils v0.8.4 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 )

@@ -12,7 +12,6 @@ import (
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/localblob"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociblob"
-	"ocm.software/ocm/api/ocm/ocmutils/localize"
 	"ocm.software/ocm/api/utils/runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
@@ -104,16 +103,6 @@ func valueFromTransformation(ref string, transformationType v1alpha1.Transformat
 	}
 
 	return
-}
-
-// addResolvedRule adds the resolved rule to the substitutions that later work on the target files.
-func addResolvedRule(substitutions *localize.Substitutions, rule v1alpha1.LocalizationRule, ref string) error {
-	val, err := valueFromTransformation(ref, rule.Transformation.Type)
-	if err != nil {
-		return fmt.Errorf("failed to get value for resolving a localization rule: %w", err)
-	}
-
-	return substitutions.Add("resource-reference", rule.Target.FileTarget.Path, rule.Target.FileTarget.Value, val)
 }
 
 func localizationConfigFromSource(source Source) (config *v1alpha1.LocalizationConfig, err error) {

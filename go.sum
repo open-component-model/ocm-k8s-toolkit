@@ -366,14 +366,8 @@ github.com/fluxcd/pkg/apis/acl v0.3.0 h1:UOrKkBTOJK+OlZX7n8rWt2rdBmDCoTK+f5TY2Lc
 github.com/fluxcd/pkg/apis/acl v0.3.0/go.mod h1:WVF9XjSMVBZuU+HTTiSebGAWMgM7IYexFLyVWbK9bNY=
 github.com/fluxcd/pkg/apis/event v0.9.0 h1:iKxU+3v/3bAuC1C1iXg1mjbIiaEQet7WETh8lsfdcpY=
 github.com/fluxcd/pkg/apis/event v0.9.0/go.mod h1:5LjcTeppPMEyOgtTbIP7q2GbVwIRUfujIxynIjHBV/k=
-github.com/fluxcd/pkg/apis/kustomize v1.6.0 h1:G8Nj4ec8CeReT7nhwGLOuli9s+fInEk8gG+xjpDmZWQ=
-github.com/fluxcd/pkg/apis/kustomize v1.6.0/go.mod h1:uWiRCCq/HFW9UraizQKJWi0/jB3QrkYcSvXa0uVyQig=
 github.com/fluxcd/pkg/apis/meta v1.5.0 h1:/G82d2Az5D9op3F+wJUpD8jw/eTV0suM6P7+cSURoUM=
 github.com/fluxcd/pkg/apis/meta v1.5.0/go.mod h1:Y3u7JomuuKtr5fvP1Iji2/50FdRe5GcBug2jawNVkdM=
-github.com/fluxcd/pkg/envsubst v1.1.0 h1:b0a9QsG36btk3MIWf7yM9FhVPhyXh6lLJu8eZk4Fyow=
-github.com/fluxcd/pkg/envsubst v1.1.0/go.mod h1:4Uca9c2Bhu4+65sa6NbChEA3zZKhqyAjtgDEi+Zq9Y8=
-github.com/fluxcd/pkg/kustomize v1.13.0 h1:Gfchiw5uNQ7qzHIZwBF2RoE+A2pLkpwbJhZTmgYemxw=
-github.com/fluxcd/pkg/kustomize v1.13.0/go.mod h1:HtoEWrgeSB1+gzoaGMncwTrEPDQxBgFcLXmE6HhO/VE=
 github.com/fluxcd/pkg/lockedfile v0.3.0 h1:tZkBAffcxyt4zMigHIKc54cKgN5I/kFF005gyWZdyds=
 github.com/fluxcd/pkg/lockedfile v0.3.0/go.mod h1:5iCYXAs953LlXZq7nTId9ZSGnHVvTfZ0mDmrDE49upk=
 github.com/fluxcd/pkg/runtime v0.47.1 h1:Q1tAFsp92uurWyoEe52AmMC4k+6DYTPBrUQDs+nz/9c=
@@ -801,8 +795,6 @@ github.com/openfluxcd/controller-manager v0.1.0/go.mod h1:I/eY5R+5rNDkV1N37lVqsh
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/opentracing/opentracing-go v1.2.0 h1:uEJPy/1a5RIPAJ0Ov+OIO8OxWu77jEv+1B0VhjKrZUs=
 github.com/opentracing/opentracing-go v1.2.0/go.mod h1:GxEUsuufX4nBwe+T+Wl9TAgYrxe9dPLANfrWvHYVTgc=
-github.com/otiai10/copy v1.14.0 h1:dCI/t1iTdYGtkvCuBG2BgR6KZa83PTclw4U5n2wAllU=
-github.com/otiai10/copy v1.14.0/go.mod h1:ECfuL02W+/FkTWZWgQqXPWZgW9oeKCSQ5qVfSc4qc4w=
 github.com/pborman/uuid v1.2.1 h1:+ZZIw58t/ozdjRaXh/3awHfmWRbzYxJoAdNJxe/3pvw=
 github.com/pborman/uuid v1.2.1/go.mod h1:X/NO0urCmaxf9VXbdlT7C2Yzkj2IKimNn4k+gtPdI/k=
 github.com/pelletier/go-toml v1.9.5 h1:4yBQzkHv+7BHq2PQUZF3Mx0IYxG7LsP222s7Agd3ve8=

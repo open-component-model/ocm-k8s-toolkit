@@ -1,7 +1,6 @@
 package mapped
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,8 +12,6 @@ import (
 
 	"github.com/Masterminds/sprig/v3"
 	"github.com/go-jose/go-jose/v4/json"
-	"github.com/mandelsoft/vfs/pkg/osfs"
-	"github.com/mandelsoft/vfs/pkg/projectionfs"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -27,6 +24,8 @@ import (
 	localizationclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/client"
 	loctypes "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/types"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/substitute"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/substitute/steps"
 )
 
 type Source interface {
@@ -78,139 +77,208 @@ func Localize(ctx context.Context,
 	}
 
 	// now resolve the targetResource reference from the target, to "self-localize" the target with resources contained
-	// in the component descriptor. This is fetching the necessary metadata to actually localize the target.
+	// in the component descriptor. This is fetching the necessary data to actually localize the target.
 	//
 	// TODO The component descriptor is fetched based on the artifact reference of the targetResource, but technically
 	// we could also fetch it via the OCM library directly, however we would have to configure the OCM context for this.
 	targetResource := trgt.GetResource()
-	component, err := get[v1alpha1.Component](ctx, clnt, targetResource.Spec.ComponentRef)
+	componentSet, componentDescriptor, err := ComponentDescriptorAndSetFromResource(ctx, clnt, strg, targetResource)
 	if err != nil {
-		return "", fmt.Errorf("failed to get component: %w", err)
-	}
-	artifact, err := getNamespaced[artifactv1.Artifact](ctx, clnt, component.Status.ArtifactRef, component.Namespace)
-	if err != nil {
-		return "", fmt.Errorf("failed to get artifact: %w", err)
-	}
-	componentSet, err := ocm.ComponentSetFromLocalArtifact(strg, artifact)
-	if err != nil {
-		return "", fmt.Errorf("failed to get component version set: %w", err)
-	}
-	componentDescriptor, err := componentSet.LookupComponentVersion(component.Status.Component.Component, component.Status.Component.Version)
-	if err != nil {
-		return "", fmt.Errorf("failed to lookup component version: %w", err)
+		return "", fmt.Errorf("failed to get component descriptor and set: %w", err)
 	}
 
-	substitutions := make(localize.Substitutions, 0)
-	tplRules := make([]v1alpha1.LocalizationRule, 0)
+	// now setup the substitution engine on our target directory
+	engine, err := substitute.NewEngine(targetDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to create substitution engine: %w", err)
+	}
 
-	for i, rule := range config.Spec.Rules {
+	// currently we only have one set of rules that we split into go template and other substitution rules
+	// The order of execution is
+	// 1. GoTemplate rules applied in order of occurrence as individual steps
+	// 2. Substitution rules applied at the end as one step that goes over all files
+	goTemplateRules := make([]v1alpha1.LocalizationRule, 0)
+	substitutionRules := make([]v1alpha1.LocalizationRule, 0)
+
+	for _, rule := range config.Spec.Rules {
 		if rule.Transformation.Type == v1alpha1.TransformationTypeGoTemplate {
-			tplRules = append(tplRules, rule)
+			goTemplateRules = append(goTemplateRules, rule)
 
 			continue
 		}
+		substitutionRules = append(substitutionRules, rule)
+	}
 
-		unresolved := unresolvedRefFromSource(rule.Source.Resource.Name, targetResource.Spec.Resource.ExtraIdentity)
-		resolved, err := resolveResourceReferenceFromComponentDescriptor(unresolved, componentDescriptor, componentSet)
+	if len(goTemplateRules) > 0 {
+		funcs := template.FuncMap{}
+		for _, fm := range []template.FuncMap{
+			sprig.FuncMap(),
+			OCMResourceReferenceTemplateFunc(targetResource, componentDescriptor, componentSet),
+			KubernetesObjectReferenceTemplateFunc(ctx, clnt),
+		} {
+			maps.Copy(funcs, fm)
+		}
+		goTemplateSteps, err := GoTemplateSubstitutionStep(funcs, goTemplateRules)
 		if err != nil {
-			return "", fmt.Errorf("failed to get targetResource reference from component descriptor based on rule at index %d: %w", i, err)
+			return "", fmt.Errorf("failed to transform go template rules into steps: %w", err)
 		}
-
-		if err := addResolvedRule(&substitutions, rule, resolved); err != nil {
-			return "", fmt.Errorf("failed to add resolved rule: %w", err)
-		}
+		engine.AddSteps(goTemplateSteps...)
 	}
 
-	if len(substitutions) == 0 && len(tplRules) == 0 {
-		return "", fmt.Errorf("no substitutions were applied, most likely caused by an incorrect configuration")
-	}
-
-	if len(tplRules) > 0 {
-		funcs := goTemplateFuncs(ctx, clnt, targetResource, componentDescriptor, componentSet)
-		if err := executeGoTemplateTransformation(targetDir, tplRules, funcs); err != nil {
-			return "", fmt.Errorf("failed to execute go template transformation: %w", err)
-		}
-	}
-
-	if len(substitutions) > 0 {
-		// now localize the target with the resolved rules
-		// this will substitute the references from the rules in the target with the actual image references
-		targetFs, err := projectionfs.New(osfs.New(), targetDir)
+	if len(substitutionRules) > 0 {
+		step, err := OCMPathSubstitutionStep(
+			substitutionRules,
+			targetResource,
+			componentDescriptor,
+			componentSet,
+		)
 		if err != nil {
-			return "", fmt.Errorf("failed to create target filesystem: %w", err)
+			return "", fmt.Errorf("failed to transform substitution rules into step: %w", err)
 		}
-		if err := localize.Substitute(substitutions, targetFs); err != nil {
-			return "", fmt.Errorf("failed to localize: %w", err)
-		}
+		engine.AddStep(step)
+	}
+
+	if err := engine.Substitute(); err != nil {
+		return "", fmt.Errorf("failed to substitute: %w", err)
 	}
 
 	return targetDir, nil
 }
 
-func goTemplateFuncs(
+func ComponentDescriptorAndSetFromResource(
 	ctx context.Context,
-	clnt Client,
+	clnt client.Reader,
+	strg *storage.Storage,
+	targetResource *v1alpha1.Resource,
+) (compdesc.ComponentVersionResolver, *compdesc.ComponentDescriptor, error) {
+	component, err := get[v1alpha1.Component](ctx, clnt, targetResource.Spec.ComponentRef)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get component: %w", err)
+	}
+	artifact, err := getNamespaced[artifactv1.Artifact](ctx, clnt, component.Status.ArtifactRef, component.Namespace)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get artifact: %w", err)
+	}
+	componentSet, err := ocm.ComponentSetFromLocalArtifact(strg, artifact)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get component version set: %w", err)
+	}
+	componentDescriptor, err := componentSet.LookupComponentVersion(component.Spec.Component, component.Status.Component.Version)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to lookup component version: %w", err)
+	}
+
+	return componentSet, componentDescriptor, nil
+}
+
+// OCMPathSubstitutionStep creates a substitution step that substitutes based on the given
+// localization rules. It processes rules at follows:
+// 1. Use the Resource reference from rule.Source as base
+// 2. Resolve it against the given component descriptor (with given resolver) into its actual value
+// 3. Based on the Transformation.Type, extract the value from the resolved reference
+// 4. Add the resolved value to the substitution list to be replaced.
+func OCMPathSubstitutionStep(
+	substitutionRules []v1alpha1.LocalizationRule,
 	targetResource *v1alpha1.Resource,
 	componentDescriptor *compdesc.ComponentDescriptor,
-	componentSet *compdesc.ComponentVersionSet,
+	resolver compdesc.ComponentVersionResolver,
+) (steps.Step, error) {
+	substitutions := make(localize.Substitutions, 0, len(substitutionRules))
+	for _, rule := range substitutionRules {
+		unresolved := unresolvedRefFromSource(rule.Source.Resource.Name, targetResource.Spec.Resource.ExtraIdentity)
+		resolved, err := resolveResourceReferenceFromComponentDescriptor(unresolved, componentDescriptor, resolver)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get targetResource reference from component descriptor based on rule: %w", err)
+		}
+
+		val, err := valueFromTransformation(resolved, rule.Transformation.Type)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get value for resolving a localization rule: %w", err)
+		}
+
+		if err := substitutions.Add("resource-reference", rule.Target.FileTarget.Path, rule.Target.FileTarget.Value, val); err != nil {
+			return nil, fmt.Errorf("failed to add resolved rule: %w", err)
+		}
+	}
+	step := steps.NewOCMPathBasedSubstitutionStep(substitutions)
+
+	return step, nil
+}
+
+// GoTemplateSubstitutionStep creates a substitution step that substitutes based on GoTemplates.
+// It processes rules at follows:
+// 1. Create a set of go template functions (see GoTemplateFuncs) that can be used in any template
+// 2. Potentially add any additional data for the template to be filled with when specified in the rule
+// 3. Create a step for each rule that parses each file from the resource target path.
+func GoTemplateSubstitutionStep(
+	funcs template.FuncMap,
+	goTemplateRules []v1alpha1.LocalizationRule,
+) ([]steps.Step, error) {
+	stepsFromRules := make([]steps.Step, 0, len(goTemplateRules))
+	for _, rule := range goTemplateRules {
+		var data map[string]any
+		if rule.Transformation.GoTemplate != nil {
+			if err := json.Unmarshal(rule.Transformation.GoTemplate.Data.Raw, &data); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal gotemplate data for transformation: %w", err)
+			}
+		}
+		step := steps.NewGoTemplateBasedSubstitutionStep(
+			rule.Target.FileTarget.Path,
+			funcs,
+			data,
+			&steps.Delimiters{
+				Left:  rule.Transformation.GoTemplate.Delimiters.Left,
+				Right: rule.Transformation.GoTemplate.Delimiters.Right,
+			},
+		)
+		stepsFromRules = append(stepsFromRules, step)
+	}
+
+	return stepsFromRules, nil
+}
+
+// OCMResourceReferenceTemplateFunc creates a template function map that can be used in a GoTemplate
+// to resolve a resource reference from a component descriptor.
+// Example:
+// {{ OCMResourceReference "my-resource" "Registry" }}
+// this looks up the resource reference "my-resource" in the component descriptor and returns the image reference
+// with v1alpha1.TransformationTypeRegistry, e.g. "registry.example.com/my-image" would become "registry.example.com".
+func OCMResourceReferenceTemplateFunc(
+	contextualResource *v1alpha1.Resource,
+	descriptor *compdesc.ComponentDescriptor,
+	resolver compdesc.ComponentVersionResolver,
 ) template.FuncMap {
 	return template.FuncMap{
 		"OCMResourceReference": func(resource string, transformationType v1alpha1.TransformationType) (string, error) {
-			unresolved := unresolvedRefFromSource(resource, targetResource.Spec.Resource.ExtraIdentity)
-			resolved, err := resolveResourceReferenceFromComponentDescriptor(unresolved, componentDescriptor, componentSet)
+			unresolved := unresolvedRefFromSource(resource, contextualResource.Spec.Resource.ExtraIdentity)
+			resolved, err := resolveResourceReferenceFromComponentDescriptor(unresolved, descriptor, resolver)
 			if err != nil {
 				return "", fmt.Errorf("failed to get resource reference from component descriptor: %w", err)
 			}
 
 			return valueFromTransformation(resolved, transformationType)
 		},
-		"KubernetesObjectReference": func(namespace, name string) (string, error) {
+	}
+}
+
+// KubernetesObjectReferenceTemplateFunc creates a template function map that can be used in a GoTemplate
+// to resolve a Kubernetes object reference from the cluster.
+// Example:
+// {{ KubernetesObjectReference "my-namespace" "my-name" }}
+// this looks up the object with the name "my-name" in the namespace "my-namespace" and returns the object as JSON.
+// Note that this usually requires coupling with the sprig "mustFromJson" function to parse the object.
+func KubernetesObjectReferenceTemplateFunc(
+	ctx context.Context,
+	clnt Client,
+) template.FuncMap {
+	return template.FuncMap{
+		"KubernetesObjectReference": func(namespace, name string) (any, error) {
 			obj := &unstructured.Unstructured{}
 			if err := clnt.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, obj); err != nil {
 				return "", fmt.Errorf("failed to get object: %w", err)
 			}
-			data, err := json.Marshal(obj)
-			if err != nil {
-				return "", fmt.Errorf("failed to marshal object: %w", err)
-			}
 
-			return string(data), nil
+			return obj.UnstructuredContent(), nil
 		},
 	}
-}
-
-func executeGoTemplateTransformation(base string, rules []v1alpha1.LocalizationRule, funcs template.FuncMap) (err error) {
-	for _, rule := range rules {
-		pathSpec := filepath.Join(base, rule.Target.FileTarget.Path)
-
-		allFuncs := sprig.FuncMap()
-		maps.Copy(allFuncs, funcs)
-
-		tpl, err := template.New(filepath.Base(pathSpec)).Funcs(allFuncs).Delims("ocm{", "}").ParseFiles(pathSpec)
-		if err != nil {
-			return fmt.Errorf("failed to parse template: %w", err)
-		}
-
-		if len(tpl.Templates()) == 0 {
-			return fmt.Errorf("no templates found in file %s", pathSpec)
-		}
-
-		var data map[string]any
-		if rule.Transformation.GoTemplate != nil {
-			if err := json.Unmarshal(rule.Transformation.GoTemplate.Data.Raw, &data); err != nil {
-				return fmt.Errorf("failed to unmarshal data: %w", err)
-			}
-		}
-
-		var buf bytes.Buffer
-		if err := tpl.Execute(&buf, data); err != nil {
-			return fmt.Errorf("failed to execute template: %w", err)
-		}
-
-		if err := os.WriteFile(pathSpec, buf.Bytes(), os.ModePerm); err != nil {
-			return fmt.Errorf("failed to write template result back to file: %w", err)
-		}
-	}
-
-	return nil
 }

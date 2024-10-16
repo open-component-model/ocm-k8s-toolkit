@@ -4,14 +4,13 @@ metadata:
   name: {{ .Name }}
   namespace: {{ .Namespace }}
 spec:
+  # target is the resource that will be localized
   target:
     kind: Resource
     name: {{ .TargetResourceName }}
+  # source is a resource in the same component as the target resource and contains the localization config
   source:
     kind: Resource
     name: {{ .SourceResourceName }}
     strategy:
-      kustomizePatch:
-        path: {{ .FilePath }}
-        patches:
-        - path: {{ .PatchPath }}
+      mapped: {}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"text/template"
@@ -19,6 +20,7 @@ import (
 	. "github.com/onsi/gomega"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	ocmbuilder "ocm.software/ocm/api/helper/builder"
@@ -35,17 +37,18 @@ import (
 
 const modeReadWriteUser = 0o600
 
-//go:embed testdata/patch_test/deployment_patch_strategic_merge.yaml
-var deploymentPatch []byte
-
-//go:embed testdata/patch_test/deployment_patch_strategic_merge_result.yaml
-var deploymentPatchResult []byte
-
-//go:embed testdata/patch_test/deployment.yaml
-var deployment []byte
-
-//go:embed testdata/patch_test/localization_kustomize_patch.yaml.tmpl
-var localizationTemplateKustomizePatch string
+var (
+	//go:embed strategy/mapped/testdata/descriptor-list.yaml
+	descriptorListYAML []byte
+	//go:embed strategy/mapped/testdata/replaced-values.yaml
+	replacedValuesYAML []byte
+	//go:embed strategy/mapped/testdata/replaced-deployment.yaml
+	replacedDeploymentYAML []byte
+	//go:embed strategy/mapped/testdata/localization-config.yaml
+	configYAML []byte
+	//go:embed testdata/localized_resource_patch.yaml.tmpl
+	localizationTemplateKustomizePatch string
+)
 
 const (
 	Namespace         = "test-namespace"
@@ -83,16 +86,32 @@ var _ = Describe("LocalizationRules Controller", func() {
 		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 	})
 
-	It("should localize an artifact from a resource based on kustomize", func(ctx SpecContext) {
+	It("should localize an artifact from a resource based on a config supplied in a sibling resource", func(ctx SpecContext) {
+		component := SetupComponentWithDescriptorList(ctx,
+			ComponentObj,
+			Namespace,
+			v1alpha1.ComponentInfo{
+				Component:      "acme.org/test",
+				Version:        "1.0.0",
+				RepositorySpec: &apiextensionsv1.JSON{Raw: []byte(`{}`)},
+			},
+			tmp,
+			descriptorListYAML,
+		)
+		DeferCleanup(func(ctx SpecContext) {
+			Expect(k8sClient.Delete(ctx, component, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
+		})
+
 		targetResource = SetupMockResourceWithData(ctx,
 			TargetResourceObj,
 			Namespace,
-			RepositoryObj,
-			ComponentObj,
 			options{
-				filename: "deployment.yaml",
-				data:     deployment,
 				basePath: tmp,
+				dataPath: filepath.Join("strategy", "mapped", "testdata", "deployment-instruction-helm"),
+				componentRef: v1alpha1.ObjectKey{
+					Namespace: Namespace,
+					Name:      ComponentObj,
+				},
 			},
 		)
 		DeferCleanup(func(ctx SpecContext) {
@@ -101,25 +120,24 @@ var _ = Describe("LocalizationRules Controller", func() {
 		sourceResource = SetupMockResourceWithData(ctx,
 			SourceResourceObj,
 			Namespace,
-			RepositoryObj,
-			ComponentObj,
 			options{
-				filename: "deployment_patch.yaml",
-				data:     deploymentPatch,
 				basePath: tmp,
+				data:     bytes.NewReader(configYAML),
+				componentRef: v1alpha1.ObjectKey{
+					Namespace: Namespace,
+					Name:      ComponentObj,
+				},
 			},
 		)
 		DeferCleanup(func(ctx SpecContext) {
 			Expect(k8sClient.Delete(ctx, sourceResource, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
 		})
 
-		localization := SetupKustomizePatchLocalization(ctx, map[string]string{
+		localization := SetupLocalizedResource(ctx, map[string]string{
 			"Namespace":          Namespace,
 			"Name":               Localization,
 			"TargetResourceName": targetResource.Name,
 			"SourceResourceName": sourceResource.Name,
-			"FilePath":           "deployment.yaml",
-			"PatchPath":          "deployment_patch.yaml",
 		})
 		DeferCleanup(func(ctx SpecContext) {
 			Expect(k8sClient.Delete(ctx, localization, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
@@ -144,26 +162,31 @@ var _ = Describe("LocalizationRules Controller", func() {
 			Expect(localizedArchiveData.Close()).To(Succeed())
 		})
 		Expect(tarutils.UnzipTarToFs(memFs, localizedArchiveData)).To(Succeed())
-		Expect(memFs.Exists("deployment.yaml")).To(BeTrue())
 
-		localizedData, err := memFs.ReadFile("deployment.yaml")
+		valuesData, err := memFs.ReadFile("values.yaml")
 		Expect(err).ToNot(HaveOccurred())
-		Expect(localizedData).To(MatchYAML(deploymentPatchResult))
+		Expect(valuesData).To(MatchYAML(replacedValuesYAML))
+
+		deploymentData, err := memFs.ReadFile(filepath.Join("templates", "deployment.yaml"))
+		Expect(err).ToNot(HaveOccurred())
+		Expect(deploymentData).To(BeEquivalentTo(replacedDeploymentYAML))
 
 	})
 })
 
 type options struct {
 	basePath string
-	filename string
-	data     []byte
-	path     string
+
+	// option one to create a resource: directly pass the data
+	data io.Reader
+	// option two to create a resource: pass the path to the data
+	dataPath string
+
+	componentRef v1alpha1.ObjectKey
 }
 
 func SetupMockResourceWithData(ctx context.Context,
 	name, namespace string,
-	repoName,
-	componentName string,
 	options options,
 ) *v1alpha1.Resource {
 	res := &v1alpha1.Resource{
@@ -172,28 +195,16 @@ func SetupMockResourceWithData(ctx context.Context,
 			Name:      name,
 		},
 		Spec: v1alpha1.ResourceSpec{
-			Resource: v1alpha1.ResourceID{Name: name},
-			RepositoryRef: v1alpha1.ObjectKey{
-				Namespace: namespace,
-				Name:      repoName,
-			},
-			ComponentRef: v1alpha1.ObjectKey{
-				Namespace: namespace,
-				Name:      componentName,
-			},
+			Resource:      v1alpha1.ResourceID{Name: name},
+			RepositoryRef: v1alpha1.ObjectKey{Name: RepositoryObj, Namespace: namespace},
+			ComponentRef:  options.componentRef,
 		},
 	}
 	Expect(k8sClient.Create(ctx, res)).To(Succeed())
 
 	patchHelper := patch.NewSerialPatcher(res, k8sClient)
 
-	path := options.path
-	if options.data != nil {
-		targetPath := filepath.Join(options.basePath, name)
-		Expect(os.MkdirAll(targetPath, 0755)).To(Succeed())
-		Expect(os.WriteFile(filepath.Join(targetPath, options.filename), options.data, 0644)).To(Succeed())
-		path = targetPath
-	}
+	path := options.basePath
 
 	Expect(strg.ReconcileArtifact(
 		ctx,
@@ -203,9 +214,21 @@ func SetupMockResourceWithData(ctx context.Context,
 		fmt.Sprintf("%s.tar.gz", name),
 		func(artifact *artifactv1.Artifact, s string) error {
 			// Archive directory to storage
-			if err := strg.Archive(artifact, path, nil); err != nil {
-				return fmt.Errorf("unable to archive artifact to storage: %w", err)
+			if options.data != nil {
+				if err := strg.Copy(artifact, options.data); err != nil {
+					return fmt.Errorf("unable to archive artifact to storage: %w", err)
+				}
 			}
+			if options.dataPath != "" {
+				abs, err := filepath.Abs(options.dataPath)
+				if err != nil {
+					return fmt.Errorf("unable to get absolute path: %w", err)
+				}
+				if err := strg.Archive(artifact, abs, nil); err != nil {
+					return fmt.Errorf("unable to archive artifact to storage: %w", err)
+				}
+			}
+
 			res.Status.ArtifactRef = corev1.LocalObjectReference{
 				Name: artifact.Name,
 			}
@@ -226,7 +249,7 @@ func SetupMockResourceWithData(ctx context.Context,
 	return res
 }
 
-func SetupKustomizePatchLocalization(ctx context.Context, data map[string]string) *v1alpha1.LocalizedResource {
+func SetupLocalizedResource(ctx context.Context, data map[string]string) *v1alpha1.LocalizedResource {
 	localizationTemplate, err := template.New("localization").Parse(localizationTemplateKustomizePatch)
 	Expect(err).ToNot(HaveOccurred())
 	var ltpl bytes.Buffer
@@ -237,4 +260,74 @@ func SetupKustomizePatchLocalization(ctx context.Context, data map[string]string
 	Expect(err).To(Not(HaveOccurred()))
 	Expect(k8sClient.Create(ctx, localization)).To(Succeed())
 	return localization
+}
+
+func SetupComponentWithDescriptorList(
+	ctx context.Context,
+	name, namespace string,
+	info v1alpha1.ComponentInfo,
+	basePath string,
+	descriptorListData []byte,
+) *v1alpha1.Component {
+	dir := filepath.Join(basePath, "descriptor")
+	Expect(os.Mkdir(dir, os.ModePerm|os.ModeDir)).To(Succeed())
+	path := filepath.Join(dir, v1alpha1.OCMComponentDescriptorList)
+	descriptorListWriter, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, os.ModePerm)
+	Expect(err).ToNot(HaveOccurred())
+	defer func() {
+		Expect(descriptorListWriter.Close()).To(Succeed())
+	}()
+	_, err = descriptorListWriter.Write(descriptorListData)
+	Expect(err).ToNot(HaveOccurred())
+
+	component := &v1alpha1.Component{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: v1alpha1.ComponentSpec{
+			RepositoryRef: v1alpha1.ObjectKey{Name: RepositoryObj, Namespace: namespace},
+			Component:     info.Component,
+		},
+		Status: v1alpha1.ComponentStatus{
+			ArtifactRef: corev1.LocalObjectReference{
+				Name: name,
+			},
+			Component: info,
+		},
+	}
+	Expect(k8sClient.Create(ctx, component)).To(Succeed())
+
+	patchHelper := patch.NewSerialPatcher(component, k8sClient)
+
+	Expect(strg.ReconcileArtifact(
+		ctx,
+		component,
+		name,
+		basePath,
+		fmt.Sprintf("%s.tar.gz", name),
+		func(artifact *artifactv1.Artifact, s string) error {
+			if err := strg.Archive(artifact, dir, nil); err != nil {
+				return fmt.Errorf("unable to archive artifact to storage: %w", err)
+			}
+
+			component.Status.ArtifactRef = corev1.LocalObjectReference{
+				Name: artifact.Name,
+			}
+			component.Status.Component = info
+			return nil
+		}),
+	).To(Succeed())
+
+	art := &artifactv1.Artifact{}
+	art.Name = component.Status.ArtifactRef.Name
+	art.Namespace = component.Namespace
+	Eventually(Object(art), "5s").Should(HaveField("Spec.URL", Not(BeEmpty())))
+
+	Eventually(func(ctx context.Context) error {
+		status.MarkReady(recorder, component, "applied mock component")
+		return status.UpdateStatus(ctx, patchHelper, component, recorder, time.Hour, nil)
+	}).WithContext(ctx).Should(Succeed())
+
+	return component
 }

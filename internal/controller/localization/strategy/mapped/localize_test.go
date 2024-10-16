@@ -120,13 +120,15 @@ var _ = Describe("mapped localize", func() {
 							Name:      "component",
 							Namespace: "default",
 						},
+						Spec: v1alpha1.ComponentSpec{
+							Component: "acme.org/test",
+						},
 						Status: v1alpha1.ComponentStatus{
 							ArtifactRef: v1.LocalObjectReference{
 								Name: "component",
 							},
 							Component: v1alpha1.ComponentInfo{
-								Component: "acme.org/test",
-								Version:   "1.0.0",
+								Version: "1.0.0",
 							},
 						},
 					},
