@@ -128,7 +128,7 @@ func (r *Reconciler) reconcilePrepare(ctx context.Context, resource *v1alpha1.Re
 		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to get component: %w", err))
 	}
 
-	// Check if component is usable
+	// Check if component is applicable or is getting deleted/not ready
 	if component.GetDeletionTimestamp() != nil {
 		return ctrl.Result{}, rerror.AsNonRetryableError(errors.New("component is being deleted"))
 	}
@@ -165,19 +165,19 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 		return ctrl.Result{}, retErr
 	}
 
-	// Get storageArtifact from component that contains component descriptor
+	// Get artifact from component that contains component descriptor
 	artifactComponent := &artifactv1.Artifact{}
 	if err := r.Get(ctx, types.NamespacedName{
 		// TODO: Discuss if we should use OwnerReference instead of refs?
 		Namespace: resource.GetNamespace(),
 		Name:      component.Status.ArtifactRef.Name,
 	}, artifactComponent); err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetArtifactFailedReason, "Cannot get component storageArtifact")
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetArtifactFailedReason, "Cannot get component artifact")
 
-		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to get component storageArtifact: %w", err))
+		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to get component artifact: %w", err))
 	}
 
-	// Get component descriptor set
+	// Get component descriptor set from artifact
 	cdSet, rErr := getComponentSetForArtifact(ctx, r.Storage, artifactComponent)
 	if rErr != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentForArtifactFailedReason, rErr.Error())
@@ -185,7 +185,7 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 		return ctrl.Result{}, rErr
 	}
 
-	// Get referenced component descriptor
+	// Get referenced component descriptor from component descriptor set
 	cd, err := cdSet.LookupComponentVersion(component.Status.Component.Component, component.Status.Component.Version)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentDescriptorsFailedReason, err.Error())
@@ -194,47 +194,52 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 	}
 
 	// Get resource, respective component descriptor and component version
-	reference := v1.ResourceReference{
+	resourceReference := v1.ResourceReference{
 		Resource: resource.Spec.Resource.ByReference.Resource,
+		// TODO: Implement resourceReference path (no current priority)
 		// ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
 	}
 
-	resourceArtifact, resourceCd, err := compdesc.ResolveResourceReference(cd, reference, cdSet)
+	// Resolve resource resourceReference to get resource and its component descriptor
+	resourceDesc, resourceCompDesc, err := compdesc.ResolveResourceReference(cd, resourceReference, cdSet)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ResolveResourceFailedReason, err.Error())
 
 		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to resolve resource reference: %w", err))
 	}
 
-	cv, rErr := getComponentVersion(ctx, octx, session, component.Status.Component.RepositorySpec.Raw, resourceCd)
+	cv, rErr := getComponentVersion(ctx, octx, session, component.Status.Component.RepositorySpec.Raw, resourceCompDesc)
 	if rErr != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentVersionFailedReason, rErr.Error())
 
 		return ctrl.Result{}, rErr
 	}
 
-	// Get resource access for identity
-	resourceAccess, rErr := getResourceAccess(ctx, cv, resourceArtifact, resourceCd)
+	resourceAccess, rErr := getResourceAccess(ctx, cv, resourceDesc, resourceCompDesc)
 	if rErr != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceAccessFailedReason, rErr.Error())
 
 		return ctrl.Result{}, rErr
 	}
 
-	// Get storageArtifact to check if is already present in the storage
+	// revision is the digest of the resource. It is used to identify the resource in the storage (as filename) and to
+	// check if the resource is already present in the storage.
 	revision := resourceAccess.Meta().Digest.Value
 
-	storageArtifact := r.Storage.NewArtifactFor(resource.GetKind(), resource.GetObjectMeta(), "", "")
-	if err := r.Client.Get(ctx, types.NamespacedName{Name: storageArtifact.Name, Namespace: storageArtifact.Namespace}, &storageArtifact); err != nil {
+	// Check if the artifact is already present in the storage and cluster by comparing the digest of that artifact
+	// with the revision.
+	artifactStorage := r.Storage.NewArtifactFor(resource.GetKind(), resource.GetObjectMeta(), "", "")
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: artifactStorage.Name, Namespace: artifactStorage.Namespace}, &artifactStorage); err != nil {
 		if !apierrors.IsNotFound(err) {
 			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetArtifactFailedReason, err.Error())
 
-			return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to get storageArtifact: %w", err))
+			return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to get artifactStorage: %w", err))
 		}
 	}
 
-	// reconcileArtifact will download, verify, and reconcile the artifact in the storage if it is not already present in the storage
-	rErr = reconcileArtifact(ctx, octx, r.Storage, resource, resourceAccess, cv, cd, revision, storageArtifact)
+	artifactPresent := strings.Split(filepath.Base(r.Storage.LocalPath(artifactStorage)), ".")[0] == revision
+
+	rErr = reconcileArtifact(ctx, octx, r.Storage, resource, resourceAccess, cv, cd, revision, artifactPresent)
 	if rErr != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ReconcileArtifactFailedReason, rErr.Error())
 
@@ -253,6 +258,7 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 	return ctrl.Result{RequeueAfter: resource.GetRequeueAfter()}, nil
 }
 
+// getComponentSetForArtifact returns the component descriptor set for the given artifact.
 func getComponentSetForArtifact(ctx context.Context, storage *storage.Storage, artifact *artifactv1.Artifact) (_ *compdesc.ComponentVersionSet, retErr rerror.ReconcileError) {
 	log.FromContext(ctx).V(1).Info("getting component set")
 
@@ -298,6 +304,7 @@ func getComponentSetForArtifact(ctx context.Context, storage *storage.Storage, a
 	return compdesc.NewComponentVersionSet(cds.List...), retErr
 }
 
+// getComponentVersion returns the component version for the given component descriptor.
 func getComponentVersion(ctx context.Context, octx ocmctx.Context, session ocmctx.Session, spec []byte, compDesc *compdesc.ComponentDescriptor) (
 	ocmctx.ComponentVersionAccess, rerror.ReconcileError,
 ) {
@@ -324,6 +331,7 @@ func getComponentVersion(ctx context.Context, octx ocmctx.Context, session ocmct
 	return cv, nil
 }
 
+// getResourceAccess returns the resource access for the given resource and component descriptor from the component version access.
 func getResourceAccess(ctx context.Context, cv ocmctx.ComponentVersionAccess, resourceDesc *compdesc.Resource, compDesc *compdesc.ComponentDescriptor) (ocmctx.ResourceAccess, rerror.ReconcileError) {
 	log.FromContext(ctx).V(1).Info("get resource access")
 
@@ -345,7 +353,8 @@ func getResourceAccess(ctx context.Context, cv ocmctx.ComponentVersionAccess, re
 	return resourceAccess, nil
 }
 
-func getBlobAccess(ctx context.Context, access ocmctx.ResourceAccess) (_ blobaccess.BlobAccess, retErr rerror.ReconcileError) {
+// getBlobAccess returns the blob access for the given resource access.
+func getBlobAccess(ctx context.Context, access ocmctx.ResourceAccess) (blobaccess.BlobAccess, rerror.ReconcileError) {
 	log.FromContext(ctx).V(1).Info("get resource blob access")
 
 	// Create data access
@@ -354,13 +363,16 @@ func getBlobAccess(ctx context.Context, access ocmctx.ResourceAccess) (_ blobacc
 		return nil, rerror.AsRetryableError(fmt.Errorf("failed to create access method: %w", err))
 	}
 
-	return accessMethod.AsBlobAccess(), retErr
+	return accessMethod.AsBlobAccess(), nil
 }
 
+// verifyResource verifies the resource digest with the digest from the component version access and component descriptor.
 func verifyResource(ctx context.Context, access ocmctx.ResourceAccess, blobAccess blobaccess.BlobAccess, cv ocmctx.ComponentVersionAccess, cd *compdesc.ComponentDescriptor,
-) (retErr rerror.ReconcileError) {
+) rerror.ReconcileError {
 	log.FromContext(ctx).V(1).Info("verify resource")
 
+	// Add the component descriptor to the local verified store, so its digest will be compared with the digest from the
+	// component version access
 	store := signing.NewLocalVerifiedStore()
 	store.Add(cd)
 
@@ -379,7 +391,8 @@ func verifyResource(ctx context.Context, access ocmctx.ResourceAccess, blobAcces
 	return nil
 }
 
-func downloadResource(ctx context.Context, octx ocmctx.Context, tmp string, resource *v1alpha1.Resource, acc ocmctx.ResourceAccess, bAcc blobaccess.BlobAccess,
+// downloadResource downloads the resource from the resource access.
+func downloadResource(ctx context.Context, octx ocmctx.Context, targetDir string, resource *v1alpha1.Resource, acc ocmctx.ResourceAccess, bAcc blobaccess.BlobAccess,
 ) (
 	_ string, retErr rerror.ReconcileError,
 ) {
@@ -391,7 +404,7 @@ func downloadResource(ctx context.Context, octx ocmctx.Context, tmp string, reso
 		return "", rerror.AsRetryableError(fmt.Errorf("failed to create redirected resource acc: %w", err))
 	}
 
-	path, err := download.DownloadResource(octx, accessMock, filepath.Join(tmp, resource.Name))
+	path, err := download.DownloadResource(octx, accessMock, filepath.Join(targetDir, resource.Name))
 	if err != nil {
 		return "", rerror.AsRetryableError(fmt.Errorf("failed to download resource: %w", err))
 	}
@@ -399,24 +412,24 @@ func downloadResource(ctx context.Context, octx ocmctx.Context, tmp string, reso
 	return path, nil
 }
 
+// reconcileArtifact will download, verify, and reconcile the artifact in the storage if it is not already present in the storage.
 func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storage.Storage, resource *v1alpha1.Resource, acc ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAccess,
-	cd *compdesc.ComponentDescriptor, revision string, artifact artifactv1.Artifact,
+	cd *compdesc.ComponentDescriptor, revision string, artifactPresent bool,
 ) (
 	retErr rerror.ReconcileError,
 ) {
 	log.FromContext(ctx).V(1).Info("reconcile artifact")
 
-	artifactPresent := strings.Split(filepath.Base(storage.LocalPath(artifact)), ".")[0] == revision
-
-	// Init variables with default values
+	// Init variables with default values in case the artifact is present
 	dirPath := ""
+	// If the artifact is already present, we do not want to archive it again
 	archiveFunc := func(_ *artifactv1.Artifact, _ string) error {
 		return nil
 	}
 
-	// Check if artifact is already present
+	// If the artifact is not present, we will verify and download the resource and provide it as artifact
 	if !artifactPresent {
-		// bAcc will be closed automatically
+		// No need to close the blob access as it will be closed automatically
 		bAcc, rErr := getBlobAccess(ctx, acc)
 		if rErr != nil {
 			return rErr
@@ -426,21 +439,22 @@ func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storag
 			return rErr
 		}
 
-		// Path in which the resource is downloaded
+		// Target directory in which the resource is downloaded
 		tmp, err := os.MkdirTemp("", "resource-*")
 		if err != nil {
 			return rerror.AsRetryableError(fmt.Errorf("failed to create temporary directory: %w", err))
 		}
-		// TODO: Discuss if we should cache the downloaded resources
 		defer func() {
 			retErr = rerror.AsRetryableError(errors.Join(retErr, os.RemoveAll(tmp)))
 		}()
 
+		// TODO: Discuss if we should cache the downloaded resources
 		path, rErr := downloadResource(ctx, octx, tmp, resource, acc, bAcc)
 		if rErr != nil {
 			return rErr
 		}
 
+		// Since the artifact is not already present, an archive function is added to archive the downloaded resource in the storage
 		archiveFunc = func(art *artifactv1.Artifact, _ string) error {
 			// If given path is already an archive (e.g. helm charts), just copy it.
 			switch extension := filepath.Ext(path); extension {
@@ -463,6 +477,7 @@ func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storag
 			return nil
 		}
 
+		// Overwrite the default dirPath with the temporary directory path that points to the downloaded resource
 		dirPath = tmp
 	}
 
@@ -479,10 +494,11 @@ func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storag
 	return retErr
 }
 
+// setResourceStatus updates the resource status with the all required information.
 func setResourceStatus(ctx context.Context, resource *v1alpha1.Resource, resourceAccess ocmctx.ResourceAccess) error {
 	log.FromContext(ctx).V(1).Info("updating resource status")
 
-	// Update status
+	// Get the access spec from the resource access
 	accessSpec, err := resourceAccess.Access()
 	if err != nil {
 		return rerror.AsRetryableError(fmt.Errorf("failed to get access spec: %w", err))
