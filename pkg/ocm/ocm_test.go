@@ -3,14 +3,21 @@ package ocm_test
 import (
 	"context"
 	"encoding/pem"
-
 	"github.com/Masterminds/semver/v3"
+	"github.com/fluxcd/pkg/apis/meta"
 	. "github.com/mandelsoft/goutils/testutils"
 	"github.com/mandelsoft/vfs/pkg/vfs"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	. "github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"ocm.software/ocm/api/datacontext"
 	. "ocm.software/ocm/api/helper/builder"
 	ocmctx "ocm.software/ocm/api/ocm"
@@ -18,6 +25,7 @@ import (
 	resourcetypes "ocm.software/ocm/api/ocm/extensions/artifacttypes"
 	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
 	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
+	"ocm.software/ocm/api/ocm/extensions/repositories/ocireg"
 	"ocm.software/ocm/api/ocm/tools/signing"
 	"ocm.software/ocm/api/tech/maven/identity"
 	"ocm.software/ocm/api/tech/signing/handlers/rsa"
@@ -26,20 +34,19 @@ import (
 	"ocm.software/ocm/api/utils/accessobj"
 	"ocm.software/ocm/api/utils/mime"
 	common "ocm.software/ocm/api/utils/misc"
-
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	. "github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
+	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 const (
-	CTFPath      = "/ctf"
-	Component    = "ocm.software/test"
-	Reference    = "referenced-test"
-	RefComponent = "ocm.software/referenced-test"
-	Resource     = "testresource"
-	Version1     = "1.0.0-rc.1"
-	Version2     = "2.0.0"
-	Version3     = "3.0.0"
+	CTFPath       = "/ctf"
+	TestComponent = "ocm.software/test"
+	Reference     = "referenced-test"
+	RefComponent  = "ocm.software/referenced-test"
+	Resource      = "testresource"
+	Version1      = "1.0.0-rc.1"
+	Version2      = "2.0.0"
+	Version3      = "3.0.0"
 
 	Signature1 = "signature1"
 	Signature2 = "signature2"
@@ -68,9 +75,11 @@ var _ = Describe("ocm utils", func() {
 			repo ocmctx.Repository
 			cv   ocmctx.ComponentVersionAccess
 
-			configs       []*corev1.ConfigMap
+			configmaps    []*corev1.ConfigMap
 			secrets       []*corev1.Secret
+			configs       []v1alpha1.OCMConfiguration
 			verifications []Verification
+			clnt          ctrl.Client
 		)
 
 		BeforeEach(func() {
@@ -84,14 +93,14 @@ var _ = Describe("ocm utils", func() {
 			privkey3, pubkey3 := Must2(rsa.CreateKeyPair())
 
 			env.OCMCommonTransport(CTFPath, accessio.FormatDirectory, func() {
-				env.Component(Component, func() {
+				env.Component(TestComponent, func() {
 					env.Version(Version1, func() {
 					})
 				})
 			})
 
 			repo = Must(ctf.Open(env, accessobj.ACC_WRITABLE, CTFPath, vfs.FileMode(vfs.O_RDWR), env))
-			cv = Must(repo.LookupComponentVersion(Component, Version1))
+			cv = Must(repo.LookupComponentVersion(TestComponent, Version1))
 
 			_ = Must(signing.SignComponentVersion(cv, Signature1, signing.PrivateKey(Signature1, privkey1)))
 			_ = Must(signing.SignComponentVersion(cv, Signature2, signing.PrivateKey(Signature2, privkey2)))
@@ -104,7 +113,9 @@ var _ = Describe("ocm utils", func() {
 				{Signature: Signature3, PublicKey: pem.EncodeToMemory(signutils.PemBlockForPublicKey(pubkey3))},
 			}...)
 
-			By("setup configs")
+			By("setup configmaps")
+			builder := fake.NewClientBuilder()
+
 			config1 := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: Config1,
@@ -130,7 +141,8 @@ sets:
 `,
 				},
 			}
-			configs = append(configs, config1)
+			configmaps = append(configmaps, config1)
+			builder.WithObjects(config1)
 
 			config2 := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
@@ -157,7 +169,8 @@ sets:
 `,
 				},
 			}
-			configs = append(configs, config2)
+			configmaps = append(configmaps, config2)
+			builder.WithObjects(config2)
 
 			config3 := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
@@ -184,7 +197,8 @@ sets:
 `,
 				},
 			}
-			configs = append(configs, config3)
+			configmaps = append(configmaps, config3)
+			builder.WithObjects(config3)
 
 			By("setup secrets")
 			secret1 := &corev1.Secret{
@@ -208,6 +222,7 @@ consumers:
 				},
 			}
 			secrets = append(secrets, secret1)
+			builder.WithObjects(secret1)
 
 			secret2 := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
@@ -230,8 +245,9 @@ consumers:
 				},
 			}
 			secrets = append(secrets, secret2)
+			builder.WithObjects(secret2)
 
-			secret3 := corev1.Secret{
+			secret3 := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: Secret3,
 				},
@@ -251,7 +267,60 @@ consumers:
 `),
 				},
 			}
-			secrets = append(secrets, &secret3)
+			secrets = append(secrets, secret3)
+			builder.WithObjects(secret3)
+
+			clnt = builder.Build()
+
+			By("setup configs")
+			configs = []v1alpha1.OCMConfiguration{
+				{
+					Ref: meta.NamespacedObjectKindReference{
+						APIVersion: corev1.SchemeGroupVersion.String(),
+						Kind:       "Secret",
+						Name:       secrets[0].Name,
+						Namespace:  secrets[0].Namespace,
+					},
+				},
+				{
+					Ref: meta.NamespacedObjectKindReference{
+						APIVersion: corev1.SchemeGroupVersion.String(),
+						Kind:       "Secret",
+						Name:       secrets[1].Name,
+					},
+					Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+				},
+				{
+					Ref: meta.NamespacedObjectKindReference{
+						Kind: "Secret",
+						Name: secrets[2].Name,
+					},
+					Policy: v1alpha1.ConfigurationPolicyPropagate,
+				},
+				{
+					Ref: meta.NamespacedObjectKindReference{
+						APIVersion: corev1.SchemeGroupVersion.String(),
+						Kind:       "ConfigMap",
+						Name:       configmaps[0].Name,
+						Namespace:  configmaps[0].Namespace,
+					},
+				},
+				{
+					Ref: meta.NamespacedObjectKindReference{
+						APIVersion: corev1.SchemeGroupVersion.String(),
+						Kind:       "ConfigMap",
+						Name:       configmaps[1].Name,
+					},
+					Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+				},
+				{
+					Ref: meta.NamespacedObjectKindReference{
+						Kind: "ConfigMap",
+						Name: configmaps[2].Name,
+					},
+					Policy: v1alpha1.ConfigurationPolicyPropagate,
+				},
+			}
 		})
 
 		AfterEach(func() {
@@ -262,7 +331,7 @@ consumers:
 
 		It("configure context", func() {
 			octx := ocmctx.New(datacontext.MODE_EXTENDED)
-			MustBeSuccessful(ConfigureContext(ctx, octx, verifications, secrets, configs))
+			MustBeSuccessful(ConfigureContext(ctx, octx, clnt, configs, verifications))
 
 			creds1 := Must(octx.CredentialsContext().GetCredentialsForConsumer(Must(identity.GetConsumerId("https://example.com/path1", "")), identity.IdentityMatcher))
 			creds2 := Must(octx.CredentialsContext().GetCredentialsForConsumer(Must(identity.GetConsumerId("https://example.com/path2", "")), identity.IdentityMatcher))
@@ -291,6 +360,412 @@ consumers:
 		})
 	})
 
+	Context("get effective config", func() {
+		const (
+			Namespace  = "test-namespace"
+			Repository = "test-repository"
+			Component  = "test-component"
+			ConfigMap  = "test-configmap"
+			Secret     = "test-secret"
+		)
+		var (
+			bldr *fake.ClientBuilder
+			clnt ctrl.Client
+		)
+
+		// setup scheme
+		scheme := runtime.NewScheme()
+		utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+
+		utilruntime.Must(v1alpha1.AddToScheme(scheme))
+		utilruntime.Must(artifactv1.AddToScheme(scheme))
+
+		BeforeEach(func() {
+			bldr = fake.NewClientBuilder()
+			bldr.WithScheme(scheme)
+		})
+
+		AfterEach(func() {
+			bldr = nil
+			clnt = nil
+		})
+
+		It("no config", func() {
+			specdata, err := ocireg.NewRepositorySpec("ocm.software/mock-repo-spec").MarshalJSON()
+			Expect(err).ToNot(HaveOccurred())
+
+			repo := v1alpha1.OCMRepository{
+				Spec: v1alpha1.OCMRepositorySpec{
+					RepositorySpec: &apiextensionsv1.JSON{Raw: specdata},
+				},
+			}
+
+			config, err := GetEffectiveConfig(ctx, nil, &repo)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(config).To(BeEmpty())
+		})
+
+		It("duplicate config", func() {
+			specdata, err := ocireg.NewRepositorySpec("ocm.software/mock-repo-spec").MarshalJSON()
+			Expect(err).ToNot(HaveOccurred())
+
+			configMap := corev1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: corev1.SchemeGroupVersion.String(),
+					Kind:       "ConfigMap",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-configmap",
+					Namespace: Namespace,
+				},
+			}
+
+			ocmConfig := []v1alpha1.OCMConfiguration{
+				{
+					Ref: meta.NamespacedObjectKindReference{
+						APIVersion: configMap.APIVersion,
+						Kind:       configMap.Kind,
+						Name:       configMap.Name,
+						Namespace:  configMap.Namespace,
+					},
+					Policy: v1alpha1.ConfigurationPolicyPropagate,
+				},
+				{
+					Ref: meta.NamespacedObjectKindReference{
+						APIVersion: configMap.APIVersion,
+						Kind:       configMap.Kind,
+						Name:       configMap.Name,
+						Namespace:  configMap.Namespace,
+					},
+					Policy: v1alpha1.ConfigurationPolicyPropagate,
+				},
+			}
+			repo := v1alpha1.OCMRepository{
+				Spec: v1alpha1.OCMRepositorySpec{
+					RepositorySpec: &apiextensionsv1.JSON{Raw: specdata},
+					OCMConfig:      ocmConfig,
+				},
+			}
+
+			config, err := GetEffectiveConfig(ctx, nil, &repo)
+			Expect(err).ToNot(HaveOccurred())
+			// Equal instead of consists of because the order of the
+			// configuration is important
+			Expect(config).To(Equal(ocmConfig))
+		})
+
+		It("api version defaulting for configmaps", func() {
+			repo := v1alpha1.OCMRepository{
+				Spec: v1alpha1.OCMRepositorySpec{
+					OCMConfig: []v1alpha1.OCMConfiguration{
+						{
+							Ref: meta.NamespacedObjectKindReference{
+								Kind:      "ConfigMap",
+								Namespace: Namespace,
+								Name:      ConfigMap,
+							},
+						},
+					},
+				},
+			}
+
+			config, err := GetEffectiveConfig(ctx, nil, &repo)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(config[0].Ref.APIVersion).To(Equal(corev1.SchemeGroupVersion.String()))
+		})
+
+		It("api version defaulting for secrets", func() {
+			repo := v1alpha1.OCMRepository{
+				Spec: v1alpha1.OCMRepositorySpec{
+					OCMConfig: []v1alpha1.OCMConfiguration{
+						{
+							Ref: meta.NamespacedObjectKindReference{
+								Kind:      "Secret",
+								Namespace: Namespace,
+								Name:      Secret,
+							},
+						},
+					},
+				},
+			}
+
+			config, err := GetEffectiveConfig(ctx, nil, &repo)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(config[0].Ref.APIVersion).To(Equal(corev1.SchemeGroupVersion.String()))
+		})
+
+		It("empty api version for ocm controller kinds", func() {
+			repo := v1alpha1.OCMRepository{
+				Spec: v1alpha1.OCMRepositorySpec{
+					OCMConfig: []v1alpha1.OCMConfiguration{
+						{
+							Ref: meta.NamespacedObjectKindReference{
+								Kind:      v1alpha1.KindOCMRepository,
+								Namespace: Namespace,
+								Name:      Secret,
+							},
+						},
+					},
+				},
+			}
+
+			config, err := GetEffectiveConfig(ctx, nil, &repo)
+			Expect(err).To(HaveOccurred())
+			Expect(config).To(BeNil())
+		})
+
+		It("unsupported api version", func() {
+			repo := v1alpha1.OCMRepository{
+				Spec: v1alpha1.OCMRepositorySpec{
+					OCMConfig: []v1alpha1.OCMConfiguration{
+						{
+							Ref: meta.NamespacedObjectKindReference{
+								Kind:      "Deployment",
+								Namespace: Namespace,
+								Name:      Secret,
+							},
+						},
+					},
+				},
+			}
+
+			config, err := GetEffectiveConfig(ctx, nil, &repo)
+			Expect(err).To(HaveOccurred())
+			Expect(config).To(BeNil())
+		})
+
+		It("propagation policy defaulting", func() {
+			repo := v1alpha1.OCMRepository{
+				Spec: v1alpha1.OCMRepositorySpec{
+					OCMConfig: []v1alpha1.OCMConfiguration{
+						{
+							Ref: meta.NamespacedObjectKindReference{
+								APIVersion: corev1.SchemeGroupVersion.String(),
+								Kind:       "ConfigMap",
+								Namespace:  Namespace,
+								Name:       ConfigMap,
+							},
+						},
+					},
+				},
+			}
+
+			config, err := GetEffectiveConfig(ctx, nil, &repo)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(config[0].Policy).To(Equal(v1alpha1.ConfigurationPolicyDoNotPropagate))
+		})
+
+		It("referenced object not found", func() {
+			configMap := corev1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: corev1.SchemeGroupVersion.String(),
+					Kind:       "ConfigMap",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-configmap",
+					Namespace: Namespace,
+				},
+			}
+			// do not add the configmap to the client, to check the behaviour
+			// if the referenced configuration object is not found
+			// bldr.WithObjects(&configMap)
+
+			ocmConfig := []v1alpha1.OCMConfiguration{
+				{
+					Ref: meta.NamespacedObjectKindReference{
+						APIVersion: configMap.APIVersion,
+						Kind:       configMap.Kind,
+						Name:       configMap.Name,
+						Namespace:  configMap.Namespace,
+					},
+					Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+				},
+			}
+			repo := v1alpha1.OCMRepository{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: v1alpha1.GroupVersion.String(),
+					Kind:       v1alpha1.KindOCMRepository,
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: Namespace,
+					Name:      Repository,
+				},
+				Spec: v1alpha1.OCMRepositorySpec{
+					OCMConfig: ocmConfig,
+				},
+				Status: v1alpha1.OCMRepositoryStatus{
+					EffectiveOCMConfig: ocmConfig,
+				},
+			}
+			bldr.WithObjects(&repo)
+
+			comp := v1alpha1.Component{
+				Spec: v1alpha1.ComponentSpec{
+					RepositoryRef: v1alpha1.ObjectKey{
+						Namespace: repo.Namespace,
+						Name:      repo.Name,
+					},
+					OCMConfig: []v1alpha1.OCMConfiguration{
+						{
+							Ref: meta.NamespacedObjectKindReference{
+								APIVersion: repo.APIVersion,
+								Kind:       repo.Kind,
+								Name:       repo.Name,
+								Namespace:  repo.Namespace,
+							},
+						},
+					},
+				},
+			}
+			bldr.WithObjects(&comp)
+
+			clnt = bldr.Build()
+			config, err := GetEffectiveConfig(ctx, clnt, &comp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(config).To(BeEmpty())
+		})
+
+		It("referenced object does no propagation", func() {
+			configMap := corev1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: corev1.SchemeGroupVersion.String(),
+					Kind:       "ConfigMap",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-configmap",
+					Namespace: Namespace,
+				},
+			}
+			bldr.WithObjects(&configMap)
+
+			ocmConfig := []v1alpha1.OCMConfiguration{
+				{
+					Ref: meta.NamespacedObjectKindReference{
+						APIVersion: configMap.APIVersion,
+						Kind:       configMap.Kind,
+						Name:       configMap.Name,
+						Namespace:  configMap.Namespace,
+					},
+					Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+				},
+			}
+			repo := v1alpha1.OCMRepository{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: v1alpha1.GroupVersion.String(),
+					Kind:       v1alpha1.KindOCMRepository,
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: Namespace,
+					Name:      Repository,
+				},
+				Spec: v1alpha1.OCMRepositorySpec{
+					OCMConfig: ocmConfig,
+				},
+				Status: v1alpha1.OCMRepositoryStatus{
+					EffectiveOCMConfig: ocmConfig,
+				},
+			}
+			bldr.WithObjects(&repo)
+
+			comp := v1alpha1.Component{
+				Spec: v1alpha1.ComponentSpec{
+					RepositoryRef: v1alpha1.ObjectKey{
+						Namespace: repo.Namespace,
+						Name:      repo.Name,
+					},
+					OCMConfig: []v1alpha1.OCMConfiguration{
+						{
+							Ref: meta.NamespacedObjectKindReference{
+								APIVersion: repo.APIVersion,
+								Kind:       repo.Kind,
+								Name:       repo.Name,
+								Namespace:  repo.Namespace,
+							},
+						},
+					},
+				},
+			}
+			bldr.WithObjects(&comp)
+
+			clnt = bldr.Build()
+			config, err := GetEffectiveConfig(ctx, clnt, &comp)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(config).To(BeEmpty())
+		})
+
+		It("referenced object does propagation", func() {
+			configMap := corev1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: corev1.SchemeGroupVersion.String(),
+					Kind:       "ConfigMap",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-configmap",
+					Namespace: Namespace,
+				},
+			}
+			bldr.WithObjects(&configMap)
+
+			ocmConfig := []v1alpha1.OCMConfiguration{
+				{
+					Ref: meta.NamespacedObjectKindReference{
+						APIVersion: configMap.APIVersion,
+						Kind:       configMap.Kind,
+						Name:       configMap.Name,
+						Namespace:  configMap.Namespace,
+					},
+					Policy: v1alpha1.ConfigurationPolicyPropagate,
+				},
+			}
+			repo := v1alpha1.OCMRepository{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: v1alpha1.GroupVersion.String(),
+					Kind:       v1alpha1.KindOCMRepository,
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: Namespace,
+					Name:      Repository,
+				},
+				Spec: v1alpha1.OCMRepositorySpec{
+					OCMConfig: ocmConfig,
+				},
+				Status: v1alpha1.OCMRepositoryStatus{
+					EffectiveOCMConfig: ocmConfig,
+				},
+			}
+			bldr.WithObjects(&repo)
+
+			comp := v1alpha1.Component{
+				Spec: v1alpha1.ComponentSpec{
+					RepositoryRef: v1alpha1.ObjectKey{
+						Namespace: repo.Namespace,
+						Name:      repo.Name,
+					},
+					OCMConfig: []v1alpha1.OCMConfiguration{
+						{
+							Ref: meta.NamespacedObjectKindReference{
+								APIVersion: repo.APIVersion,
+								Kind:       repo.Kind,
+								Name:       repo.Name,
+								Namespace:  repo.Namespace,
+							},
+							Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+						},
+					},
+				},
+			}
+			bldr.WithObjects(&comp)
+
+			clnt = bldr.Build()
+			config, err := GetEffectiveConfig(ctx, clnt, &comp)
+			Expect(err).ToNot(HaveOccurred())
+
+			// the propagation policy (here, set in repository) is not inherited
+			ocmConfig[0].Policy = v1alpha1.ConfigurationPolicyDoNotPropagate
+			Expect(config).To(Equal(ocmConfig))
+		})
+	})
+
 	Context("get latest valid component version and regex filter", func() {
 		var (
 			repo ocmctx.Repository
@@ -302,21 +777,21 @@ consumers:
 			env = NewBuilder()
 
 			env.OCMCommonTransport(CTFPath, accessio.FormatDirectory, func() {
-				env.Component(Component, func() {
+				env.Component(TestComponent, func() {
 					env.Version(Version1, func() {
 					})
 				})
-				env.Component(Component, func() {
+				env.Component(TestComponent, func() {
 					env.Version(Version2, func() {
 					})
 				})
-				env.Component(Component, func() {
+				env.Component(TestComponent, func() {
 					env.Version(Version3, func() {
 					})
 				})
 			})
 			repo = Must(ctf.Open(env, accessobj.ACC_WRITABLE, CTFPath, vfs.FileMode(vfs.O_RDWR), env))
-			c = Must(repo.LookupComponent(Component))
+			c = Must(repo.LookupComponent(TestComponent))
 		})
 
 		AfterEach(func() {
@@ -352,7 +827,7 @@ consumers:
 			privkey3, pubkey3 := Must2(rsa.CreateKeyPair())
 
 			env.OCMCommonTransport(CTFPath, accessio.FormatDirectory, func() {
-				env.Component(Component, func() {
+				env.Component(TestComponent, func() {
 					env.Version(Version1, func() {
 						env.Resource(Resource, Version1, resourcetypes.PLAIN_TEXT, v1.LocalRelation, func() {
 							env.BlobData(mime.MIME_TEXT, []byte("testdata"))
@@ -367,7 +842,7 @@ consumers:
 				})
 			})
 			repo = Must(ctf.Open(env, accessobj.ACC_WRITABLE, CTFPath, vfs.FileMode(vfs.O_RDWR), env))
-			cv = Must(repo.LookupComponentVersion(Component, Version1))
+			cv = Must(repo.LookupComponentVersion(TestComponent, Version1))
 
 			opts := signing.NewOptions(
 				signing.Resolver(repo),
@@ -421,25 +896,25 @@ consumers:
 			v2 := "1.1.0"
 			v3 := "0.9.0"
 			env.OCMCommonTransport(CTFPath, accessio.FormatDirectory, func() {
-				env.Component(Component, func() {
+				env.Component(TestComponent, func() {
 					env.Version(v1, func() {
 						env.Label(v1alpha1.OCMLabelDowngradable, `> 1.0.0`)
 					})
 				})
-				env.Component(Component, func() {
+				env.Component(TestComponent, func() {
 					env.Version(v2, func() {
 					})
 				})
-				env.Component(Component, func() {
+				env.Component(TestComponent, func() {
 					env.Version(v3, func() {
 					})
 				})
 			})
 
 			repo = Must(ctf.Open(env, accessobj.ACC_WRITABLE, CTFPath, vfs.FileMode(vfs.O_RDWR), env))
-			cv1 = Must(repo.LookupComponentVersion(Component, v1))
-			cv2 = Must(repo.LookupComponentVersion(Component, v2))
-			cv3 = Must(repo.LookupComponentVersion(Component, v3))
+			cv1 = Must(repo.LookupComponentVersion(TestComponent, v1))
+			cv2 = Must(repo.LookupComponentVersion(TestComponent, v2))
+			cv3 = Must(repo.LookupComponentVersion(TestComponent, v3))
 		})
 
 		AfterEach(func() {

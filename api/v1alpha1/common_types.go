@@ -17,10 +17,32 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"github.com/fluxcd/pkg/apis/meta"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	ocmv1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 )
+
+type ConfigurationPolicy string
+
+const (
+	ConfigurationPolicyPropagate      ConfigurationPolicy = "Propagate"
+	ConfigurationPolicyDoNotPropagate ConfigurationPolicy = "DoNotPropagate"
+)
+
+type OCMConfiguration struct {
+	// Ref reference config maps or secrets containing arbitrary
+	// ocm config data (in the ocm config file format), or other configurable
+	// ocm api objects (OCMRepository, Component, Resource) to
+	// reuse their propagated configuration.
+	// +required
+	Ref meta.NamespacedObjectKindReference `json:"refs"`
+	// Policy affects the propagation behavior of the configuration. If set to
+	// ConfigurationPolicyPropagate other ocm api objects can reference this
+	// object to reuse this configuration.
+	// +optional
+	Policy ConfigurationPolicy `json:"policy,omitempty"`
+}
 
 type ObjectKey struct {
 	// +optional

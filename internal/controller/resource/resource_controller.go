@@ -231,7 +231,16 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
 
-	if err := ocm.ConfigureOCMContext(ctx, r, octx, resource, component); err != nil {
+	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), resource)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return ctrl.Result{}, nil
+	}
+	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.ConfigureContextFailedReason, err.Error())
+
 		return ctrl.Result{}, err
 	}
 
@@ -569,8 +578,13 @@ func setResourceStatus(ctx context.Context, resource *v1alpha1.Resource, resourc
 		Digest:        resourceAccess.Meta().Digest.String(),
 	}
 
-	resource.Status.ConfigRefs = slices.Clone(resource.Spec.ConfigRefs)
-	resource.Status.SecretRefs = slices.Clone(resource.Spec.SecretRefs)
+	var ocmconfigs []v1alpha1.OCMConfiguration
+	for _, config := range resource.Spec.OCMConfig {
+		if config.Policy == v1alpha1.ConfigurationPolicyPropagate {
+			ocmconfigs = append(ocmconfigs, config)
+		}
+	}
+	resource.Status.EffectiveOCMConfig = slices.Clone(ocmconfigs)
 
 	return nil
 }

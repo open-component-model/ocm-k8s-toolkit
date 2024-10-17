@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -31,6 +32,8 @@ var (
 	DowngradePolicyDeny    DowngradePolicy = "Deny"
 	DowngradePolicyEnforce DowngradePolicy = "Enforce"
 )
+
+const KindComponent = "Component"
 
 // ComponentSpec defines the desired state of Component.
 type ComponentSpec struct {
@@ -55,6 +58,7 @@ type ComponentSpec struct {
 	// +kubebuilder:default:=Deny
 	// +optional
 	DowngradePolicy DowngradePolicy `json:"downgradePolicy,omitempty"`
+
 	// Semver defines the constraint of the fetched version. '>=v0.1'.
 	// +required
 	Semver string `json:"semver"`
@@ -70,18 +74,10 @@ type ComponentSpec struct {
 	// +optional
 	Verify []Verification `json:"verify,omitempty"`
 
+	// OCMConfig defines references to secrets, config maps or ocm api
+	// objects providing configuration data including credentials.
 	// +optional
-	SecretRefs []corev1.LocalObjectReference `json:"secretRefs,omitempty"`
-
-	// +optional
-	ConfigRefs []corev1.LocalObjectReference `json:"configRefs,omitempty"`
-
-	// The secrets and configs referred to by SecretRef (or SecretRefs) and Config (or ConfigRefs) may contain ocm
-	// config data. The  ocm config allows to specify sets of configuration data
-	// (s. https://ocm.software/docs/cli-reference/help/configfile/). If the SecretRef (or SecretRefs) and ConfigRef and
-	// ConfigRefs contain ocm config sets, the user may specify which config set he wants to be effective.
-	// +optional
-	ConfigSet *string `json:"configSet"`
+	OCMConfig []OCMConfiguration `json:"ocmConfig,omitempty"`
 
 	// Interval at which the repository will be checked for new component
 	// versions.
@@ -105,10 +101,9 @@ type ComponentStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// The component controller generates an artifact which is a list of
-	// component descriptors. If the components were verified, other controllers
-	// (e.g. Resource controller) can use this without having to verify the
-	// signature again.
+	// ArtifactRef references the generated artifact containing a list of
+	// component descriptors. This list can be used by other controllers to
+	// avoid re-downloading (and potentially also re-verifying) the components.
 	// +optional
 	ArtifactRef corev1.LocalObjectReference `json:"artifactRef,omitempty"`
 
@@ -117,32 +112,12 @@ type ComponentStatus struct {
 	// reconciliation.
 	// +optional
 	Component ComponentInfo `json:"component,omitempty"`
-	// Propagate its effective secrets. Other controllers (e.g. Resource
-	// controller) may use this as default if they do not explicitly refer a
-	// secret.
-	// This is required to allow transitive defaulting (thus, e.g. Component
-	// defaults from OCMRepository and Resource defaults from Component) without
-	// having to traverse the entire chain.
-	// +optional
-	SecretRefs []corev1.LocalObjectReference `json:"secretRefs,omitempty"`
 
-	// Propagate its effective configs. Other controllers (e.g. Component or
-	// Resource controller) may use this as default if they do not explicitly
-	// refer a config.
-	// This is required to allow transitive defaulting (thus, e.g. Component
-	// defaults from OCMRepository and Resource defaults from Component) without
-	// having to traverse the entire chain.
+	// EffectiveOCMConfig specifies the entirety of config maps and secrets
+	// whose configuration data was applied to the Component reconciliation,
+	// in the order the configuration data was applied.
 	// +optional
-	ConfigRefs []corev1.LocalObjectReference `json:"configRefs,omitempty"`
-
-	// Propagate its effective config set. Other controllers (e.g. Component or
-	// Resource controller) may use this as default if they do not explicitly
-	// specify a config set.
-	// This is required to allow transitive defaulting (thus, e.g. Component
-	// defaults from OCMRepository and Resource defaults from Component) without
-	// having to traverse the entire chain.
-	// +optional
-	ConfigSet string `json:"configSet,omitempty"`
+	EffectiveOCMConfig []OCMConfiguration `json:"effectiveOCMConfig,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -194,28 +169,28 @@ func (in Component) GetRequeueAfter() time.Duration {
 	return in.Spec.Interval.Duration
 }
 
-func (in *Component) GetSecretRefs() []corev1.LocalObjectReference {
-	return in.Spec.SecretRefs
+// GetSpecifiedOCMConfig returns the configurations specifically specified in
+// the spec of the Component.
+// CAREFUL: The configurations retrieved from this method might reference other
+// configurable OCM objects (OCMRepository, Component, Resource). In that case
+// the effective configurations (referencing Secrets or ConfigMaps) propagated
+// by the referenced OCM objects have to be resolved
+// (see ocm.GetEffectiveConfig).
+func (in *Component) GetSpecifiedOCMConfig() []OCMConfiguration {
+	return slices.Clone(in.Spec.OCMConfig)
 }
 
-func (in *Component) GetEffectiveSecretRefs() []corev1.LocalObjectReference {
-	return in.Status.SecretRefs
-}
+// GetPropagatedOCMConfig returns the effective configurations propagated by the
+// Component.
+func (in *Component) GetPropagatedOCMConfig() []OCMConfiguration {
+	var propagatedConfigs []OCMConfiguration
+	for _, ocmconfig := range in.Status.EffectiveOCMConfig {
+		if ocmconfig.Policy == ConfigurationPolicyPropagate {
+			propagatedConfigs = append(propagatedConfigs, ocmconfig)
+		}
+	}
 
-func (in *Component) GetConfigRefs() []corev1.LocalObjectReference {
-	return in.Spec.ConfigRefs
-}
-
-func (in *Component) GetEffectiveConfigRefs() []corev1.LocalObjectReference {
-	return in.Status.ConfigRefs
-}
-
-func (in *Component) GetConfigSet() *string {
-	return in.Spec.ConfigSet
-}
-
-func (in *Component) GetEffectiveConfigSet() string {
-	return in.Status.ConfigSet
+	return propagatedConfigs
 }
 
 func (in *Component) GetVerifications() []Verification {

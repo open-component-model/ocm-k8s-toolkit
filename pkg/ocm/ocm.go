@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"strings"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/mandelsoft/goutils/matcher"
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"ocm.software/ocm/api/credentials/extensions/repositories/dockerconfig"
 	"ocm.software/ocm/api/ocm"
@@ -16,131 +16,197 @@ import (
 	"ocm.software/ocm/api/ocm/cpi"
 	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
 	utils "ocm.software/ocm/api/ocm/ocmutils"
-	"ocm.software/ocm/api/ocm/resolvers"
 	"ocm.software/ocm/api/ocm/tools/signing"
 	common "ocm.software/ocm/api/utils/misc"
 	"ocm.software/ocm/api/utils/runtime"
 	"ocm.software/ocm/api/utils/semverutils"
-	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Verification is an internal representation of v1alpha1.Verification where the public key is already extracted from
-// the value or secret.
-type Verification struct {
-	Signature string
-	PublicKey []byte
-}
-
-// ConfigureContext reads all the secrets and config maps, checks them for
-// known configuration types and applies them to the context.
-func ConfigureContext(ctx context.Context, octx ocm.Context, verifications []Verification,
-	secrets []*corev1.Secret, configmaps []*corev1.ConfigMap, configset ...string,
+// ConfigureContext adds all the configuration data found in the config maps and
+// secrets specified through the OCMConfiguration objects to the ocm context.
+// NOTE: ConfigMaps and Secrets are slightly different, since secrets can also
+// contain credentials in form of docker config jsons.
+//
+// Furthermore, it registers the public keys for the verification of signatures
+// in the ocm context.
+func ConfigureContext(ctx context.Context, octx ocm.Context, client ctrl.Client,
+	configs []v1alpha1.OCMConfiguration, verifications ...[]Verification,
 ) error {
-	err := ConfigureContextForSecrets(ctx, octx, secrets)
-	if err != nil {
-		return err
-	}
-	err = ConfigureContextForConfigMaps(ctx, octx, configmaps)
-	if err != nil {
-		return err
+	for _, config := range configs {
+		switch config.Ref.Kind {
+		case "Secret":
+			var secret corev1.Secret
+			err := client.Get(ctx, ctrl.ObjectKey{
+				Namespace: config.Ref.Namespace,
+				Name:      config.Ref.Name,
+			}, &secret)
+			if err != nil {
+				return fmt.Errorf("configure context cannot fetch secret "+
+					"%s/%s: %w", config.Ref.Namespace, config.Ref.Name, err)
+			}
+			err = ConfigureContextForSecret(ctx, octx, &secret)
+			if err != nil {
+				return fmt.Errorf("configure context failed for secret "+
+					"%s/%s: %w", config.Ref.Namespace, config.Ref.Name, err)
+			}
+		case "ConfigMap":
+			var configmap corev1.ConfigMap
+			err := client.Get(ctx, ctrl.ObjectKey{
+				Namespace: config.Ref.Namespace,
+				Name:      config.Ref.Name,
+			}, &configmap)
+			if err != nil {
+				return fmt.Errorf("configure context cannot fetch config "+
+					"map %s/%s: %w", config.Ref.Namespace, config.Ref.Name, err)
+			}
+			err = ConfigureContextForConfigMaps(ctx, octx, &configmap)
+			if err != nil {
+				return fmt.Errorf("configure context failed for secret "+
+					"%s/%s: %w", config.Ref.Namespace, config.Ref.Name, err)
+			}
+		}
 	}
 
-	var set string
-	if len(configset) > 0 {
-		set = configset[0]
+	// If we were to introduce further functionality into the controller that
+	// have to use the signing registry we retrieve from the context here
+	// (e.g. signing), we would have to change the coding so that the signing
+	// operation and the verification operation use dedicated signing stores.
+	if len(verifications) > 0 {
+		if len(verifications) > 1 {
+			return fmt.Errorf("only one verification list is supported")
+		}
+		verifis := verifications[0]
+
+		signinfo := signingattr.Get(octx)
+
+		for _, verifi := range verifis {
+			signinfo.RegisterPublicKey(verifi.Signature, verifi.PublicKey)
+		}
 	}
-	if set != "" {
-		err := octx.ConfigContext().ApplyConfigSet(set)
+
+	return nil
+}
+
+// ConfigureContextForSecret adds the ocm configuration data as well as
+// credentials in the docker config json format found in the secret to the
+// ocm context.
+func ConfigureContextForSecret(_ context.Context, octx ocm.Context, secret *corev1.Secret) error {
+	if dockerConfigBytes, ok := secret.Data[corev1.DockerConfigJsonKey]; ok {
+		if len(dockerConfigBytes) > 0 {
+			spec := dockerconfig.NewRepositorySpecForConfig(dockerConfigBytes, true)
+
+			if _, err := octx.CredentialsContext().RepositoryForSpec(spec); err != nil {
+				return fmt.Errorf("failed to apply credentials from docker"+
+					"config json in secret %s/%s: %w", secret.Namespace, secret.Name, err)
+			}
+		}
+	}
+
+	if ocmConfigBytes, ok := secret.Data[v1alpha1.OCMConfigKey]; ok {
+		if len(ocmConfigBytes) > 0 {
+			cfg, err := octx.ConfigContext().GetConfigForData(ocmConfigBytes, runtime.DefaultYAMLEncoding)
+			if err != nil {
+				return fmt.Errorf("failed to deserialize ocm config data "+
+					"in secret %s/%s: %w", secret.Namespace, secret.Name, err)
+			}
+
+			err = octx.ConfigContext().ApplyConfig(cfg, fmt.Sprintf("ocm config secret: %s/%s",
+				secret.Namespace, secret.Name))
+			if err != nil {
+				return fmt.Errorf("failed to apply ocm config in secret "+
+					"%s/%s: %w", secret.Namespace, secret.Name, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ConfigureContextForConfigMaps adds the ocm configuration data found in the
+// secret to the ocm context.
+func ConfigureContextForConfigMaps(_ context.Context, octx ocm.Context, configmap *corev1.ConfigMap) error {
+	ocmConfigData, ok := configmap.Data[v1alpha1.OCMConfigKey]
+	if !ok {
+		return fmt.Errorf("ocm configuration config map does not contain key \"%s\"",
+			v1alpha1.OCMConfigKey)
+	}
+	if len(ocmConfigData) > 0 {
+		cfg, err := octx.ConfigContext().GetConfigForData([]byte(ocmConfigData), nil)
 		if err != nil {
-			return fmt.Errorf("cannot apply ocm config set %s: %w", set, err)
+			return fmt.Errorf("failed to deserialize ocm config data "+
+				"in config map %s/%s: %w", configmap.Namespace, configmap.Name, err)
 		}
-	}
-
-	// If we were to introduce further functionality into the controller that have to use the signing registry we
-	// retrieve from the context here (e.g. signing), we would have to change the coding so that the signing operation
-	// and the verification operation use dedicated signing stores.
-	signinfo := signingattr.Get(octx)
-
-	for _, verification := range verifications {
-		signinfo.RegisterPublicKey(verification.Signature, verification.PublicKey)
-	}
-
-	return nil
-}
-
-func ConfigureContextForSecrets(_ context.Context, octx ocm.Context, secrets []*corev1.Secret) error {
-	history := map[ctrl.ObjectKey]struct{}{}
-	for _, secret := range secrets {
-		// track that the list does not contain the same secret twice as this could lead to unexpected behavior
-		key := ctrl.ObjectKeyFromObject(secret)
-		if _, ok := history[key]; ok {
-			return fmt.Errorf("the same secret cannot be referenced twice")
-		}
-		history[key] = struct{}{}
-
-		if dockerConfigBytes, ok := secret.Data[corev1.DockerConfigJsonKey]; ok {
-			if len(dockerConfigBytes) > 0 {
-				spec := dockerconfig.NewRepositorySpecForConfig(dockerConfigBytes, true)
-
-				if _, err := octx.CredentialsContext().RepositoryForSpec(spec); err != nil {
-					return fmt.Errorf("cannot create credentials from secret: %w", err)
-				}
-			}
-		}
-
-		if ocmConfigBytes, ok := secret.Data[v1alpha1.OCMConfigKey]; ok {
-			if len(ocmConfigBytes) > 0 {
-				cfg, err := octx.ConfigContext().GetConfigForData(ocmConfigBytes, runtime.DefaultYAMLEncoding)
-				if err != nil {
-					return err
-				}
-
-				err = octx.ConfigContext().ApplyConfig(cfg, fmt.Sprintf("ocm config secret: %s/%s",
-					secret.Namespace, secret.Name))
-				if err != nil {
-					return err
-				}
-			}
+		err = octx.ConfigContext().ApplyConfig(cfg, fmt.Sprintf("%s/%s",
+			configmap.Namespace, configmap.Name))
+		if err != nil {
+			return fmt.Errorf("failed to apply ocm config in config map "+
+				"%s/%s: %w", configmap.Namespace, configmap.Name, err)
 		}
 	}
 
 	return nil
 }
 
-func ConfigureContextForConfigMaps(_ context.Context, octx ocm.Context, configmaps []*corev1.ConfigMap) error {
-	history := map[ctrl.ObjectKey]struct{}{}
-	for _, configmap := range configmaps {
-		// track that the list does not contain the same configmap twice as this could lead to unexpected behavior
-		key := ctrl.ObjectKeyFromObject(configmap)
-		if _, ok := history[key]; ok {
-			return fmt.Errorf("the same secret cannot be referenced twice")
-		}
-		history[key] = struct{}{}
+// GetEffectiveConfig returns the effective configuration for the given config
+// ref provider object. Therefore, references to config maps and secrets (that
+// are supposed to contain ocm configuration data) are directly returned.
+// Furthermore, references to other ocm objects are resolved and their effective
+// configuration (so again, config map and secret references) with policy
+// propagate are returned.
+func GetEffectiveConfig(ctx context.Context, client ctrl.Client, obj v1alpha1.ConfigRefProvider) ([]v1alpha1.OCMConfiguration, error) {
+	configs := obj.GetSpecifiedOCMConfig()
 
-		ocmConfigData, ok := configmap.Data[v1alpha1.OCMConfigKey]
-		if !ok {
-			return fmt.Errorf("ocm configuration config map does not contain key \"%s\"",
-				v1alpha1.OCMConfigKey)
+	if len(configs) == 0 {
+		return nil, nil
+	}
+
+	var refs []v1alpha1.OCMConfiguration
+	for _, config := range configs {
+		if config.Policy == "" {
+			config.Policy = v1alpha1.ConfigurationPolicyDoNotPropagate
 		}
-		if len(ocmConfigData) > 0 {
-			cfg, err := octx.ConfigContext().GetConfigForData([]byte(ocmConfigData), nil)
-			if err != nil {
-				return fmt.Errorf("invalid ocm config in \"%s\" in namespace \"%s\": %w",
-					configmap.Name, configmap.Namespace, err)
+		if config.Ref.Namespace == "" {
+			config.Ref.Namespace = obj.GetNamespace()
+		}
+
+		var resource v1alpha1.ConfigRefProvider
+		if config.Ref.Kind == "Secret" || config.Ref.Kind == "ConfigMap" {
+			if config.Ref.APIVersion == "" {
+				config.Ref.APIVersion = corev1.SchemeGroupVersion.String()
 			}
-			err = octx.ConfigContext().ApplyConfig(cfg, fmt.Sprintf("%s/%s",
-				configmap.Namespace, configmap.Name))
-			if err != nil {
-				return fmt.Errorf("cannot apply ocm config in \"%s\" in namespace \"%s\": %w",
-					configmap.Name, configmap.Namespace, err)
+			refs = append(refs, config)
+		} else {
+			if config.Ref.APIVersion == "" {
+				return nil, fmt.Errorf("api version must be set for reference of kind %s", config.Ref.Kind)
+			}
+
+			switch config.Ref.Kind {
+			case v1alpha1.KindOCMRepository:
+				resource = &v1alpha1.OCMRepository{}
+			case v1alpha1.KindComponent:
+				resource = &v1alpha1.Component{}
+			case v1alpha1.KindResource:
+				resource = &v1alpha1.Resource{}
+			default:
+				return nil, fmt.Errorf("unsupported reference kind: %s", config.Ref.Kind)
+			}
+
+			if err := client.Get(ctx, ctrl.ObjectKey{Namespace: config.Ref.Namespace, Name: config.Ref.Name}, resource); err != nil || resource == nil {
+				return nil, fmt.Errorf("failed to fetch resource %s: %w", config.Ref.Name, err)
+			}
+
+			for _, ref := range resource.GetPropagatedOCMConfig() {
+				// do not propagate the policy of the parent resource but set the
+				// policy specified in the respective config
+				ref.Policy = config.Policy
+				refs = append(refs, ref)
 			}
 		}
 	}
 
-	return nil
+	return refs, nil
 }
 
 func RegexpFilter(regex string) (matcher.Matcher[string], error) {
@@ -181,34 +247,6 @@ func GetLatestValidVersion(_ context.Context, versions []string, semvers string,
 	}
 
 	return vers[len(vers)-1], nil
-}
-
-func VerifyComponentVersion(ctx context.Context, cv ocm.ComponentVersionAccess, sigs []string) (*Descriptors, error) {
-	logger := log.FromContext(ctx).WithName("signature-validation")
-
-	if len(sigs) == 0 || cv == nil {
-		return nil, nil
-	}
-	octx := cv.GetContext()
-
-	resolver := resolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver())
-	opts := signing.NewOptions(
-		signing.Resolver(resolver),
-		// do we really want to verify the digests here? isn't it sufficient to verify the signatures since
-		// the digest verification can and has to be done anyways by the resource controller?
-		signing.VerifyDigests(),
-		signing.VerifySignature(sigs...),
-		signing.Recursive(),
-	)
-
-	ws := signing.DefaultWalkingState(cv.GetContext())
-	_, err := signing.Apply(nil, ws, cv, opts)
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify component signatures %s: %w", strings.Join(sigs, ", "), err)
-	}
-	logger.Info("successfully verified component signature")
-
-	return &Descriptors{List: signing.ListComponentDescriptors(cv, ws)}, nil
 }
 
 func ListComponentDescriptors(_ context.Context, cv ocm.ComponentVersionAccess, r ocm.ComponentVersionResolver) (*Descriptors, error) {

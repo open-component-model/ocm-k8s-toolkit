@@ -4,6 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
+
+	"ocm.software/ocm/api/ocm"
+	"ocm.software/ocm/api/ocm/resolvers"
+	"ocm.software/ocm/api/ocm/tools/signing"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -12,6 +18,13 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
+
+// Verification is an internal representation of v1alpha1.Verification where the public key is already extracted from
+// the value or secret.
+type Verification struct {
+	Signature string
+	PublicKey []byte
+}
 
 func GetVerifications(ctx context.Context, client ctrl.Client,
 	obj v1alpha1.VerificationProvider,
@@ -50,4 +63,32 @@ func GetVerifications(ctx context.Context, client ctrl.Client,
 	}
 
 	return v, nil
+}
+
+func VerifyComponentVersion(ctx context.Context, cv ocm.ComponentVersionAccess, sigs []string) (*Descriptors, error) {
+	logger := log.FromContext(ctx).WithName("signature-validation")
+
+	if len(sigs) == 0 || cv == nil {
+		return nil, nil
+	}
+	octx := cv.GetContext()
+
+	resolver := resolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver())
+	opts := signing.NewOptions(
+		signing.Resolver(resolver),
+		// do we really want to verify the digests here? isn't it sufficient to verify the signatures since
+		// the digest verification can and has to be done anyways by the resource controller?
+		signing.VerifyDigests(),
+		signing.VerifySignature(sigs...),
+		signing.Recursive(),
+	)
+
+	ws := signing.DefaultWalkingState(cv.GetContext())
+	_, err := signing.Apply(nil, ws, cv, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify component signatures %s: %w", strings.Join(sigs, ", "), err)
+	}
+	logger.Info("successfully verified component signature")
+
+	return &Descriptors{List: signing.ListComponentDescriptors(cv, ws)}, nil
 }
