@@ -26,8 +26,8 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 )
 
-// ReplicationReconciler reconciles a Replication object
-type ReplicationReconciler struct {
+// Reconciler reconciles a Replication object.
+type Reconciler struct {
 	*ocm.BaseReconciler
 }
 
@@ -44,7 +44,7 @@ type ReplicationReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
-func (r *ReplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
 	// TODO(user): your logic here
@@ -53,7 +53,7 @@ func (r *ReplicationReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ReplicationReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&deliveryv1alpha1.Replication{}).
 		Complete(r)

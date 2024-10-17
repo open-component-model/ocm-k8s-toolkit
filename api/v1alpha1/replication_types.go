@@ -20,11 +20,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// The Replication essentially maps the ocm transfer behaviour into a controller
+// The Replication essentially maps the ocm transfer behavior into a controller
 // (exposing a subset of its options in the manifest).
 // This allows transferring components into a private registry based on a "ocmops" based process.
 
-// ReplicationSpec defines the desired state of Replication
+// ReplicationSpec defines the desired state of Replication.
 type ReplicationSpec struct {
 	// ComponentRef is a reference to a Component to be replicated.
 	// +required
@@ -44,7 +44,7 @@ type ReplicationSpec struct {
 	Suspend bool `json:"suspend,omitempty"`
 }
 
-// ReplicationStatus defines the observed state of Replication
+// ReplicationStatus defines the observed state of Replication.
 type ReplicationStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -53,7 +53,7 @@ type ReplicationStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// Replication is the Schema for the replications API
+// Replication is the Schema for the replications API.
 type Replication struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -64,7 +64,7 @@ type Replication struct {
 
 // +kubebuilder:object:root=true
 
-// ReplicationList contains a list of Replication
+// ReplicationList contains a list of Replication.
 type ReplicationList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

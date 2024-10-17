@@ -190,7 +190,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Resource")
 		os.Exit(1)
 	}
-	if err = (&replication.ReplicationReconciler{
+	if err = (&replication.Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client:        mgr.GetClient(),
 			Scheme:        mgr.GetScheme(),

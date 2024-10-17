@@ -79,7 +79,7 @@ var _ = Describe("Replication Controller", func() {
 
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			controllerReconciler := &ReplicationReconciler{
+			controllerReconciler := &Reconciler{
 				BaseReconciler: &ocm.BaseReconciler{
 					Client:        k8sClient,
 					Scheme:        k8sClient.Scheme(),
