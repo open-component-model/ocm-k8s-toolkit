@@ -19,6 +19,10 @@ func (e *RetryableError) Retryable() bool {
 }
 
 func AsRetryableError(err error) ReconcileError {
+	if err == nil {
+		return nil
+	}
+
 	return &RetryableError{err}
 }
 
@@ -31,6 +35,10 @@ func (e *NonRetryableError) Retryable() bool {
 }
 
 func AsNonRetryableError(err error) ReconcileError {
+	if err == nil {
+		return nil
+	}
+
 	return &NonRetryableError{err}
 }
 

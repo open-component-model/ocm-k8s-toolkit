@@ -18,9 +18,10 @@ package v1alpha1
 
 import (
 	"fmt"
+	"time"
+
 
 	v1 "k8s.io/api/core/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -29,19 +30,13 @@ import (
 
 // ResourceSpec defines the desired state of Resource.
 type ResourceSpec struct {
-	// +required
-	RepositoryRef ObjectKey `json:"repositoryRef"`
-
 	// ComponentRef is a reference to a Component.
 	// +required
-	ComponentRef ObjectKey `json:"componentRef"`
+	ComponentRef v1.LocalObjectReference `json:"componentRef"`
 
 	// Resource identifies the ocm resource to be fetched.
 	// +required
 	Resource ResourceID `json:"resource"`
-
-	// +optional
-	ResourceSelector *apiextensionsv1.JSON `json:"resourceSelector"`
 
 	// +optional
 	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
@@ -82,6 +77,9 @@ type ResourceStatus struct {
 	// +optional
 	ArtifactRef v1.LocalObjectReference `json:"artifactRef,omitempty"`
 
+	// +optional
+	Resource *ResourceInfo `json:"resource,omitempty"`
+
 	// Propagate its effective secrets. Other controllers (e.g. Resource
 	// controller) may use this as default if they do not explicitly refer a
 	// secret.
@@ -110,6 +108,52 @@ type ResourceStatus struct {
 	ConfigSet string `json:"configSet,omitempty"`
 }
 
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+
+// Resource is the Schema for the resources API.
+type Resource struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   ResourceSpec   `json:"spec,omitempty"`
+	Status ResourceStatus `json:"status,omitempty"`
+}
+
+func (in *Resource) GetConditions() []metav1.Condition {
+	return in.Status.Conditions
+}
+
+func (in *Resource) SetConditions(conditions []metav1.Condition) {
+	in.Status.Conditions = conditions
+}
+
+func (in *Resource) GetVID() map[string]string {
+	vid := fmt.Sprintf("%s:%s", in.Status.Resource.Name, in.Status.Resource.Version)
+	metadata := make(map[string]string)
+	metadata[GroupVersion.Group+"/resource_version"] = vid
+
+	return metadata
+}
+
+func (in *Resource) SetObservedGeneration(v int64) {
+	in.Status.ObservedGeneration = v
+}
+
+func (in *Resource) GetObjectMeta() *metav1.ObjectMeta {
+	return &in.ObjectMeta
+}
+
+func (in *Resource) GetKind() string {
+	return "Resource"
+}
+
+// GetRequeueAfter returns the duration after which the Resource must be
+// reconciled again.
+func (in Resource) GetRequeueAfter() time.Duration {
+	return in.Spec.Interval.Duration
+}
+
 func (in *Resource) GetSecretRefs() []v1.LocalObjectReference {
 	return in.Spec.SecretRefs
 }
@@ -132,46 +176,6 @@ func (in *Resource) GetConfigSet() *string {
 
 func (in *Resource) GetEffectiveConfigSet() string {
 	return in.Status.ConfigSet
-}
-
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
-
-// Resource is the Schema for the resources API.
-type Resource struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   ResourceSpec   `json:"spec,omitempty"`
-	Status ResourceStatus `json:"status,omitempty"`
-}
-
-func (in *Resource) SetObservedGeneration(v int64) {
-	in.Status.ObservedGeneration = v
-}
-
-func (in *Resource) GetVID() map[string]string {
-	vid := fmt.Sprintf("%s:%s:%s", in.GetNamespace(), in.GetName(), in.GetResourceVersion())
-	metadata := make(map[string]string)
-	metadata[GroupVersion.Group+"/resource_version"] = vid
-
-	return metadata
-}
-
-func (in *Resource) SetConditions(conditions []metav1.Condition) {
-	in.Status.Conditions = conditions
-}
-
-func (in *Resource) GetObjectMeta() *metav1.ObjectMeta {
-	return &in.ObjectMeta
-}
-
-func (in *Resource) GetKind() string {
-	return "Resource"
-}
-
-func (in *Resource) GetConditions() []metav1.Condition {
-	return in.Status.Conditions
 }
 
 // +kubebuilder:object:root=true
