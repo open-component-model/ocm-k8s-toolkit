@@ -22,12 +22,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
-	"github.com/mandelsoft/filepath/pkg/filepath"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	corev1 "k8s.io/api/core/v1"
@@ -225,8 +225,7 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 	// check if the resource is already present in the storage.
 	revision := resourceAccess.Meta().Digest.Value
 
-	// Check if the artifact is already present in the storage and cluster by comparing the digest of that artifact
-	// with the revision.
+	// Get the artifact to check if it is already present while reconciling it
 	artifactStorage := r.Storage.NewArtifactFor(resource.GetKind(), resource.GetObjectMeta(), "", "")
 	if err := r.Client.Get(ctx, types.NamespacedName{Name: artifactStorage.Name, Namespace: artifactStorage.Namespace}, &artifactStorage); err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -236,9 +235,7 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 		}
 	}
 
-	artifactPresent := strings.Split(filepath.Base(r.Storage.LocalPath(artifactStorage)), ".")[0] == revision
-
-	rErr = reconcileArtifact(ctx, octx, r.Storage, resource, resourceAccess, cv, cd, revision, artifactPresent)
+	rErr = reconcileArtifact(ctx, octx, r.Storage, resource, resourceAccess, cv, cd, revision, artifactStorage)
 	if rErr != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ReconcileArtifactFailedReason, rErr.Error())
 
@@ -367,14 +364,32 @@ func downloadResource(ctx context.Context, octx ocmctx.Context, targetDir string
 
 // reconcileArtifact will download, verify, and reconcile the artifact in the storage if it is not already present in the storage.
 func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storage.Storage, resource *v1alpha1.Resource, acc ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAccess,
-	cd *compdesc.ComponentDescriptor, revision string, artifactPresent bool,
+	cd *compdesc.ComponentDescriptor, revision string, artifact artifactv1.Artifact,
 ) (
 	retErr rerror.ReconcileError,
 ) {
 	log.FromContext(ctx).V(1).Info("reconcile artifact")
 
+	// Check if the artifact is already present and located in the storage
+	localPath := storage.LocalPath(artifact)
+
+	// The filename in the artifact should equal the revision
+	artifactPresent := strings.Split(filepath.Base(localPath), ".")[0] == revision
+
+	// The file should exist in the storage
+	// (This assumes that the storage is mounted to the same path as the controller)
+	_, err := os.Stat(localPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			artifactPresent = false
+		} else {
+			return rerror.AsRetryableError(fmt.Errorf("failed to get file info: %w", err))
+		}
+	}
+
 	// Init variables with default values in case the artifact is present
-	dirPath := ""
+	// If the artifact is present, the dirPath will be the directory of the local path to the directory
+	dirPath := filepath.Dir(localPath)
 	// If the artifact is already present, we do not want to archive it again
 	archiveFunc := func(_ *artifactv1.Artifact, _ string) error {
 		return nil
