@@ -21,7 +21,6 @@ rules:
   verbs:
   - create
   - patch
-  - patch_test
 - apiGroups:
   - ""
   resources:
@@ -32,6 +31,7 @@ rules:
   - delivery.ocm.software
   resources:
   - components
+  - localizedresources
   - ocmrepositories
   - resources
   verbs:
@@ -46,7 +46,7 @@ rules:
   - delivery.ocm.software
   resources:
   - components/finalizers
-  - localizations/finalizers
+  - localizedresources/finalizers
   - ocmrepositories/finalizers
   - resources/finalizers
   verbs:
@@ -55,6 +55,7 @@ rules:
   - delivery.ocm.software
   resources:
   - components/status
+  - localizedresources/status
   - ocmrepositories/status
   - resources/status
   verbs:
@@ -64,23 +65,11 @@ rules:
 - apiGroups:
   - delivery.ocm.software
   resources:
-  - localizations
+  - localizationconfigs
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch_test
-  - update
   - watch
-- apiGroups:
-  - delivery.ocm.software
-  resources:
-  - localizations/status
-  verbs:
-  - get
-  - patch_test
-  - update
 - apiGroups:
   - openfluxcd.mandelsoft.org
   resources:

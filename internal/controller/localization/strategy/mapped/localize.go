@@ -16,6 +16,7 @@ import (
 	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"ocm.software/ocm/api/ocm/compdesc"
+	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	"ocm.software/ocm/api/ocm/ocmutils/localize"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -68,6 +69,21 @@ func Localize(ctx context.Context,
 		logger.Info("target was already present, reusing existing directory", "path", targetDir)
 	} else if err != nil {
 		return "", fmt.Errorf("failed to get target directory: %w", err)
+	}
+
+	entries, err := os.ReadDir(targetDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to read target directory: %w", err)
+	}
+
+	useSubDir := false
+	if len(entries) == 1 && entries[0].IsDir() {
+		// TODO Workaround because the tarball from artifact storer uses a folder
+		// named after the resource name instead of storing at artifact root level as this is the expected format
+		// for helm tgz archives.
+		// See issue: https://github.com/helm/helm/issues/5552
+		targetDir = filepath.Join(targetDir, entries[0].Name())
+		useSubDir = true
 	}
 
 	// based on the source, determine the localization rules / config for localization
@@ -142,6 +158,12 @@ func Localize(ctx context.Context,
 		return "", fmt.Errorf("failed to substitute: %w", err)
 	}
 
+	if useSubDir {
+		// if we are using a subdirectory (see above),
+		// we need to direct the artifact path to the original directory again to return a proper localization
+		return filepath.Dir(targetDir), nil
+	}
+
 	return targetDir, nil
 }
 
@@ -151,7 +173,10 @@ func ComponentDescriptorAndSetFromResource(
 	strg *storage.Storage,
 	targetResource *v1alpha1.Resource,
 ) (compdesc.ComponentVersionResolver, *compdesc.ComponentDescriptor, error) {
-	component, err := get[v1alpha1.Component](ctx, clnt, targetResource.Spec.ComponentRef)
+	component, err := get[v1alpha1.Component](ctx, clnt, v1alpha1.ObjectKey{
+		Name:      targetResource.Spec.ComponentRef.Name,
+		Namespace: targetResource.Namespace,
+	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get component: %w", err)
 	}
@@ -184,8 +209,14 @@ func OCMPathSubstitutionStep(
 	resolver compdesc.ComponentVersionResolver,
 ) (steps.Step, error) {
 	substitutions := make(localize.Substitutions, 0, len(substitutionRules))
+
+	var extraID ocmmetav1.Identity
+	if targetResource.Status.Resource != nil {
+		extraID = targetResource.Status.Resource.ExtraIdentity
+	}
+
 	for _, rule := range substitutionRules {
-		unresolved := unresolvedRefFromSource(rule.Source.Resource.Name, targetResource.Spec.Resource.ExtraIdentity)
+		unresolved := unresolvedRefFromSource(rule.Source.Resource.Name, extraID)
 		resolved, err := resolveResourceReferenceFromComponentDescriptor(unresolved, componentDescriptor, resolver)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get targetResource reference from component descriptor based on rule: %w", err)
@@ -248,9 +279,14 @@ func OCMResourceReferenceTemplateFunc(
 	descriptor *compdesc.ComponentDescriptor,
 	resolver compdesc.ComponentVersionResolver,
 ) template.FuncMap {
+	var extraID ocmmetav1.Identity
+	if contextualResource.Status.Resource != nil {
+		extraID = contextualResource.Status.Resource.ExtraIdentity
+	}
+
 	return template.FuncMap{
 		"OCMResourceReference": func(resource string, transformationType v1alpha1.TransformationType) (string, error) {
-			unresolved := unresolvedRefFromSource(resource, contextualResource.Spec.Resource.ExtraIdentity)
+			unresolved := unresolvedRefFromSource(resource, extraID)
 			resolved, err := resolveResourceReferenceFromComponentDescriptor(unresolved, descriptor, resolver)
 			if err != nil {
 				return "", fmt.Errorf("failed to get resource reference from component descriptor: %w", err)

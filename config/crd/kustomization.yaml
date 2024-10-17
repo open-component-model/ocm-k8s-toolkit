@@ -5,6 +5,8 @@ resources:
 - bases/delivery.ocm.software_ocmrepositories.yaml
 - bases/delivery.ocm.software_components.yaml
 - bases/delivery.ocm.software_resources.yaml
+- bases/delivery.ocm.software_localizationconfigs.yaml
+- bases/delivery.ocm.software_localizedresources.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

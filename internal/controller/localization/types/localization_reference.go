@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/fluxcd/pkg/tar"
+	fluxtar "github.com/fluxcd/pkg/tar"
 	"github.com/opencontainers/go-digest"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
@@ -44,6 +44,10 @@ func (r *LocalStorageResourceLocalizationReference) GetRevision() string {
 var _ LocalizationTarget = &LocalStorageResourceLocalizationReference{}
 
 func (r *LocalStorageResourceLocalizationReference) Open() (io.ReadCloser, error) {
+	return r.open()
+}
+
+func (r *LocalStorageResourceLocalizationReference) open() (io.ReadCloser, error) {
 	path := r.Storage.LocalPath(*r.Artifact)
 
 	unlock, err := r.Storage.Lock(*r.Artifact)
@@ -56,7 +60,6 @@ func (r *LocalStorageResourceLocalizationReference) Open() (io.ReadCloser, error
 		return nil, err
 	}
 
-	// pass the unlock function to the ReadCloser
 	return &lockedReadCloser{
 		ReadCloser: readCloser,
 		unlock:     unlock,
@@ -75,12 +78,12 @@ func (r *LocalStorageResourceLocalizationReference) UnpackIntoDirectory(path str
 		return err
 	}
 
-	data, err := r.Open()
+	data, err := r.open()
 	defer func() {
 		err = errors.Join(err, data.Close())
 	}()
 
-	return tar.Untar(data, path)
+	return fluxtar.Untar(data, path)
 }
 
 func (r *LocalStorageResourceLocalizationReference) GetResource() *v1alpha1.Resource {
@@ -137,7 +140,7 @@ func (r *StaticLocalizationReference) UnpackIntoDirectory(path string) (err erro
 		err = errors.Join(err, data.Close())
 	}()
 
-	return tar.Untar(data, path)
+	return fluxtar.Untar(data, path)
 }
 
 func (r *StaticLocalizationReference) GetResource() *v1alpha1.Resource {

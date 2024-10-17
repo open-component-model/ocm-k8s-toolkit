@@ -33,7 +33,7 @@ func (in *LocalizedResource) GetObjectMeta() *metav1.ObjectMeta {
 }
 
 func (in *LocalizedResource) GetKind() string {
-	return "LocalizationRules"
+	return "LocalizedResource"
 }
 
 func (in *LocalizedResource) SetObservedGeneration(v int64) {
@@ -76,33 +76,10 @@ type LocalizedResourceSpec struct {
 
 type LocalizationStrategy struct {
 	// +optional
-	KustomizePatch *LocalizationStrategyKustomizePatch `json:"kustomizePatch,omitempty"`
-	// +optional
 	Mapped *LocalizationStrategyMapped `json:"mapped,omitempty"`
 }
 
 type LocalizationStrategyMapped struct{}
-
-type LocalizationStrategyKustomizePatch struct {
-	// Path is a relative file path in the target to be patched.
-	// This Path is relative to the root of the target.
-	Path    string                       `json:"path"`
-	Patches []LocalizationKustomizePatch `json:"patches"`
-}
-
-type LocalizationKustomizePatch struct {
-	// Path is a relative file path to the patch file.
-	Path string `json:"path,omitempty" yaml:"path,omitempty"`
-
-	// Patch is the content of a patch_test.
-	Patch string `json:"patch_test,omitempty" yaml:"patch_test,omitempty"`
-
-	// Target points to the resources that the patch_test is applied to
-	Target *LocalizationSelector `json:"target,omitempty" yaml:"target,omitempty"`
-
-	// Options is a list of options for the patch_test
-	Options map[string]bool `json:"options,omitempty" yaml:"options,omitempty"`
-}
 
 type LocalizationSelector struct {
 	// ResId refers to a GVKN/Ns of a resource.

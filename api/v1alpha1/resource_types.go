@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"time"
 
-
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -129,7 +128,7 @@ func (in *Resource) SetConditions(conditions []metav1.Condition) {
 }
 
 func (in *Resource) GetVID() map[string]string {
-	vid := fmt.Sprintf("%s:%s", in.Status.Resource.Name, in.Status.Resource.Version)
+	vid := fmt.Sprintf("%s:%s", in.GetNamespace(), in.GetName())
 	metadata := make(map[string]string)
 	metadata[GroupVersion.Group+"/resource_version"] = vid
 
@@ -150,7 +149,7 @@ func (in *Resource) GetKind() string {
 
 // GetRequeueAfter returns the duration after which the Resource must be
 // reconciled again.
-func (in Resource) GetRequeueAfter() time.Duration {
+func (in *Resource) GetRequeueAfter() time.Duration {
 	return in.Spec.Interval.Duration
 }
 

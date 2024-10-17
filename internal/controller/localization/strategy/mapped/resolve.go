@@ -12,7 +12,7 @@ import (
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/localblob"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociblob"
-	"ocm.software/ocm/api/utils/runtime"
+	"sigs.k8s.io/yaml"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
@@ -88,7 +88,7 @@ func valueFromTransformation(ref string, transformationType v1alpha1.Transformat
 	}
 	switch transformationType {
 	case v1alpha1.TransformationTypeRegistry:
-		value = parsed.Context().Registry.Name()
+		value = parsed.Context().Registry.RegistryStr()
 	case v1alpha1.TransformationTypeRepository:
 		value = parsed.Context().RepositoryStr()
 	case v1alpha1.TransformationTypeTag:
@@ -115,7 +115,7 @@ func localizationConfigFromSource(source Source) (config *v1alpha1.LocalizationC
 		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	err = runtime.DefaultYAMLEncoding.Unmarshal(cfg, &config)
+	err = yaml.Unmarshal(cfg, &config)
 
 	return
 }

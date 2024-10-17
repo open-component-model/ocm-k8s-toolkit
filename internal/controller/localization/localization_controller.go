@@ -34,10 +34,7 @@ const (
 	ReasonLocalizationFailed = "LocalizationFailed"
 )
 
-var (
-	ErrUnsupportedLocalizationStrategy = errors.New("unsupported localization strategy")
-	ErrOnlyOneLocalizationStrategy     = errors.New("only one localization strategy is supported")
-)
+var ErrOnlyOneLocalizationStrategy = errors.New("only one localization strategy is supported")
 
 // Reconciler reconciles a LocalizationRules object.
 type Reconciler struct {
@@ -58,15 +55,15 @@ func (r *Reconciler) GetStorage() *storage.Storage {
 	return r.Storage
 }
 
-// +kubebuilder:rbac:groups=delivery.ocm.software,resources=localizations,verbs=get;list;watch;create;update;patch_test;delete
-// +kubebuilder:rbac:groups=delivery.ocm.software,resources=localizations/status,verbs=get;update;patch_test
-// +kubebuilder:rbac:groups=delivery.ocm.software,resources=localizations/finalizers,verbs=update
+// +kubebuilder:rbac:groups=delivery.ocm.software,resources=localizedresources,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=delivery.ocm.software,resources=localizedresources/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=delivery.ocm.software,resources=localizedresources/finalizers,verbs=update
+// +kubebuilder:rbac:groups=delivery.ocm.software,resources=localizationconfigs,verbs=get;list;watch
 
 // +kubebuilder:rbac:groups="",resources=secrets;configmaps;serviceaccounts,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=serviceaccounts/token,verbs=create
-// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch_test
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-// Reconcile the component object.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
 	localization := &v1alpha1.LocalizedResource{}
 	if err := r.Get(ctx, req.NamespacedName, localization); err != nil {
@@ -96,7 +93,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	patchHelper := patch.NewSerialPatcher(localization, r.Client)
 
-	// Always attempt to patch_test the object and status after each reconciliation.
+	// Always attempt to patch the object and status after each reconciliation.
 	defer func() {
 		if statusErr := status.UpdateStatus(ctx, patchHelper, localization, r.EventRecorder, localization.Spec.Interval.Duration, err); statusErr != nil {
 			err = errors.Join(err, statusErr)
@@ -205,7 +202,7 @@ func (r *Reconciler) localize(ctx context.Context,
 	}
 
 	if instructions == 0 {
-		return "", fmt.Errorf("%w: %v", ErrUnsupportedLocalizationStrategy, strategy)
+		return mapped.Localize(ctx, localizationclient.NewClientWithLocalStorage(r.Client, r.Storage), r.Storage, src, trgt)
 	} else if instructions > 1 {
 		return "", fmt.Errorf("%w: %v", ErrOnlyOneLocalizationStrategy, strategy)
 	}

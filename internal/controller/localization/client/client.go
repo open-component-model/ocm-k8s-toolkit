@@ -19,6 +19,10 @@ var ErrSourceNotYetReady = errors.New("target is not yet ready")
 type Client interface {
 	client.Reader
 	GetLocalizationTarget(ctx context.Context, ref v1alpha1.LocalizationReference) (target types.LocalizationTarget, err error)
+	// GetLocalizationSource fetches the localization source from the Kubernetes.
+	// It takes a LocalizationSource and returns a LocalizationSourceWithStrategy.
+	// Compared to the LocalizationTarget, the Source Strategy can be used to further determine how to treat the source of the localization.
+	// Based on the APIVersion & Kind of the reference, it will fetch the source from the Kubernetes.
 	GetLocalizationSource(ctx context.Context, ref v1alpha1.LocalizationSource) (source types.LocalizationSourceWithStrategy, err error)
 }
 
@@ -69,7 +73,7 @@ func (clnt *localStorageBackedClient) GetLocalizationSource(ctx context.Context,
 		return types.NewLocalizationSourceWithStrategy(clr, ref.Strategy), nil
 	}
 
-	return nil, fmt.Errorf("unsupported localization target kind: %s", ref.Kind)
+	return nil, fmt.Errorf("unsupported localization source kind: %s", ref.Kind)
 }
 
 func (clnt *localStorageBackedClient) GetComponentLocalizationReferenceFromResource(
@@ -80,7 +84,7 @@ func (clnt *localStorageBackedClient) GetComponentLocalizationReferenceFromResou
 		ref.APIVersion = v1alpha1.GroupVersion.String()
 	}
 	if ref.APIVersion != v1alpha1.GroupVersion.String() || ref.Kind != "Resource" {
-		return nil, fmt.Errorf("unsupported localization target reference: %s/%s", ref.APIVersion, ref.Kind)
+		return nil, fmt.Errorf("unsupported localization reference type: %s/%s", ref.APIVersion, ref.Kind)
 	}
 
 	resource := v1alpha1.Resource{}

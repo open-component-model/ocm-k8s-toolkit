@@ -19,12 +19,12 @@ package resource
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/fluxcd/pkg/runtime/conditions"
-	"github.com/fluxcd/pkg/tar"
 	"github.com/mandelsoft/filepath/pkg/filepath"
 	. "github.com/mandelsoft/goutils/testutils"
 	"github.com/mandelsoft/vfs/pkg/osfs"
@@ -141,9 +141,8 @@ var _ = Describe("Resource Controller", func() {
 			DeferCleanup(func() error {
 				return os.RemoveAll(tmpDir)
 			})
-			MustBeSuccessful(tar.Untar(r.Body, tmpDir))
 
-			resourceContent := Must(os.ReadFile(filepath.Join(tmpDir, ResourceObj)))
+			resourceContent := Must(io.ReadAll(r.Body))
 			Expect(string(resourceContent)).To(Equal(ResourceContent))
 		})
 	})

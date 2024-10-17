@@ -57,9 +57,8 @@ var _ = Describe("mapped localize", func() {
 								Namespace: "default",
 							},
 							Spec: v1alpha1.ResourceSpec{
-								ComponentRef: v1alpha1.ObjectKey{
-									Name:      "component",
-									Namespace: "default",
+								ComponentRef: v1.LocalObjectReference{
+									Name: "component",
 								},
 							},
 						},
@@ -89,9 +88,8 @@ var _ = Describe("mapped localize", func() {
 							Namespace: "default",
 						},
 						Spec: v1alpha1.ResourceSpec{
-							ComponentRef: v1alpha1.ObjectKey{
-								Name:      "component",
-								Namespace: "default",
+							ComponentRef: v1.LocalObjectReference{
+								Name: "component",
 							},
 						},
 					},

@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	ocmbuilder "ocm.software/ocm/api/helper/builder"
+	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	"ocm.software/ocm/api/utils/tarutils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
@@ -195,9 +196,14 @@ func SetupMockResourceWithData(ctx context.Context,
 			Name:      name,
 		},
 		Spec: v1alpha1.ResourceSpec{
-			Resource:      v1alpha1.ResourceID{Name: name},
-			RepositoryRef: v1alpha1.ObjectKey{Name: RepositoryObj, Namespace: namespace},
-			ComponentRef:  options.componentRef,
+			Resource: v1alpha1.ResourceID{
+				ByReference: v1alpha1.ResourceReference{
+					Resource: v1.NewIdentity(name),
+				},
+			},
+			ComponentRef: corev1.LocalObjectReference{
+				Name: options.componentRef.Name,
+			},
 		},
 	}
 	Expect(k8sClient.Create(ctx, res)).To(Succeed())

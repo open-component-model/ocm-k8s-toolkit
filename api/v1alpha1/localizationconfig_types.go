@@ -94,10 +94,22 @@ type Transformation struct {
 type TransformationType string
 
 const (
-	TransformationTypeRegistry   TransformationType = "Registry"
+	// TransformationTypeImage is a transformation that extracts the full image reference.
+	// This is the default transformation type.
+	// Example: "docker.io/library/nginx:latest" -> "docker.io/library/nginx:latest".
+	TransformationTypeImage TransformationType = "Image"
+	// TransformationTypeRegistry is a transformation that extracts the registry part of an image reference.
+	// Example: "docker.io/library/nginx:latest" -> "docker.io".
+	TransformationTypeRegistry TransformationType = "Registry"
+	// TransformationTypeRepository is a transformation that extracts the repository part of an image reference.
+	// Example: "docker.io/library/nginx:latest" -> "library/nginx".
 	TransformationTypeRepository TransformationType = "Repository"
-	TransformationTypeImage      TransformationType = "Image"
-	TransformationTypeTag        TransformationType = "Tag"
+	// TransformationTypeTag is a transformation that extracts the tag part of an image reference.
+	// Example: "docker.io/library/nginx:latest" -> "latest".
+	TransformationTypeTag TransformationType = "Tag"
+	// TransformationTypeGoTemplate is a transformation that uses Go templates.
+	// This transformation type does not support source references or target path references.
+	// TODO Add support for this case so someone could write something like "{{ .Repository }}{{ .Tag }}".
 	TransformationTypeGoTemplate TransformationType = "GoTemplate"
 )
 

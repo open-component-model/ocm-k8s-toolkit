@@ -22,12 +22,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
-	"github.com/mandelsoft/filepath/pkg/filepath"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	corev1 "k8s.io/api/core/v1"
@@ -164,24 +164,19 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 		return ctrl.Result{}, retErr
 	}
 
-	// Get artifact from component that contains component descriptor
-	artifactComponent := &artifactv1.Artifact{}
-	if err := r.Get(ctx, types.NamespacedName{
-		// TODO: Discuss if we should use OwnerReference instead of refs?
-		Namespace: resource.GetNamespace(),
-		Name:      component.Status.ArtifactRef.Name,
-	}, artifactComponent); err != nil {
+	artifactComponent, err := ocm.GetAndVerifyArtifactForCollectable(ctx, r.Client, r.Storage, component)
+	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetArtifactFailedReason, "Cannot get component artifact")
 
 		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to get component artifact: %w", err))
 	}
 
 	// Get component descriptor set from artifact
-	cdSet, rErr := ocm.GetComponentSetForArtifact(ctx, r.Storage, artifactComponent)
-	if rErr != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentForArtifactFailedReason, rErr.Error())
+	cdSet, err := ocm.ComponentSetFromLocalArtifact(r.Storage, artifactComponent)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentForArtifactFailedReason, err.Error())
 
-		return ctrl.Result{}, rErr
+		return ctrl.Result{}, rerror.AsRetryableError(err)
 	}
 
 	// Get referenced component descriptor from component descriptor set
@@ -236,9 +231,7 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 		}
 	}
 
-	artifactPresent := strings.Split(filepath.Base(r.Storage.LocalPath(artifactStorage)), ".")[0] == revision
-
-	rErr = reconcileArtifact(ctx, octx, r.Storage, resource, resourceAccess, cv, cd, revision, artifactPresent)
+	rErr = reconcileArtifact(ctx, octx, r.Storage, resource, resourceAccess, cv, cd, revision, artifactStorage)
 	if rErr != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ReconcileArtifactFailedReason, rErr.Error())
 
@@ -349,7 +342,8 @@ func downloadResource(ctx context.Context, octx ocmctx.Context, targetDir string
 ) (
 	_ string, retErr rerror.ReconcileError,
 ) {
-	log.FromContext(ctx).V(1).Info("download resource")
+	logger := log.FromContext(ctx)
+	logger.V(1).Info("download resource")
 
 	// Using a redirected resource acc to prevent redundant download
 	accessMock, err := ocm.NewRedirectedResourceAccess(acc, bAcc)
@@ -362,25 +356,40 @@ func downloadResource(ctx context.Context, octx ocmctx.Context, targetDir string
 		return "", rerror.AsRetryableError(fmt.Errorf("failed to download resource: %w", err))
 	}
 
+	logger.V(1).Info("downloaded resource", "path", path)
+
 	return path, nil
 }
 
 // reconcileArtifact will download, verify, and reconcile the artifact in the storage if it is not already present in the storage.
 func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storage.Storage, resource *v1alpha1.Resource, acc ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAccess,
-	cd *compdesc.ComponentDescriptor, revision string, artifactPresent bool,
+	cd *compdesc.ComponentDescriptor, revision string, artifact artifactv1.Artifact,
 ) (
 	retErr rerror.ReconcileError,
 ) {
+	localPath := storage.LocalPath(artifact)
+
+	// use the filename which is the revision as the artifact name
+	artifactPresent := strings.Split(filepath.Base(localPath), ".")[0] == revision
+
+	_, err := os.Stat(localPath)
+	if os.IsNotExist(err) {
+		artifactPresent = false
+	} else if err != nil {
+		return rerror.AsRetryableError(fmt.Errorf("failed to check if artifact is present: %w", err))
+	}
+
 	log.FromContext(ctx).V(1).Info("reconcile artifact")
 
 	// Init variables with default values in case the artifact is present
-	dirPath := ""
+	dirPath := filepath.Dir(localPath)
 	// If the artifact is already present, we do not want to archive it again
 	archiveFunc := func(_ *artifactv1.Artifact, _ string) error {
 		return nil
 	}
 
 	// If the artifact is not present, we will verify and download the resource and provide it as artifact
+	//nolint:nestif // this is our main logic and we rather keep it in here
 	if !artifactPresent {
 		// No need to close the blob access as it will be closed automatically
 		bAcc, rErr := getBlobAccess(ctx, acc)
@@ -409,17 +418,22 @@ func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storag
 
 		// Since the artifact is not already present, an archive function is added to archive the downloaded resource in the storage
 		archiveFunc = func(art *artifactv1.Artifact, _ string) error {
-			// If given path is already an archive (e.g. helm charts), just copy it.
-			switch extension := filepath.Ext(path); extension {
-			case ".tar", ".tar.gz", ".tgz":
+			logger := log.FromContext(ctx).WithValues("artifact", art.Name, "revision", revision, "path", path)
+			fi, err := os.Stat(path)
+			if err != nil {
+				return fmt.Errorf("failed to get file info: %w", err)
+			}
+			if fi.IsDir() {
+				logger.V(1).Info("archiving directory")
+				// Archive directory to storage
+				if err := storage.Archive(art, path, nil); err != nil {
+					return fmt.Errorf("failed to archive: %w", err)
+				}
+			} else {
+				logger.V(1).Info("archiving file from path")
+				// If given path is a file, just copy it.
 				if err := storage.CopyFromPath(art, path); err != nil {
 					return fmt.Errorf("failed to copy file: %w", err)
-				}
-			// Otherwise, archive the directory
-			default:
-				// Archive directory to storage
-				if err := storage.Archive(art, tmp, nil); err != nil {
-					return fmt.Errorf("failed to archive: %w", err)
 				}
 			}
 
