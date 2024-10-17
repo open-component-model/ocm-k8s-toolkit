@@ -17,7 +17,7 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Replication is the Schema for the replications API
+        description: Replication is the Schema for the replications API.
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: ReplicationSpec defines the desired state of Replication
+            description: ReplicationSpec defines the desired state of Replication.
             properties:
               componentRef:
                 description: ComponentRef is a reference to a Component to be replicated.
@@ -74,7 +74,7 @@ spec:
             - targetRepositoryRef
             type: object
           status:
-            description: ReplicationStatus defines the observed state of Replication
+            description: ReplicationStatus defines the observed state of Replication.
             type: object
         type: object
     served: true
