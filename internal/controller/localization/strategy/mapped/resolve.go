@@ -1,10 +1,13 @@
 package mapped
 
 import (
+	"archive/tar"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 
+	"github.com/containers/image/v5/pkg/compression"
 	"github.com/google/go-containerregistry/pkg/name"
 	ocmctx "ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/compdesc"
@@ -93,6 +96,8 @@ func valueFromTransformation(ref string, transformationType v1alpha1.Transformat
 		value = parsed.Context().RepositoryStr()
 	case v1alpha1.TransformationTypeTag:
 		value = parsed.Identifier()
+	case v1alpha1.TransformationTypeImageNoTag:
+		value = parsed.Context().Name()
 	case v1alpha1.TransformationTypeGoTemplate:
 		return "", fmt.Errorf("unsupported transformation type for reference resolution: %s", transformationType)
 	case v1alpha1.TransformationTypeImage:
@@ -105,12 +110,31 @@ func valueFromTransformation(ref string, transformationType v1alpha1.Transformat
 	return
 }
 
-func localizationConfigFromSource(source Source) (config *v1alpha1.LocalizationConfig, err error) {
+// LocalizationConfigFromSource reads the localization config from the source.
+// It autodecompresses the source and reads the config via DataFromTarOrPlain.
+// This allows the source to be either
+// - a plain yaml file in a (compressed or uncompressed) tar archive
+// - a plain yaml file
+//
+// Note that if the tar archive contains multiple files, only the first one is read as stored in the tar.
+func LocalizationConfigFromSource(source Source) (config *v1alpha1.LocalizationConfig, err error) {
 	cfgReader, err := source.Open()
 	defer func() {
 		err = errors.Join(err, cfgReader.Close())
 	}()
-	cfg, err := io.ReadAll(cfgReader)
+	decompressed, _, err := compression.AutoDecompress(cfgReader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to autodecompress config: %w", err)
+	}
+	defer func() {
+		err = errors.Join(err, decompressed.Close())
+	}()
+	data, err := DataFromTarOrPlain(decompressed)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get data from tar or plain: %w", err)
+	}
+
+	cfg, err := io.ReadAll(data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
@@ -118,4 +142,38 @@ func localizationConfigFromSource(source Source) (config *v1alpha1.LocalizationC
 	err = yaml.Unmarshal(cfg, &config)
 
 	return
+}
+
+// DataFromTarOrPlain checks if the reader is a tar archive and returns a new reader that reads from the beginning of the input.
+// If the input is not a tar archive, the input reader is returned as is.
+func DataFromTarOrPlain(reader io.Reader) (io.Reader, error) {
+	isTar, reader := isTar(reader)
+	if !isTar {
+		return reader, nil
+	}
+
+	t := tar.NewReader(reader)
+	fi, err := t.Next()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read tar header even though data was recognized as tar: %w", err)
+	}
+	if fi.Typeflag != tar.TypeReg {
+		return nil, fmt.Errorf("expected exactly one regular file in tar, got type flag %x", fi.Typeflag)
+	}
+
+	return t, nil
+}
+
+const TarPaddedHeaderSize = 512
+
+// isTar checks if the reader is a tar archive and returns a new reader that reads from the beginning of the input.
+// The input reader should no longer be used after calling this function.
+func isTar(reader io.Reader) (bool, io.Reader) {
+	var buf bytes.Buffer
+	// We need to read the first 512 bytes to determine if the input is a tar archive.
+	buf.Grow(TarPaddedHeaderSize)
+	tr := tar.NewReader(io.TeeReader(reader, &buf))
+	_, err := tr.Next()
+
+	return err == nil, io.MultiReader(&buf, reader)
 }

@@ -17,6 +17,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -74,21 +75,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, nil
 	}
 
-	// no need for a dedicated finalizer since gc should also be able to take care of it
-	// TODO check if that actually happens or if we in fact do need a finalizer
 	if !localization.GetDeletionTimestamp().IsZero() {
-		artifact, err := ocm.GetAndVerifyArtifactForCollectable(ctx, r, r.Storage, localization)
-		if client.IgnoreNotFound(err) != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to get artifact: %w", err)
-		}
-		if artifact == nil {
-			log.FromContext(ctx).Info("artifact belonging to localization not found, skipping deletion")
+		return ctrl.Result{}, r.reconcileDeletion(ctx, localization)
+	}
 
-			return ctrl.Result{}, nil
-		}
-		if err := r.Storage.Remove(*artifact); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to remove artifact: %w", err)
-		}
+	if added := controllerutil.AddFinalizer(localization, v1alpha1.ArtifactFinalizer); added {
+		return ctrl.Result{Requeue: true}, r.Update(ctx, localization)
 	}
 
 	patchHelper := patch.NewSerialPatcher(localization, r.Client)
@@ -101,6 +93,30 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}()
 
 	return r.reconcileExists(ctx, localization)
+}
+
+func (r *Reconciler) reconcileDeletion(ctx context.Context, localization *v1alpha1.LocalizedResource) error {
+	artifact, err := ocm.GetAndVerifyArtifactForCollectable(ctx, r, r.Storage, localization)
+	if client.IgnoreNotFound(err) != nil {
+		return fmt.Errorf("failed to get artifact: %w", err)
+	}
+	if artifact == nil {
+		log.FromContext(ctx).Info("artifact belonging to localization not found, skipping deletion")
+
+		return nil
+	}
+	if err := r.Storage.Remove(*artifact); err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove artifact: %w", err)
+		}
+	}
+	if removed := controllerutil.RemoveFinalizer(localization, v1alpha1.ArtifactFinalizer); removed {
+		if err := r.Update(ctx, localization); err != nil {
+			return fmt.Errorf("failed to remove finalizer: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1.LocalizedResource) (ctrl.Result, error) {

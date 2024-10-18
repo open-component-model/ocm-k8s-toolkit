@@ -6,7 +6,6 @@ import (
 	"os"
 
 	fluxtar "github.com/fluxcd/pkg/tar"
-	"github.com/opencontainers/go-digest"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 
@@ -23,6 +22,8 @@ type LocalStorageResourceLocalizationReference struct {
 	Resource *v1alpha1.Resource
 }
 
+// LocalizationReference is a reference to a resource that can be localized.
+// It can be used both as a source (LocalizationSource) and as a target (LocalizationTarget) for localization.
 type LocalizationReference interface {
 	LocalizationSource
 	LocalizationTarget
@@ -101,48 +102,4 @@ func (l *lockedReadCloser) Close() error {
 	defer l.unlock()
 
 	return l.ReadCloser.Close()
-}
-
-type StaticLocalizationReference struct {
-	Path     string
-	Resource *v1alpha1.Resource
-}
-
-var (
-	_ LocalizationSource = &StaticLocalizationReference{}
-	_ LocalizationTarget = &StaticLocalizationReference{}
-)
-
-func (r *StaticLocalizationReference) Open() (io.ReadCloser, error) {
-	return os.Open(r.Path)
-}
-
-func (r *StaticLocalizationReference) GetDigest() string {
-	return digest.NewDigestFromBytes(digest.SHA256, []byte(r.Path)).String()
-}
-
-func (r *StaticLocalizationReference) GetRevision() string {
-	return r.Path
-}
-
-func (r *StaticLocalizationReference) UnpackIntoDirectory(path string) (err error) {
-	fi, err := os.Stat(path)
-	if err == nil && fi.IsDir() {
-		return ErrAlreadyUnpacked
-	}
-
-	if err = os.MkdirAll(path, os.ModeDir|os.ModePerm); err != nil {
-		return err
-	}
-
-	data, err := r.Open()
-	defer func() {
-		err = errors.Join(err, data.Close())
-	}()
-
-	return fluxtar.Untar(data, path)
-}
-
-func (r *StaticLocalizationReference) GetResource() *v1alpha1.Resource {
-	return r.Resource
 }

@@ -39,13 +39,54 @@ spec:
           metadata:
             type: object
           spec:
+            description: |-
+              LocalizationConfigSpec defines the desired state of LocalizationConfig.
+              It contains the necessary localization rules that can be used in conjunction with a data source to localize resources.
+              For more information, see the LocalizationRule type.
             properties:
               rules:
                 items:
+                  description: |-
+                    LocalizationRule defines a rule that can be used to localize resources.
+                    Each rule contains a source reference, a target reference, and a transformation, with each of these fields
+                    being omittable except for target.
                   properties:
                     source:
+                      description: "The Source reference is used to identify the resource
+                        that should be localized.\nIt will be used to extract the
+                        necessary information to localize the target reference.\nA
+                        resource reference will always look inside the same component
+                        as the component that is being localized.\n\nExample:\n\t-
+                        source:\n\t\tresource:\n\t\t\tname: image"
                       properties:
                         resource:
+                          description: |-
+                            The Resource reference is used to identify the resource will be used to fill in the target reference.
+                            If one has a ComponentDescriptor with 2 resources, one can use this to reference between them.
+                            For a Component Descriptor with two resources, a "deployment-instruction" (to be localized)
+                            and an "image" (to be localized from), one can use the following source:
+                            - source:
+                                resource:
+                                  name: image
+
+                            The localization will then look into the corresponding descriptor and resolve its AccessType:
+                            components:
+                             - component:
+                                 # ...
+                                 resources:
+                                   - access:
+                                       imageReference: ghcr.io/stefanprodan/podinfo:6.2.0
+                                       type: ociArtifact
+                                     name: image
+                                     relation: external
+                                     type: ociImage
+                                     version: 6.2.0
+                                 sources: []
+                                 version: 1.0.0
+                               meta:
+                                 schemaVersion: v2
+
+                            This would then lead to a value of "ghcr.io/stefanprodan/podinfo:6.2.0".
                           properties:
                             extraIdentity:
                               additionalProperties:
@@ -60,12 +101,28 @@ spec:
                       - resource
                       type: object
                     target:
+                      description: |-
+                        The Target reference is used to identify the content inside the resource that should be localized.
+                        It will be used to determine where the localized content should be stored.
+                        To store the image fetched from source into a file called values.yaml inside deploy.image, one can use the following target:
+
+                          - target:
+                            file:
+                              path: values.yaml
+                              value: deploy.image
                       properties:
                         file:
+                          description: |-
+                            The File target is used to identify the file where the rule will apply its sources to after considering
+                            the transformation.
                           properties:
                             path:
+                              description: The Path is the filepath (relative to the
+                                Resource) to the file inside the resource.
                               type: string
                             value:
+                              description: The Value is a reference to the content
+                                that should be localized.
                               type: string
                           required:
                           - path
@@ -74,6 +131,20 @@ spec:
                       - file
                       type: object
                     transformation:
+                      description: |-
+                        The Transformation is used to tell the Localization additional information about how to localize the content.
+                        The transformation can be used to digest the source in a different way or interpret the rule differently.
+                        A simple example of this is the TransformationTypeImage (also the default if no Transformation has been specified),
+                        which extracts the full image reference:
+                         - transformation:
+                             type: Image
+
+                        An example of this is the GoTemplate transformation, which allows the user to use Go templates to transform the source.
+                        With this transformation, one can switch from using the Target and fully customize their localization:
+                         - transformation:
+                             type: GoTemplate
+
+                        For more information on individual TransformationType's, see their respective documentation.
                       properties:
                         goTemplate:
                           properties:

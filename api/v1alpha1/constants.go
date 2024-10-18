@@ -34,3 +34,9 @@ const (
 	// LevelDebug defines the depth at witch debug information is displayed.
 	LevelDebug = 4
 )
+
+// Finalizers for controllers.
+const (
+	// ArtifactFinalizer is the finalizer that is added to artifacts created by the ocm controllers.
+	ArtifactFinalizer = "finalizers.ocm.software/artifact"
+)

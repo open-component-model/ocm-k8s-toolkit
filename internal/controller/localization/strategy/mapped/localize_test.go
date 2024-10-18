@@ -50,7 +50,7 @@ var _ = Describe("mapped localize", func() {
 				configPath := filepath.Join(configDir, "localization.yaml")
 				Expect(os.WriteFile(configPath, configYAML, os.ModePerm)).To(Succeed())
 				ls = localizationTypes.NewLocalizationSourceWithStrategy(
-					&localizationTypes.StaticLocalizationReference{
+					&localizationTypes.MockedLocalizationReference{
 						Resource: &v1alpha1.Resource{
 							ObjectMeta: metav1.ObjectMeta{
 								Name:      "deployment-localization",
@@ -70,7 +70,7 @@ var _ = Describe("mapped localize", func() {
 				)
 			})
 
-			var trgt localizationTypes.StaticLocalizationReference
+			var trgt localizationTypes.MockedLocalizationReference
 
 			By("accessing the deployment specification as target", func() {
 				targetDir := filepath.Join(tmp, "target")
@@ -80,7 +80,7 @@ var _ = Describe("mapped localize", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(tarutils.CreateTarFromFs(targetFS, targetTGZ, tarutils.Gzip)).To(Succeed())
 
-				trgt = localizationTypes.StaticLocalizationReference{
+				trgt = localizationTypes.MockedLocalizationReference{
 					Path: targetTGZ,
 					Resource: &v1alpha1.Resource{
 						ObjectMeta: metav1.ObjectMeta{

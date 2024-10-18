@@ -87,7 +87,7 @@ func Localize(ctx context.Context,
 	}
 
 	// based on the source, determine the localization rules / config for localization
-	config, err := localizationConfigFromSource(src)
+	config, err := LocalizationConfigFromSource(src)
 	if err != nil {
 		return "", fmt.Errorf("failed to get config: %w", err)
 	}
@@ -271,7 +271,7 @@ func GoTemplateSubstitutionStep(
 // OCMResourceReferenceTemplateFunc creates a template function map that can be used in a GoTemplate
 // to resolve a resource reference from a component descriptor.
 // Example:
-// {{ OCMResourceReference "my-resource" "Registry" }}
+// {{ OCMResourceReference "image" "Registry" }}
 // this looks up the resource reference "my-resource" in the component descriptor and returns the image reference
 // with v1alpha1.TransformationTypeRegistry, e.g. "registry.example.com/my-image" would become "registry.example.com".
 func OCMResourceReferenceTemplateFunc(

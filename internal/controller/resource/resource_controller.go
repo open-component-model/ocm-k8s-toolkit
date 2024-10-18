@@ -362,22 +362,23 @@ func downloadResource(ctx context.Context, octx ocmctx.Context, targetDir string
 }
 
 // reconcileArtifact will download, verify, and reconcile the artifact in the storage if it is not already present in the storage.
-func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storage.Storage, resource *v1alpha1.Resource, acc ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAccess,
-	cd *compdesc.ComponentDescriptor, revision string, artifact artifactv1.Artifact,
+func reconcileArtifact(
+	ctx context.Context,
+	octx ocmctx.Context,
+	storage *storage.Storage,
+	resource *v1alpha1.Resource,
+	acc ocmctx.ResourceAccess,
+	cv ocmctx.ComponentVersionAccess,
+	cd *compdesc.ComponentDescriptor,
+	revision string,
+	artifact artifactv1.Artifact,
 ) (
 	retErr rerror.ReconcileError,
 ) {
 	localPath := storage.LocalPath(artifact)
 
 	// use the filename which is the revision as the artifact name
-	artifactPresent := strings.Split(filepath.Base(localPath), ".")[0] == revision
-
-	_, err := os.Stat(localPath)
-	if os.IsNotExist(err) {
-		artifactPresent = false
-	} else if err != nil {
-		return rerror.AsRetryableError(fmt.Errorf("failed to check if artifact is present: %w", err))
-	}
+	artifactPresent := storage.ArtifactExist(artifact) && strings.Split(filepath.Base(localPath), ".")[0] == revision
 
 	log.FromContext(ctx).V(1).Info("reconcile artifact")
 
