@@ -71,19 +71,16 @@ func Localize(ctx context.Context,
 		return "", fmt.Errorf("failed to get target directory: %w", err)
 	}
 
-	entries, err := os.ReadDir(targetDir)
+	// TODO Workaround because the tarball from artifact storer uses a folder
+	// named after the resource name instead of storing at artifact root level as this is the expected format
+	// for helm tgz archives.
+	// See issue: https://github.com/helm/helm/issues/5552
+	useSubDir, subDir, err := isHelmChart(targetDir)
 	if err != nil {
-		return "", fmt.Errorf("failed to read target directory: %w", err)
+		return "", fmt.Errorf("failed to determine if target is a helm chart to traverse into subdirectory: %w", err)
 	}
-
-	useSubDir := false
-	if len(entries) == 1 && entries[0].IsDir() {
-		// TODO Workaround because the tarball from artifact storer uses a folder
-		// named after the resource name instead of storing at artifact root level as this is the expected format
-		// for helm tgz archives.
-		// See issue: https://github.com/helm/helm/issues/5552
-		targetDir = filepath.Join(targetDir, entries[0].Name())
-		useSubDir = true
+	if useSubDir {
+		targetDir = subDir
 	}
 
 	// based on the source, determine the localization rules / config for localization
@@ -165,6 +162,36 @@ func Localize(ctx context.Context,
 	}
 
 	return targetDir, nil
+}
+
+// isHelmChart is a hacky helper script because if the target is a Helm TGZ archive, it is stored in a subdirectory
+// instead of at Root. Because we do not want users to need to know this abstracted subdirectory
+// we have this function to tell us if we are dealing with one to correctly traverse into the directory
+// before applying any localizations. This is safe because we only have one subdirectory in the Helm TGZ archive.
+func isHelmChart(targetDir string) (bool, string, error) {
+	entries, err := os.ReadDir(targetDir)
+	if err != nil {
+		return false, "", fmt.Errorf("failed to read target directory: %w", err)
+	}
+
+	// if we have only one entry and it is a directory, we assume it is a Helm Chart (for now), otherwise abort
+	if len(entries) != 1 || !entries[0].IsDir() {
+		return false, "", nil
+	}
+
+	// now make sure we really deal with a helm chart by checking if the subdirectory contains a Chart.yaml in dir.
+	subDir := filepath.Join(targetDir, entries[0].Name())
+	dir, err := os.ReadDir(subDir)
+	if err != nil {
+		return false, "", fmt.Errorf("failed to read only target sub-directory to determine if we are dealing with a Helm Chart: %w", err)
+	}
+	for _, entry := range dir {
+		if entry.Name() == "Chart.yaml" {
+			return true, subDir, nil
+		}
+	}
+
+	return false, "", nil
 }
 
 func ComponentDescriptorAndSetFromResource(
