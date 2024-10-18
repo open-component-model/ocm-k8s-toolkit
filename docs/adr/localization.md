@@ -4,6 +4,22 @@
 * Deciders: Fabian Burth, Uwe Krueger, Gergely Brautigam, Jakob Moeller
 * Date: 2024-10-08
 
+## Motivation 
+
+OCM and any delivery associated with it should allow self-contained delivery of components. 
+This means that the components should be able to be transferred between different environments without any manual intervention or
+the need to explicitly prepare values in the environment for the sake of referencing e.g. new registries that have been used
+while transferring / replicating the component. 
+
+This is especially important for the continuous deployment of components in a CI/CD pipeline.
+Essentially we want to deliver a system that allows to deliver any component (independent of deployment technologies such as Helm or Kustomize)
+to any environment without the need to adjust the component itself if its respective location has changed.
+
+Once the component is transferred, this information in the chart is incorrect. (see below for details)
+
+We do not want to touch the original chart because it may have been signed, so the only way is to substitute the value
+in the chart with the new value dynamically.
+
 Technical Story:
 
 The term *localization* was termed in the context of the 
@@ -446,17 +462,177 @@ spec:
 
 ## Decision Outcome
 
+In the end we decided to form a hybrid that is mainly based on Option 3, but also allows for templating via Option 1.
+
+An example for a configuration of a Localization performed on a resource may look like this for a simple Helm Chart:
+
+```yaml
+apiVersion: delivery.ocm.software/v1alpha1
+kind: LocalizationConfig
+metadata:
+  name: deployment-localization
+spec:
+  rules:
+  - source:
+      resource:
+        name: my-image-with-my-app-inside
+    target:
+      file:
+        path: values.yaml
+        value: deploy.image
+```
+
+This LocalizationConfig can be applied via 2 ways:
+1. It is added as a Resource together with the Component to allow for a self-contained delivery.
+2. It is referenced in the Cluster where the Controllers are deployed, to allow for easy migration of workloads.
+
+The LocalizationConfig will contain a set of rules that can be applied to the target
+
+### Examples
+
+#### Minimal Example 1 (Main Use Case):
+
+```yaml
+apiVersion: delivery.ocm.software/v1alpha1
+kind: LocalizedResource
+metadata:
+  name: my-localized-helm-chart
+spec:
+  # target is the resource that will be localized
+  target:
+    name: my-helm-chart
+  # source is a resource in the same component as the target resource and contains the localization config
+  source:
+    name: my-localization-config
+```
+
+This will require packaging the LocalizedResource together with the ComponentVersion:
+
+```yaml
+apiVersion: ocm.software/v3alpha1 
+kind: ComponentVersion
+metadata:
+  name: github.com/open-component-model/myapp
+  provider: 
+    name: ocm
+  version: v1.0.0 
+repositoryContexts: 
+- baseUrl: ghcr.io
+  componentNameMapping: urlPath
+  subPath: open-component-model
+  type: OCIRegistry
+spec:
+  resources: 
+  - name: my-image-with-my-app-inside 
+    relation: external 
+    type: ociImage 
+    version: v1.0.0
+    access: 
+      type: ociArtifact 
+      imageReference: ghcr.io/open-component-model/myimage
+  - name: my-helm-chart
+    relation: external
+    type: helm-chart
+    version: v1.0.0
+    access:
+      type: ociArtifact
+      imageReference: ghcr.io/open-component-model/helmchart:v1.0.0
+  - name: my-localization-config
+    relation: external
+    type: localization-config
+    version: v1.0.0
+    access:
+      type: ociArtifact
+      imageReference: ghcr.io/open-component-model/localizationconfig:v1.0.0
+```
+
+#### Minimal Example 2 (Cluster Reference):
+
+```yaml
+apiVersion: delivery.ocm.software/v1alpha1
+kind: LocalizedResource
+metadata:
+  name: my-localized-helm-chart
+spec:
+  # target is the resource that will be localized
+  target:
+    name: my-helm-chart
+  # source is a resource in the same component as the target resource and contains the localization config
+  source:
+    kind: LocalizationConfig
+    name: my-localization-config
+    namespace: ocm-configs
+```
+
+In this instance it is not necessary to package the LocalizedResource together with the ComponentVersion, but the LocalizationConfig
+needs to be present in the Cluster where the Controllers are deployed, which is generally contradictive to our deployment story.
+However, it is much easier to test and to run with existing Helm Charts without repackaging eventually already existing OCM components
+or Charts, and so should provide a better transition point. It also allows testing Localizations without the need to constantly
+repackage the Components.
+
+
+#### Complex Configuration Example with Templating:
+
+A typical use case for Localization might be to work within structures or files that do not conform to YAML or JSON.
+Even within Kubernetes, one does not need to look far to spot an example case through the use of ConfigMaps:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-config
+data:
+  config.properties: |
+    registry=ghcr.io
+```
+
+In this case, it becomes hard to work with the standard substitution engine because of its reliance on YAML / JSON. 
+For this reason, we also offer a templating approach powered by GoTemplates. Consider the following template file:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-config
+data:
+  game.properties: |
+    registry={{ OCMResourceReference "image" }} 
+```
+
+We can enable a templating configuration like this:
+
+```yaml
+apiVersion: delivery.ocm.software/v1alpha1
+kind: LocalizationConfig
+metadata:
+  name: deployment-localization
+spec:
+  rules:
+  - target:
+      file:
+        path: templates/deployment.yaml
+    transformation:
+      type: GoTemplate
+```
+
+
 Chosen option: "[option 1]", because [justification. e.g., only option, which meets k.o. criterion decision driver | which resolves force force | … | comes out best (see below)].
 
 ### Positive Consequences <!-- optional -->
 
-* [e.g., improvement of quality attribute satisfaction, follow-up decisions required, …]
-* …
+
+- We now have a localization ecosystem in place that we can plugin to the Substitution Engine via the .transformation.type field in the LocalizationConfig CRD.
+- We can now localize all resources, irrespective of YAML/JSON structure, via GoTemplates.
+- We can now localize with a LocalizationConfig coming from both the ComponentVersion and the Cluster, to allow for flexible deployment patterns.
+- We now allow for contributions by introducing the option for custom TransformationTypes. Examples could include kustomize Transformers or Heuristics based substitution.
 
 ### Negative Consequences <!-- optional -->
 
-* [e.g., compromising quality attribute, follow-up decisions required, …]
-* …
+- LocalizationConfig CRD needs to be understood
+- Most Substsitution References are file / path based because we do not want to make assumptions about the templating language used.
+- The substitution logic can only really be tested from within a cluster, so we might want to expose the substitution behavior in a test harness.
+- Using the GoTemplate substitution requires a good understanding of GoTemplates, as well as knowledge of our additional templating functions,
+  such as "OCMResourceReference".
 
 ## Pros and Cons of the Options <!-- optional -->
 
