@@ -19,12 +19,12 @@ package resource
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/fluxcd/pkg/runtime/conditions"
-	"github.com/fluxcd/pkg/tar"
 	"github.com/mandelsoft/filepath/pkg/filepath"
 	. "github.com/mandelsoft/goutils/testutils"
 	"github.com/mandelsoft/vfs/pkg/osfs"
@@ -43,6 +43,7 @@ import (
 	"ocm.software/ocm/api/utils/accessio"
 	"ocm.software/ocm/api/utils/accessobj"
 	"ocm.software/ocm/api/utils/mime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 	"sigs.k8s.io/yaml"
 
@@ -114,6 +115,9 @@ var _ = Describe("Resource Controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			DeferCleanup(func(ctx SpecContext) {
+				Expect(k8sClient.Delete(ctx, resource, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
+			})
 
 			By("checking that the resource has been reconciled successfully")
 			Eventually(komega.Object(resource), "5m").Should(
@@ -137,13 +141,7 @@ var _ = Describe("Resource Controller", func() {
 			Expect(r).Should(HaveHTTPStatus(http.StatusOK))
 
 			By("checking that the resource content is correct")
-			tmpDir := Must(os.MkdirTemp("/tmp", "resource-"))
-			DeferCleanup(func() error {
-				return os.RemoveAll(tmpDir)
-			})
-			MustBeSuccessful(tar.Untar(r.Body, tmpDir))
-
-			resourceContent := Must(os.ReadFile(filepath.Join(tmpDir, ResourceObj)))
+			resourceContent := Must(io.ReadAll(r.Body))
 			Expect(string(resourceContent)).To(Equal(ResourceContent))
 		})
 	})
@@ -156,10 +154,6 @@ func prepareComponent(ctx context.Context, env *Builder, ctfPath string) {
 	env.OCMCommonTransport(ctfPath, accessio.FormatDirectory, func() {
 		env.Component(Component, func() {
 			env.Version(ComponentVersion, func() {
-				// TODO: Delete before merge (test purposes)
-				//env.Resource(ResourceObj, ResourceVersion, artifacttypes.HELM_CHART, v1.LocalRelation, func() {
-				//	env.Access(ociartifact.New("ghcr.io/stefanprodan/charts/podinfo:6.7.0"))
-				//})
 				env.Resource(ResourceObj, ResourceVersion, artifacttypes.PLAIN_TEXT, v1.LocalRelation, func() {
 					env.BlobData(mime.MIME_TEXT, []byte(ResourceContent))
 				})

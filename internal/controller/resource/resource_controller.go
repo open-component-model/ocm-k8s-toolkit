@@ -46,6 +46,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -76,47 +77,39 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups=openfluxcd.mandelsoft.org,resources=artifacts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openfluxcd.mandelsoft.org,resources=artifacts/finalizers,verbs=update
 
-func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
 	resource := &v1alpha1.Resource{}
 	if err := r.Get(ctx, req.NamespacedName, resource); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	return rerror.EvaluateReconcileError(r.reconcileExists(ctx, resource))
-}
-
-func (r *Reconciler) reconcileExists(ctx context.Context, resource *v1alpha1.Resource) (_ ctrl.Result, retErr rerror.ReconcileError) {
-	logger := log.FromContext(ctx)
-	logger.V(1).Info("checking reconciling resource")
-
-	if resource.GetDeletionTimestamp() != nil {
-		logger.Info("deleting resource", "name", resource.Name)
-
-		return ctrl.Result{}, nil
-	}
-
 	if resource.Spec.Suspend {
-		logger.Info("resource is suspended, skipping reconciliation")
-
 		return ctrl.Result{}, nil
 	}
 
-	return r.reconcilePrepare(ctx, resource)
-}
+	if !resource.GetDeletionTimestamp().IsZero() {
+		return ctrl.Result{}, ocm.RemoveArtifactForCollectable(ctx, r.Client, r.Storage, resource)
+	}
 
-func (r *Reconciler) reconcilePrepare(ctx context.Context, resource *v1alpha1.Resource) (ret ctrl.Result, retErr rerror.ReconcileError) {
-	logger := log.FromContext(ctx)
-	logger.V(1).Info("preparing reconciling resource")
+	if added := controllerutil.AddFinalizer(resource, v1alpha1.ArtifactFinalizer); added {
+		return ctrl.Result{Requeue: true}, r.Update(ctx, resource)
+	}
 
 	patchHelper := patch.NewSerialPatcher(resource, r.Client)
 
 	// Always attempt to patch the object and status after each reconciliation.
 	defer func() {
-		if err := status.UpdateStatus(ctx, patchHelper, resource, r.EventRecorder, resource.GetRequeueAfter(), retErr); err != nil {
-			retErr = rerror.AsRetryableError(errors.Join(retErr, err))
-			ret = ctrl.Result{}
+		if statusErr := status.UpdateStatus(ctx, patchHelper, resource, r.EventRecorder, resource.GetRequeueAfter(), err); statusErr != nil {
+			err = errors.Join(err, statusErr)
 		}
 	}()
+
+	return r.reconcileExists(ctx, resource)
+}
+
+func (r *Reconciler) reconcileExists(ctx context.Context, resource *v1alpha1.Resource) (ret ctrl.Result, retErr rerror.ReconcileError) {
+	logger := log.FromContext(ctx)
+	logger.V(1).Info("preparing reconciling resource")
 
 	// Get component to resolve resource from component descriptor and verify digest
 	component := &v1alpha1.Component{}

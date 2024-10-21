@@ -9,8 +9,11 @@ import (
 
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"ocm.software/ocm/api/ocm/compdesc"
+	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
@@ -61,4 +64,53 @@ func GetComponentSetForArtifact(ctx context.Context, storage *storage.Storage, a
 	}
 
 	return compdesc.NewComponentVersionSet(cds.List...), retErr
+}
+
+// GetAndVerifyArtifactForCollectable gets the artifact for the given collectable and verifies it against the given strg.
+// If the artifact is not found, an error is returned.
+func GetAndVerifyArtifactForCollectable(
+	ctx context.Context,
+	reader ctrl.Reader,
+	strg *storage.Storage,
+	collectable storage.Collectable,
+) (*artifactv1.Artifact, error) {
+	artifact := strg.NewArtifactFor(collectable.GetKind(), collectable.GetObjectMeta(), "", "")
+	if err := reader.Get(ctx, types.NamespacedName{Name: artifact.Name, Namespace: artifact.Namespace}, &artifact); err != nil {
+		return nil, fmt.Errorf("failed to get artifact: %w", err)
+	}
+
+	// Check the digest of the archive and compare it to the one in the artifact
+	if err := strg.VerifyArtifact(artifact); err != nil {
+		return nil, rerror.AsRetryableError(fmt.Errorf("failed to verify artifact: %w", err))
+	}
+
+	return &artifact, nil
+}
+
+func RemoveArtifactForCollectable(
+	ctx context.Context,
+	client ctrl.Client,
+	strg *storage.Storage,
+	collectable storage.Collectable,
+) error {
+	artifact, err := GetAndVerifyArtifactForCollectable(ctx, client, strg, collectable)
+	if ctrl.IgnoreNotFound(err) != nil {
+		return fmt.Errorf("failed to get artifact: %w", err)
+	}
+
+	if artifact != nil {
+		if err := strg.Remove(*artifact); err != nil {
+			if !os.IsNotExist(err) {
+				return fmt.Errorf("failed to remove artifact: %w", err)
+			}
+		}
+	}
+
+	if removed := controllerutil.RemoveFinalizer(artifact, v1alpha1.ArtifactFinalizer); removed {
+		if err := client.Update(ctx, artifact); err != nil {
+			return fmt.Errorf("failed to remove finalizer: %w", err)
+		}
+	}
+
+	return nil
 }
