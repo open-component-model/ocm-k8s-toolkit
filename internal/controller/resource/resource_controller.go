@@ -379,6 +379,7 @@ func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storag
 	}
 
 	// If the artifact is not present, we will verify and download the resource and provide it as artifact
+	//nolint:nestif // this is our main logic and we rather keep it in here
 	if !artifactPresent {
 		// No need to close the blob access as it will be closed automatically
 		bAcc, rErr := getBlobAccess(ctx, acc)
