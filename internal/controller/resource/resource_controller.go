@@ -362,6 +362,7 @@ func downloadResource(ctx context.Context, octx ocmctx.Context, targetDir string
 	return path, nil
 }
 
+// TODO: reconcileArtifact must be refactored to be more readable and maintainable
 // reconcileArtifact will download, verify, and reconcile the artifact in the storage if it is not already present in the storage.
 func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storage.Storage, resource *v1alpha1.Resource, acc ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAccess,
 	cd *compdesc.ComponentDescriptor, revision string, artifact artifactv1.Artifact,
@@ -373,19 +374,8 @@ func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storag
 	// Check if the artifact is already present and located in the storage
 	localPath := storage.LocalPath(artifact)
 
-	// The filename in the artifact should equal the revision
-	artifactPresent := strings.Split(filepath.Base(localPath), ".")[0] == revision
-
-	// The file should exist in the storage
-	// (This assumes that the storage is mounted to the same path as the controller)
-	_, err := os.Stat(localPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			artifactPresent = false
-		} else {
-			return rerror.AsRetryableError(fmt.Errorf("failed to get file info: %w", err))
-		}
-	}
+	// use the filename which is the revision as the artifact name
+	artifactPresent := storage.ArtifactExist(artifact) && strings.Split(filepath.Base(localPath), ".")[0] == revision
 
 	// Init variables with default values in case the artifact is present
 	// If the artifact is present, the dirPath will be the directory of the local path to the directory
@@ -403,6 +393,7 @@ func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storag
 			return rErr
 		}
 
+		// TODO: Pass verifyResource as function-parameter
 		if rErr = verifyResource(ctx, acc, bAcc, cv, cd); rErr != nil {
 			return rErr
 		}
@@ -424,17 +415,22 @@ func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storag
 
 		// Since the artifact is not already present, an archive function is added to archive the downloaded resource in the storage
 		archiveFunc = func(art *artifactv1.Artifact, _ string) error {
-			// If given path is already an archive (e.g. helm charts), just copy it.
-			switch extension := filepath.Ext(path); extension {
-			case ".tar", ".tar.gz", ".tgz":
+			logger := log.FromContext(ctx).WithValues("artifact", art.Name, "revision", revision, "path", path)
+			fi, err := os.Stat(path)
+			if err != nil {
+				return fmt.Errorf("failed to get file info: %w", err)
+			}
+			if fi.IsDir() {
+				logger.V(1).Info("archiving directory")
+				// Archive directory to storage
+				if err := storage.Archive(art, path, nil); err != nil {
+					return fmt.Errorf("failed to archive: %w", err)
+				}
+			} else {
+				logger.V(1).Info("archiving file from path")
+				// If given path is a file, just copy it.
 				if err := storage.CopyFromPath(art, path); err != nil {
 					return fmt.Errorf("failed to copy file: %w", err)
-				}
-			// Otherwise, archive the directory
-			default:
-				// Archive directory to storage
-				if err := storage.Archive(art, tmp, nil); err != nil {
-					return fmt.Errorf("failed to archive: %w", err)
 				}
 			}
 
