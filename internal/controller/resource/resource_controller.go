@@ -88,7 +88,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	if !resource.GetDeletionTimestamp().IsZero() {
-		return ctrl.Result{}, ocm.RemoveArtifactForCollectable(ctx, r.Client, r.Storage, resource)
+		// TODO: This is a temporary solution until a artifact-reconciler is written to handle the deletion of artifacts
+		if err := ocm.RemoveArtifactForCollectable(ctx, r.Client, r.Storage, resource); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to remove artifact: %w", err)
+		}
+
+		if removed := controllerutil.RemoveFinalizer(resource, v1alpha1.ArtifactFinalizer); removed {
+			if err := r.Update(ctx, resource); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
+			}
+		}
+
+		return ctrl.Result{}, nil
 	}
 
 	if added := controllerutil.AddFinalizer(resource, v1alpha1.ArtifactFinalizer); added {
@@ -107,9 +118,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	return r.reconcileExists(ctx, resource)
 }
 
-func (r *Reconciler) reconcileExists(ctx context.Context, resource *v1alpha1.Resource) (ret ctrl.Result, retErr rerror.ReconcileError) {
-	logger := log.FromContext(ctx)
-	logger.V(1).Info("preparing reconciling resource")
+func (r *Reconciler) reconcileExists(ctx context.Context, resource *v1alpha1.Resource) (_ ctrl.Result, retErr rerror.ReconcileError) {
+	log.FromContext(ctx).V(1).Info("preparing reconciling resource")
 
 	// Get component to resolve resource from component descriptor and verify digest
 	component := &v1alpha1.Component{}
@@ -126,7 +136,6 @@ func (r *Reconciler) reconcileExists(ctx context.Context, resource *v1alpha1.Res
 	}
 
 	if !conditions.IsReady(component) {
-		logger.Info("component is not ready", "name", resource.Spec.ComponentRef.Name)
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ComponentIsNotReadyReason, "Component is not ready")
 
 		return ctrl.Result{}, rerror.AsRetryableError(errors.New("component is not ready"))
@@ -143,11 +152,7 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 	// instance and not at the global default context variable.
 	octx := ocmctx.New(datacontext.MODE_EXTENDED)
 	defer func() {
-		// TODO: Discuss if this is non- or retryable error
 		retErr = rerror.AsRetryableError(errors.Join(retErr, octx.Finalize()))
-		if retErr != nil {
-			ret = ctrl.Result{}
-		}
 	}()
 	session := ocmctx.NewSession(datacontext.NewSession())
 	// automatically close the session when the ocm context is closed in the above defer
@@ -160,7 +165,7 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 	// Get artifact from component that contains component descriptor
 	artifactComponent := &artifactv1.Artifact{}
 	if err := r.Get(ctx, types.NamespacedName{
-		// TODO: Discuss if we should use OwnerReference instead of refs?
+		// TODO: see https://github.com/open-component-model/ocm-project/issues/295
 		Namespace: resource.GetNamespace(),
 		Name:      component.Status.ArtifactRef.Name,
 	}, artifactComponent); err != nil {
@@ -188,7 +193,7 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 	// Get resource, respective component descriptor and component version
 	resourceReference := v1.ResourceReference{
 		Resource: resource.Spec.Resource.ByReference.Resource,
-		// TODO: Implement resourceReference path (no current priority)
+		// TODO: Implement resourceReference path (see https://github.com/open-component-model/ocm-project/issues/296)
 		// ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
 	}
 
@@ -228,7 +233,7 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 		}
 	}
 
-	rErr = reconcileArtifact(ctx, octx, r.Storage, resource, resourceAccess, cv, cd, revision, artifactStorage)
+	rErr = reconcileArtifact(ctx, octx, r.Storage, resource, resourceAccess, revision, artifactStorage, func() rerror.ReconcileError { return verifyResource(ctx, resourceAccess, cv, cd) })
 	if rErr != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ReconcileArtifactFailedReason, rErr.Error())
 
@@ -310,9 +315,13 @@ func getBlobAccess(ctx context.Context, access ocmctx.ResourceAccess) (blobacces
 }
 
 // verifyResource verifies the resource digest with the digest from the component version access and component descriptor.
-func verifyResource(ctx context.Context, access ocmctx.ResourceAccess, blobAccess blobaccess.BlobAccess, cv ocmctx.ComponentVersionAccess, cd *compdesc.ComponentDescriptor,
-) rerror.ReconcileError {
+func verifyResource(ctx context.Context, access ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAccess, cd *compdesc.ComponentDescriptor) rerror.ReconcileError {
 	log.FromContext(ctx).V(1).Info("verify resource")
+
+	blobAccess, rErr := getBlobAccess(ctx, access)
+	if rErr != nil {
+		return rErr
+	}
 
 	// Add the component descriptor to the local verified store, so its digest will be compared with the digest from the
 	// component version access
@@ -355,10 +364,17 @@ func downloadResource(ctx context.Context, octx ocmctx.Context, targetDir string
 	return path, nil
 }
 
-// TODO: reconcileArtifact must be refactored to be more readable and maintainable
 // reconcileArtifact will download, verify, and reconcile the artifact in the storage if it is not already present in the storage.
-func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storage.Storage, resource *v1alpha1.Resource, acc ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAccess,
-	cd *compdesc.ComponentDescriptor, revision string, artifact artifactv1.Artifact,
+// TODO: https://github.com/open-component-model/ocm-project/issues/297
+func reconcileArtifact(
+	ctx context.Context,
+	octx ocmctx.Context,
+	storage *storage.Storage,
+	resource *v1alpha1.Resource,
+	acc ocmctx.ResourceAccess,
+	revision string,
+	artifact artifactv1.Artifact,
+	verifyFunc func() rerror.ReconcileError,
 ) (
 	retErr rerror.ReconcileError,
 ) {
@@ -387,8 +403,8 @@ func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storag
 			return rErr
 		}
 
-		// TODO: Pass verifyResource as function-parameter
-		if rErr = verifyResource(ctx, acc, bAcc, cv, cd); rErr != nil {
+		// Check if resource can be verified
+		if rErr := verifyFunc(); rErr != nil {
 			return rErr
 		}
 
@@ -401,7 +417,6 @@ func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storag
 			retErr = rerror.AsRetryableError(errors.Join(retErr, os.RemoveAll(tmp)))
 		}()
 
-		// TODO: Discuss if we should cache the downloaded resources
 		path, rErr := downloadResource(ctx, octx, tmp, resource, acc, bAcc)
 		if rErr != nil {
 			return rErr
@@ -444,7 +459,6 @@ func reconcileArtifact(ctx context.Context, octx ocmctx.Context, storage *storag
 	}
 
 	// Provide artifact in storage
-	// TODO: NewArtifactFor does not sanitize the name. Could break if name too long
 	if err := storage.ReconcileArtifact(ctx, resource, revision, dirPath, revision+".tar.gz", archiveFunc); err != nil {
 		return rerror.AsRetryableError(fmt.Errorf("failed to reconcile resource artifact: %w", err))
 	}

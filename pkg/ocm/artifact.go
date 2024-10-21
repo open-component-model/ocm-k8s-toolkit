@@ -13,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"ocm.software/ocm/api/ocm/compdesc"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
@@ -87,6 +86,7 @@ func GetAndVerifyArtifactForCollectable(
 	return &artifact, nil
 }
 
+// RemoveArtifactForCollectable removes the artifact for the given collectable from the given storage.
 func RemoveArtifactForCollectable(
 	ctx context.Context,
 	client ctrl.Client,
@@ -103,12 +103,6 @@ func RemoveArtifactForCollectable(
 			if !os.IsNotExist(err) {
 				return fmt.Errorf("failed to remove artifact: %w", err)
 			}
-		}
-	}
-
-	if removed := controllerutil.RemoveFinalizer(artifact, v1alpha1.ArtifactFinalizer); removed {
-		if err := client.Update(ctx, artifact); err != nil {
-			return fmt.Errorf("failed to remove finalizer: %w", err)
 		}
 	}
 
