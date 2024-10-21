@@ -16,6 +16,7 @@ import (
 // MarkNotReady sets the condition status of an Object to `Not Ready`.
 func MarkNotReady(recorder kuberecorder.EventRecorder, obj conditions.Setter, reason, msg string) {
 	conditions.Delete(obj, meta.ReconcilingCondition)
+	//nolint:govet // Error is currently not relevant
 	conditions.MarkFalse(obj, meta.ReadyCondition, reason, msg)
 	event.New(recorder, obj, nil, eventv1.EventSeverityError, msg)
 }
@@ -23,7 +24,9 @@ func MarkNotReady(recorder kuberecorder.EventRecorder, obj conditions.Setter, re
 // MarkAsStalled sets the condition status of an Object to `Stalled`.
 func MarkAsStalled(recorder kuberecorder.EventRecorder, obj conditions.Setter, reason, msg string) {
 	conditions.Delete(obj, meta.ReconcilingCondition)
+	//nolint:govet // Error is currently not relevant
 	conditions.MarkFalse(obj, meta.ReadyCondition, reason, msg)
+	//nolint:govet // Error is currently not relevant
 	conditions.MarkStalled(obj, reason, msg)
 	event.New(recorder, obj, nil, eventv1.EventSeverityError, msg)
 }

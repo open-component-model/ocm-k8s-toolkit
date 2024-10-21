@@ -1,6 +1,6 @@
 module github.com/open-component-model/ocm-k8s-toolkit
 
-go 1.22.5
+go 1.23.2
 
 // Replace digest lib to master to gather access to BLAKE3.
 // xref: https://github.com/opencontainers/go-digest/pull/66
