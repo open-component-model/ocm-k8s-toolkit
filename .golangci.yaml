@@ -53,8 +53,8 @@ issues:
         - lll
     - path: _test\.go
       linters:
-        - goerr113
         - gocyclo
+        - err113
         - errcheck
         - gosec
         - dupl
@@ -68,7 +68,6 @@ issues:
         - gochecknoglobals
     - path: internal/command/
       linters:
-        - exhaustivestruct
         - lll
         - wrapcheck
     - source: "// .* #\\d+"
@@ -76,8 +75,8 @@ issues:
         - godox
     - path: test/e2e/
       linters:
-        - goerr113
-        - gomnd
+        - err113
+        - mnd
     # remove this once https://github.com/golangci/golangci-lint/issues/2649 is closed
     - path: /
       linters:
@@ -86,34 +85,23 @@ issues:
 linters:
   enable-all: true
   disable:
-    - deadcode
     - depguard
-    - exhaustivestruct
+    - err113
     - exhaustruct
     - forbidigo
     - gci
     - gochecknoglobals
     - gochecknoinits
     - godox
-    - goerr113
-    - golint
     - gomoddirectives
-    - govet
-    - ifshort
-    - interfacer
     - ireturn
-    - maligned
     - nilnil
     - nonamedreturns
-    - nosnakecase
     - paralleltest
     - perfsprint
     - prealloc
-    - scopelint
     - staticcheck
-    - structcheck
     - tagliatelle
-    - varcheck
     - varnamelen
     - wrapcheck
     - wsl

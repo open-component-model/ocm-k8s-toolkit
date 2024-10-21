@@ -39,23 +39,11 @@ spec:
           spec:
             description: OCMRepositorySpec defines the desired state of OCMRepository.
             properties:
-              configRef:
-                description: |-
-                  LocalObjectReference contains enough information to let you locate the
-                  referenced object inside the same namespace.
-                properties:
-                  name:
-                    default: ""
-                    description: |-
-                      Name of the referent.
-                      This field is effectively required, but due to backwards compatibility is
-                      allowed to be empty. Instances of this type with an empty value here are
-                      almost certainly wrong.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
               configRefs:
+                description: |-
+                  ConfigRefs are references to one or multiple config maps that contain
+                  ocm configurations
+                  (https://github.com/open-component-model/ocm/blob/main/docs/reference/ocm_configfile.md).
                 items:
                   description: |-
                     LocalObjectReference contains enough information to let you locate the
@@ -75,35 +63,30 @@ spec:
                 type: array
               configSet:
                 description: |-
-                  The secrets and configs referred to by SecretRef (or SecretRefs) and Config (or ConfigRefs) may contain ocm
-                  config data. The  ocm config allows to specify sets of configuration data
-                  (s. https://ocm.software/docs/cli-reference/help/configfile/). If the SecretRef (or SecretRefs) and ConfigRef and
-                  ConfigRefs contain ocm config sets, the user may specify which config set he wants to be effective.
+                  The secrets and configs referred to by SecretRef (or SecretRefs) and
+                  Config (or ConfigRefs) may contain ocm config data. The  ocm config
+                  allows to specify sets of configuration data
+                  (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
+                  SecretRef (or SecretRefs) and ConfigRef and ConfigRefs contain ocm config
+                  sets, the user may specify which config set he wants to be effective.
                 type: string
               interval:
+                description: |-
+                  Interval at which the ocm repository specified by the RepositorySpec
+                  validated.
                 type: string
               repositorySpec:
                 description: |-
-                  RepositorySpec is the config of the repository containing the component version.
-                  Used by RepositoryForConfig to initialize the needed
+                  RepositorySpec is the config of an ocm repository containing component
+                  versions. This config has to be a valid ocm repository implementation
+                  specification
+                  https://github.com/open-component-model/ocm-spec/blob/main/doc/04-extensions/03-storage-backends/README.md.
                 x-kubernetes-preserve-unknown-fields: true
-              secretRef:
-                description: |-
-                  LocalObjectReference contains enough information to let you locate the
-                  referenced object inside the same namespace.
-                properties:
-                  name:
-                    default: ""
-                    description: |-
-                      Name of the referent.
-                      This field is effectively required, but due to backwards compatibility is
-                      allowed to be empty. Instances of this type with an empty value here are
-                      almost certainly wrong.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
               secretRefs:
+                description: |-
+                  SecretRefs are references to one or multiple secrets that contain
+                  credentials or ocm configurations
+                  (https://github.com/open-component-model/ocm/blob/main/docs/reference/ocm_configfile.md).
                 items:
                   description: |-
                     LocalObjectReference contains enough information to let you locate the
@@ -122,6 +105,9 @@ spec:
                   x-kubernetes-map-type: atomic
                 type: array
               suspend:
+                description: |-
+                  Suspend tells the controller to suspend the reconciliation of this
+                  OCMRepository.
                 type: boolean
             required:
             - interval
@@ -131,6 +117,7 @@ spec:
             description: OCMRepositoryStatus defines the observed state of OCMRepository.
             properties:
               conditions:
+                description: Conditions holds the conditions for the OCMRepository.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -188,8 +175,12 @@ spec:
                 type: array
               configRefs:
                 description: |-
-                  Propagate its effective configs. Other controllers (e.g. Component or Resource controller) may use this as default
-                  if they do not explicitly refer a config.
+                  Propagate its effective configs. Other controllers (e.g. Component or
+                  Resource controller) may use this as default if they do not explicitly
+                  refer a config.
+                  This is required to allow transitive defaulting (thus, e.g. Component
+                  defaults from OCMRepository and Resource defaults from Component) without
+                  having to traverse the entire chain.
                 items:
                   description: |-
                     LocalObjectReference contains enough information to let you locate the
@@ -209,22 +200,27 @@ spec:
                 type: array
               configSets:
                 description: |-
-                  The secrets referred to by SecretRef (or SecretRefs) may contain ocm config data. The ocm config allows to
-                  specify sets of configuration data (s. https://ocm.software/docs/cli-reference/help/configfile/). If the
-                  SecretRef (or SecretRefs) contain ocm config sets, the user may specify which config set he wants to be
-                  effective.
-                type: string
-              message:
+                  Propagate its effective config set. Other controllers (e.g. Component or
+                  Resource controller) may use this as default if they do not explicitly
+                  specify a config set.
+                  This is required to allow transitive defaulting (thus, e.g. Component
+                  defaults from OCMRepository and Resource defaults from Component) without
+                  having to traverse the entire chain.
                 type: string
               observedGeneration:
+                description: |-
+                  ObservedGeneration is the last observed generation of the OCMRepository
+                  object.
                 format: int64
                 type: integer
-              repositorySpec:
-                x-kubernetes-preserve-unknown-fields: true
               secretRefs:
                 description: |-
-                  Propagate its effective secrets. Other controllers (e.g. Component or Resource controller) may use this as default
-                  if they do not explicitly refer a secret.
+                  Propagate its effective secrets. Other controllers (e.g. Component or
+                  Resource controller) may use this as default if they do not explicitly
+                  refer a secret.
+                  This is required to allow transitive defaulting (thus, e.g. Component
+                  defaults from OCMRepository and Resource defaults from Component) without
+                  having to traverse the entire chain.
                 items:
                   description: |-
                     LocalObjectReference contains enough information to let you locate the
@@ -242,8 +238,6 @@ spec:
                   type: object
                   x-kubernetes-map-type: atomic
                 type: array
-              state:
-                type: string
             type: object
         type: object
     served: true

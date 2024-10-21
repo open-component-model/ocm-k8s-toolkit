@@ -20,7 +20,7 @@ CONTAINER_TOOL ?= docker
 REPOSITORY_ROOT := $(shell git rev-parse --show-toplevel)
 BUILD_DIR := $(REPOSITORY_ROOT)/build
 
-SOURCE_VER ?= $(shell go list -m all | grep github.com/openfluxcd/artifact | awk '{print $$2}')
+SOURCE_VER ?= $(shell go list -m github.com/openfluxcd/artifact | awk '{print $$2}')
 
 # Keep a record of the version of the downloaded source CRDs. It is used to
 # detect and download new CRDs when the SOURCE_VER changes.
@@ -73,7 +73,7 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate fmt vet download-crd-deps envtest ## Run tests.
+test: manifests generate download-crd-deps envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 # Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
@@ -185,6 +185,7 @@ $(SOURCE_CRD_VER):
 	touch $(SOURCE_CRD_VER)
 
 $(ARTIFACT_CRD):
+	@echo "Downloading CRD for artifact based on version $(SOURCE_VER)"
 	curl -s https://raw.githubusercontent.com/openfluxcd/artifact/${SOURCE_VER}/config/crd/bases/openfluxcd.mandelsoft.org_artifacts.yaml -o $(ARTIFACT_CRD)
 
 # Download the CRDs the controller depends on

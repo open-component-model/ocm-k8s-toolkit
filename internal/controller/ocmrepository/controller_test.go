@@ -82,7 +82,6 @@ var _ = Describe("OCMRepository Controller", func() {
 
 				By("check that repository status has been updated successfully")
 				Eventually(komega.Object(ocmRepo), "1m").Should(And(
-					HaveField("Status.RepositorySpec.Raw", Equal(specdata)),
 					HaveField("Status.Conditions", ContainElement(
 						And(HaveField("Type", Equal(meta.ReadyCondition)), HaveField("Status", Equal(metav1.ConditionTrue))),
 					)),
@@ -102,7 +101,6 @@ var _ = Describe("OCMRepository Controller", func() {
 
 				By("check that repository status has NOT been updated successfully")
 				Eventually(komega.Object(ocmRepo), "1m").Should(And(
-					HaveField("Status.RepositorySpec", BeNil()),
 					HaveField("Status.Conditions", ContainElement(
 						And(HaveField("Type", Equal(meta.ReadyCondition)), HaveField("Status", Equal(metav1.ConditionFalse))),
 					)),
@@ -132,7 +130,6 @@ var _ = Describe("OCMRepository Controller", func() {
 
 				By("check that repository status has NOT been updated successfully")
 				Eventually(komega.Object(ocmRepo), "1m").Should(And(
-					HaveField("Status.RepositorySpec", BeNil()),
 					HaveField("Status.Conditions", ContainElement(
 						And(HaveField("Type", Equal(meta.ReadyCondition)), HaveField("Status", Equal(metav1.ConditionFalse))),
 					)),
@@ -156,12 +153,12 @@ var _ = Describe("OCMRepository Controller", func() {
 				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, repoName, &specdata)
 
 				By("adding SecretRefs")
-				ocmRepo.Spec.SecretRef = &corev1.LocalObjectReference{Name: secrets[0].Name}
+				ocmRepo.Spec.SecretRefs = append(ocmRepo.Spec.SecretRefs, corev1.LocalObjectReference{Name: secrets[0].Name})
 				ocmRepo.Spec.SecretRefs = append(ocmRepo.Spec.SecretRefs, corev1.LocalObjectReference{Name: secrets[1].Name})
 				ocmRepo.Spec.SecretRefs = append(ocmRepo.Spec.SecretRefs, corev1.LocalObjectReference{Name: secrets[2].Name})
 
 				By("adding ConfigRefs")
-				ocmRepo.Spec.ConfigRef = &corev1.LocalObjectReference{Name: configs[0].Name}
+				ocmRepo.Spec.ConfigRefs = append(ocmRepo.Spec.ConfigRefs, corev1.LocalObjectReference{Name: configs[0].Name})
 				ocmRepo.Spec.ConfigRefs = append(ocmRepo.Spec.ConfigRefs, corev1.LocalObjectReference{Name: configs[1].Name})
 				ocmRepo.Spec.ConfigRefs = append(ocmRepo.Spec.ConfigRefs, corev1.LocalObjectReference{Name: configs[2].Name})
 
@@ -174,16 +171,15 @@ var _ = Describe("OCMRepository Controller", func() {
 
 				By("check that the SecretRefs and ConfigRefs are in the status")
 				Eventually(komega.Object(ocmRepo), "1m").Should(And(
-					HaveField("Status.RepositorySpec.Raw", Equal(specdata)),
 					HaveField("Status.Conditions", ContainElement(
 						And(HaveField("Type", Equal(meta.ReadyCondition)), HaveField("Status", Equal(metav1.ConditionTrue))),
 					)),
-					HaveField("Status.SecretRefs", ContainElement(Equal(*ocmRepo.Spec.SecretRef))),
 					HaveField("Status.SecretRefs", ContainElement(Equal(ocmRepo.Spec.SecretRefs[0]))),
 					HaveField("Status.SecretRefs", ContainElement(Equal(ocmRepo.Spec.SecretRefs[1]))),
-					HaveField("Status.ConfigRefs", ContainElement(Equal(*ocmRepo.Spec.ConfigRef))),
+					HaveField("Status.SecretRefs", ContainElement(Equal(ocmRepo.Spec.SecretRefs[2]))),
 					HaveField("Status.ConfigRefs", ContainElement(Equal(ocmRepo.Spec.ConfigRefs[0]))),
 					HaveField("Status.ConfigRefs", ContainElement(Equal(ocmRepo.Spec.ConfigRefs[1]))),
+					HaveField("Status.ConfigRefs", ContainElement(Equal(ocmRepo.Spec.ConfigRefs[2]))),
 					HaveField("Status.ConfigSet", Equal(*ocmRepo.Spec.ConfigSet)),
 				))
 
@@ -227,14 +223,16 @@ var _ = Describe("OCMRepository Controller", func() {
 							Namespace: TestNamespaceOCMRepo,
 							Name:      ocmRepoName,
 						},
-						Component:              componentName,
-						EnforceDowngradability: false,
-						Semver:                 "1.0.0",
-						Interval:               metav1.Duration{Duration: time.Minute * 10},
+						Component: componentName,
+						Semver:    "1.0.0",
+						Interval:  metav1.Duration{Duration: time.Minute * 10},
 					},
 					Status: v1alpha1.ComponentStatus{},
 				}
 				Expect(k8sClient.Create(ctx, component)).To(Succeed())
+
+				By("wait for the cache to catch up and create the index field on the component")
+				time.Sleep(time.Second)
 
 				By("deleting the repository should not allow the deletion unless the component is removed")
 				Expect(k8sClient.Delete(ctx, ocmRepo)).To(Succeed())
