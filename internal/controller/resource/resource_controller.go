@@ -82,7 +82,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Resource{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		// Watch for artifacts-events that are owned by the resource controller
-		Owns(&artifactv1.Artifact{}, builder.MatchEveryOwner).
+		Owns(&artifactv1.Artifact{}).
 		// Watch for component-events that are referenced by resources
 		Watches(
 			&v1alpha1.Component{},

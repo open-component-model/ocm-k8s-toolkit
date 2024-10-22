@@ -128,7 +128,7 @@ func (in *Resource) SetConditions(conditions []metav1.Condition) {
 }
 
 func (in *Resource) GetVID() map[string]string {
-	vid := fmt.Sprintf("%s:%s", in.Status.Resource.Name, in.Status.Resource.Version)
+	vid := fmt.Sprintf("%s:%s", in.GetNamespace(), in.GetName())
 	metadata := make(map[string]string)
 	metadata[GroupVersion.Group+"/resource_version"] = vid
 
