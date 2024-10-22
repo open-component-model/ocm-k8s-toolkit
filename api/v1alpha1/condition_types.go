@@ -51,6 +51,9 @@ const (
 	// GetComponentFailedReason is used when the component cannot be fetched.
 	GetComponentFailedReason = "GetComponentFailed"
 
+	// GetComponentDescriptorsFailedReason is used when the component descriptor cannot be fetched.
+	GetComponentDescriptorsFailedReason = "GetComponentDescriptorsFailed"
+
 	// GetComponentVersionFailedReason is used when the component cannot be fetched.
 	GetComponentVersionFailedReason = "GetComponentVersionFailed"
 
@@ -59,4 +62,19 @@ const (
 
 	// ReconcileArtifactFailedReason is used when we fail in creating an Artifact.
 	ReconcileArtifactFailedReason = "ReconcileArtifactFailed"
+
+	// GetArtifactFailedReason is used when we fail in getting an Artifact.
+	GetArtifactFailedReason = "GetArtifactFailed"
+
+	// ResolveResourceFailedReason is used when we fail in resolving a resource.
+	ResolveResourceFailedReason = "ResolveResourceFailed"
+
+	// GetResourceAccessFailedReason is used when we fail in getting a resource access(es).
+	GetResourceAccessFailedReason = "GetResourceAccessFailed"
+
+	// GetComponentForArtifactFailedReason is used when we fail in getting a component for an artifact.
+	GetComponentForArtifactFailedReason = "GetComponentForArtifactFailed"
+
+	// StatusSetFailedReason is used when we fail to set the component status.
+	StatusSetFailedReason = "StatusSetFailed"
 )
