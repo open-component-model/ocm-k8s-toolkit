@@ -47,8 +47,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
@@ -64,8 +66,46 @@ type Reconciler struct {
 var _ ocm.Reconciler = (*Reconciler)(nil)
 
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Create index for component reference name from resources
+	const fieldName = "spec.componentRef.name"
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Resource{}, fieldName, func(obj client.Object) []string {
+		return []string{obj.(*v1alpha1.Resource).Spec.ComponentRef.Name}
+	}); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Resource{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		// Watch for artifacts-events that are owned by the resource controller
+		Owns(&artifactv1.Artifact{}, builder.MatchEveryOwner).
+		// Watch for component-events that are referenced by resources
+		Watches(
+			&v1alpha1.Component{},
+			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+				component, ok := obj.(*v1alpha1.Component)
+				if !ok {
+					return []reconcile.Request{}
+				}
+
+				// Get list of resources that reference the component
+				list := &v1alpha1.ResourceList{}
+				if err := r.List(ctx, list, client.MatchingFields{fieldName: component.GetName()}); err != nil {
+					return []reconcile.Request{}
+				}
+
+				// For every resource that references the component create a reconciliation request for that resource
+				requests := make([]reconcile.Request, 0, len(list.Items))
+				for _, resource := range list.Items {
+					requests = append(requests, reconcile.Request{
+						NamespacedName: types.NamespacedName{
+							Namespace: resource.GetNamespace(),
+							Name:      resource.GetName(),
+						},
+					})
+				}
+
+				return requests
+			})).
 		Complete(r)
 }
 
