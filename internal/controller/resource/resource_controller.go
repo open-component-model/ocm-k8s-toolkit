@@ -69,7 +69,12 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Create index for component reference name from resources
 	const fieldName = "spec.componentRef.name"
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Resource{}, fieldName, func(obj client.Object) []string {
-		return []string{obj.(*v1alpha1.Resource).Spec.ComponentRef.Name}
+		resource, ok := obj.(*v1alpha1.Resource)
+		if !ok {
+			return nil
+		}
+
+		return []string{resource.Spec.ComponentRef.Name}
 	}); err != nil {
 		return err
 	}
