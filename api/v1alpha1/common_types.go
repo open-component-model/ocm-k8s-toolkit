@@ -51,7 +51,7 @@ type Verification struct {
 type ResourceID struct {
 	// +required
 	ByReference ResourceReference `json:"byReference,omitempty"`
-	// TODO: Implement BySelector
+	// TODO: Implement BySelector (see https://github.com/open-component-model/ocm-project/issues/296)
 }
 
 type ResourceReference struct {

@@ -211,7 +211,7 @@ func ComponentDescriptorAndSetFromResource(
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get artifact: %w", err)
 	}
-	componentSet, err := ocm.ComponentSetFromLocalArtifact(strg, artifact)
+	componentSet, err := ocm.GetComponentSetForArtifact(strg, artifact)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get component version set: %w", err)
 	}

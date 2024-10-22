@@ -149,7 +149,7 @@ func (in *Resource) GetKind() string {
 
 // GetRequeueAfter returns the duration after which the Resource must be
 // reconciled again.
-func (in *Resource) GetRequeueAfter() time.Duration {
+func (in Resource) GetRequeueAfter() time.Duration {
 	return in.Spec.Interval.Duration
 }
 

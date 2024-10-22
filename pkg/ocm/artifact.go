@@ -12,35 +12,38 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"ocm.software/ocm/api/ocm/compdesc"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/rerror"
 )
 
-func ComponentSetFromLocalArtifact(storage *storage.Storage, artifact *artifactv1.Artifact) (_ *compdesc.ComponentVersionSet, retErr error) {
+// GetComponentSetForArtifact returns the component descriptor set for the given artifact.
+func GetComponentSetForArtifact(storage *storage.Storage, artifact *artifactv1.Artifact) (_ *compdesc.ComponentVersionSet, retErr error) {
 	tmp, err := os.MkdirTemp("", "component-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary directory: %w", err)
 	}
 	defer func() {
-		retErr = errors.Join(retErr, os.RemoveAll(tmp))
+		retErr = rerror.AsRetryableError(errors.Join(retErr, os.RemoveAll(tmp)))
 	}()
 
+	// Instead of using the http-functionality of the storage-server, we use the storage directly for performance reasons.
+	// This assumes that the controllers and the storage are running in the same pod.
 	unlock, err := storage.Lock(*artifact)
 	if err != nil {
 		return nil, fmt.Errorf("failed to lock artifact: %w", err)
 	}
 	defer unlock()
 
-	filePath := filepath.Join(tmp, artifact.Name)
+	filePath := filepath.Join(tmp, v1alpha1.OCMComponentDescriptorList)
 
-	if err := storage.CopyToPath(artifact, "", filePath); err != nil {
-		return nil, fmt.Errorf("failed to copy artifact to path: %w", err)
+	if err := storage.CopyToPath(artifact, v1alpha1.OCMComponentDescriptorList, filePath); err != nil {
+		return nil, rerror.AsRetryableError(fmt.Errorf("failed to copy artifact to path: %w", err))
 	}
 
 	// Read component descriptor list
-	file, err := os.Open(filepath.Join(filePath, v1alpha1.OCMComponentDescriptorList))
+	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open component descriptor: %w", err)
 	}
@@ -50,20 +53,19 @@ func ComponentSetFromLocalArtifact(storage *storage.Storage, artifact *artifactv
 
 	// Get component descriptor set
 	cds := &Descriptors{}
-	const bufferSize = 4096
-	decoder := yaml.NewYAMLOrJSONDecoder(file, bufferSize)
-	if err := decoder.Decode(cds); err != nil {
+
+	if err := yaml.NewYAMLToJSONDecoder(file).Decode(cds); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal component descriptors: %w", err)
 	}
 
-	return compdesc.NewComponentVersionSet(cds.List...), nil
+	return compdesc.NewComponentVersionSet(cds.List...), retErr
 }
 
 // GetAndVerifyArtifactForCollectable gets the artifact for the given collectable and verifies it against the given strg.
 // If the artifact is not found, an error is returned.
 func GetAndVerifyArtifactForCollectable(
 	ctx context.Context,
-	reader client.Reader,
+	reader ctrl.Reader,
 	strg *storage.Storage,
 	collectable storage.Collectable,
 ) (*artifactv1.Artifact, error) {
@@ -78,4 +80,27 @@ func GetAndVerifyArtifactForCollectable(
 	}
 
 	return &artifact, nil
+}
+
+// RemoveArtifactForCollectable removes the artifact for the given collectable from the given storage.
+func RemoveArtifactForCollectable(
+	ctx context.Context,
+	client ctrl.Client,
+	strg *storage.Storage,
+	collectable storage.Collectable,
+) error {
+	artifact, err := GetAndVerifyArtifactForCollectable(ctx, client, strg, collectable)
+	if ctrl.IgnoreNotFound(err) != nil {
+		return fmt.Errorf("failed to get artifact: %w", err)
+	}
+
+	if artifact != nil {
+		if err := strg.Remove(*artifact); err != nil {
+			if !os.IsNotExist(err) {
+				return fmt.Errorf("failed to remove artifact: %w", err)
+			}
+		}
+	}
+
+	return nil
 }
