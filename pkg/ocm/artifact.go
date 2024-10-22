@@ -10,10 +10,10 @@ import (
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/yaml"
 	"ocm.software/ocm/api/ocm/compdesc"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	yaml "sigs.k8s.io/yaml/goyaml.v3"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/rerror"
@@ -56,9 +56,7 @@ func GetComponentSetForArtifact(ctx context.Context, storage *storage.Storage, a
 
 	// Get component descriptor set
 	cds := &Descriptors{}
-	const bufferSize = 4096
-	decoder := yaml.NewYAMLOrJSONDecoder(file, bufferSize)
-	if err := decoder.Decode(cds); err != nil {
+	if err := yaml.NewDecoder(file).Decode(cds); err != nil {
 		return nil, rerror.AsRetryableError(fmt.Errorf("failed to unmarshal component descriptors: %w", err))
 	}
 
