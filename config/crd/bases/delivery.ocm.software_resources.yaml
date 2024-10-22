@@ -43,12 +43,16 @@ spec:
                 description: ComponentRef is a reference to a Component.
                 properties:
                   name:
+                    default: ""
+                    description: |-
+                      Name of the referent.
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                     type: string
-                  namespace:
-                    type: string
-                required:
-                - name
                 type: object
+                x-kubernetes-map-type: atomic
               configRefs:
                 items:
                   description: |-
@@ -77,29 +81,31 @@ spec:
               interval:
                 description: Interval at which the resource is checked for updates.
                 type: string
-              repositoryRef:
-                properties:
-                  name:
-                    type: string
-                  namespace:
-                    type: string
-                required:
-                - name
-                type: object
               resource:
                 description: Resource identifies the ocm resource to be fetched.
                 properties:
-                  extraIdentity:
-                    additionalProperties:
-                      type: string
+                  byReference:
+                    properties:
+                      referencePath:
+                        items:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            Identity describes the identity of an object.
+                            Only ascii characters are allowed
+                          type: object
+                        type: array
+                      resource:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Identity describes the identity of an object.
+                          Only ascii characters are allowed
+                        type: object
                     type: object
-                  name:
-                    type: string
                 required:
-                - name
+                - byReference
                 type: object
-              resourceSelector:
-                x-kubernetes-preserve-unknown-fields: true
               secretRefs:
                 items:
                   description: |-
@@ -126,7 +132,6 @@ spec:
             required:
             - componentRef
             - interval
-            - repositoryRef
             - resource
             type: object
           status:
@@ -245,6 +250,28 @@ spec:
                   object.
                 format: int64
                 type: integer
+              resource:
+                properties:
+                  access:
+                    x-kubernetes-preserve-unknown-fields: true
+                  digest:
+                    type: string
+                  extraIdentity:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  name:
+                    type: string
+                  type:
+                    type: string
+                  version:
+                    type: string
+                required:
+                - access
+                - digest
+                - name
+                - type
+                type: object
               secretRefs:
                 description: |-
                   Propagate its effective secrets. Other controllers (e.g. Resource
