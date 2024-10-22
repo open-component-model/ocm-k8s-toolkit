@@ -39,6 +39,12 @@ const (
 	// RepositoryIsNotReadyReason is used when the referenced repository is not Ready yet.
 	RepositoryIsNotReadyReason = "RepositoryIsNotReady"
 
+	// ComponentIsNotReadyReason is used when the referenced component is not Ready yet.
+	ComponentIsNotReadyReason = "ComponentIsNotReady"
+
+	// ComponentIsNotReadyReason is used when the referenced component is not Ready yet.
+	ReplicationFailedReason = "ReplicationFailed"
+
 	// VerificationFailedReason is used when the signature verification of a component failed.
 	VerificationFailedReason = "ComponentVerificationFailed"
 

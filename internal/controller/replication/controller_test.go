@@ -18,81 +18,200 @@ package replication
 
 import (
 	"context"
+	"os"
+	"time"
 
+	"github.com/fluxcd/pkg/apis/meta"
+	"github.com/fluxcd/pkg/runtime/conditions"
+	. "github.com/mandelsoft/goutils/testutils"
+	"github.com/mandelsoft/vfs/pkg/osfs"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
+	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	. "ocm.software/ocm/api/helper/builder"
+	environment "ocm.software/ocm/api/helper/env"
+	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
+	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
+	resourcetypes "ocm.software/ocm/api/ocm/extensions/artifacttypes"
+	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
+	"ocm.software/ocm/api/utils/accessio"
 )
 
 var _ = Describe("Replication Controller", func() {
-	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+	Context("When reconciling a Replication", func() {
+		const (
+			replResourceName       = "test-replication"
+			compResourceName       = "test-component"
+			sourceRepoResourceName = "test-source-repository"
+			targetRepoResourceName = "test-target-repository"
+			testNamespace          = "ns-test-replication-controller"
 
-		ctx := context.Background()
+			compOCMName = "ocm.software/component-for-replication"
+			compVersion = "0.1.0"
+		)
 
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+		var (
+			ctx       context.Context
+			cancel    context.CancelFunc
+			namespace *corev1.Namespace
+			env       *Builder
+		)
+
+		replNamespacedName := types.NamespacedName{
+			Name:      replResourceName,
+			Namespace: testNamespace,
 		}
-		replication := &v1alpha1.Replication{}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind Replication")
-			err := k8sClient.Get(ctx, typeNamespacedName, replication)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &v1alpha1.Replication{
+			env = NewBuilder(environment.FileSystem(osfs.OsFs))
+			DeferCleanup(env.Cleanup)
+
+			ctx, cancel = context.WithCancel(context.Background())
+			DeferCleanup(cancel)
+
+			if namespace == nil {
+				namespace = &corev1.Namespace{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: v1alpha1.ReplicationSpec{
-						ComponentRef: v1alpha1.ObjectKey{
-							Name:      "test-component",
-							Namespace: "default",
-						},
-						TargetRepositoryRef: v1alpha1.ObjectKey{
-							Name:      "test-repository",
-							Namespace: "default",
-						},
+						Name: testNamespace,
 					},
 				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+				Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 			}
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &v1alpha1.Replication{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Cleanup the specific resource instance Replication")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &Reconciler{
-				BaseReconciler: &ocm.BaseReconciler{
-					Client:        k8sClient,
-					Scheme:        k8sClient.Scheme(),
-					EventRecorder: nil,
+		It("Default transfer operation from one CTF to another: no explicit transfer options, no credentials.", func() {
+			By("Create source CTF")
+			sourcePattern := "ocm-k8s-replication-source--*"
+			sourcePath := Must(os.MkdirTemp("", sourcePattern))
+			DeferCleanup(func() error {
+				return os.RemoveAll(sourcePath)
+			})
+
+			env.OCMCommonTransport(sourcePath, accessio.FormatDirectory, func() {
+				env.Component(compOCMName, func() {
+					env.Version(compVersion, func() {
+						env.Resource("image", "1.0.0", resourcetypes.OCI_IMAGE, ocmmetav1.ExternalRelation, func() {
+							env.Access(
+								ociartifact.New("gcr.io/google_containers/echoserver:1.10"),
+							)
+						})
+					})
+				})
+			})
+
+			By("Create source repository resource")
+			sourceSpec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, sourcePath))
+			sourceSpecData := Must(sourceSpec.MarshalJSON())
+			sourceRepo := &v1alpha1.OCMRepository{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: testNamespace,
+					Name:      sourceRepoResourceName,
+				},
+				Spec: v1alpha1.OCMRepositorySpec{
+					RepositorySpec: &apiextensionsv1.JSON{
+						Raw: sourceSpecData,
+					},
+					Interval: metav1.Duration{Duration: time.Minute * 10},
 				},
 			}
+			Expect(k8sClient.Create(ctx, sourceRepo)).To(Succeed())
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
+			By("Simulate ocmrepository controller for source repository")
+			conditions.MarkTrue(sourceRepo, meta.ReadyCondition, "ready", "")
+			Expect(k8sClient.Status().Update(ctx, sourceRepo)).To(Succeed())
+
+			By("Create source component resource")
+			component := &v1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: testNamespace,
+					Name:      compResourceName,
+				},
+				Spec: v1alpha1.ComponentSpec{
+					RepositoryRef: v1alpha1.ObjectKey{
+						Namespace: testNamespace,
+						Name:      sourceRepoResourceName,
+					},
+					Component: compOCMName,
+					Semver:    compVersion,
+					Interval:  metav1.Duration{Duration: time.Minute * 10},
+				},
+			}
+			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+
+			By("Simulate component controller")
+			component.Status.Component = v1alpha1.ComponentInfo{
+				RepositorySpec: &apiextensionsv1.JSON{Raw: sourceSpecData},
+				Component:      compOCMName,
+				Version:        compVersion,
+			}
+			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
+			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
+
+			By("Create target CTF")
+			targetPattern := "ocm-k8s-replication-target--*"
+			targetPath := Must(os.MkdirTemp("", targetPattern))
+			DeferCleanup(func() error {
+				return os.RemoveAll(targetPath)
 			})
-			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+
+			By("Create target repository resource")
+			targetSpec := Must(ctf.NewRepositorySpec(ctf.ACC_CREATE, targetPath))
+			targetSpecData := Must(targetSpec.MarshalJSON())
+			targetRepo := &v1alpha1.OCMRepository{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: testNamespace,
+					Name:      targetRepoResourceName,
+				},
+				Spec: v1alpha1.OCMRepositorySpec{
+					RepositorySpec: &apiextensionsv1.JSON{
+						Raw: targetSpecData,
+					},
+					Interval: metav1.Duration{Duration: time.Minute * 10},
+				},
+			}
+			Expect(k8sClient.Create(ctx, targetRepo)).To(Succeed())
+
+			By("Simulate ocmrepository controller for target repository")
+			targetRepo.Spec.RepositorySpec.Raw = targetSpecData
+			conditions.MarkTrue(targetRepo, meta.ReadyCondition, "ready", "")
+			Expect(k8sClient.Status().Update(ctx, targetRepo)).To(Succeed())
+
+			By("Create and reconcile Replication resource")
+			replication := &v1alpha1.Replication{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      replResourceName,
+					Namespace: testNamespace,
+				},
+				Spec: v1alpha1.ReplicationSpec{
+					ComponentRef: v1alpha1.ObjectKey{
+						Name:      compResourceName,
+						Namespace: testNamespace,
+					},
+					TargetRepositoryRef: v1alpha1.ObjectKey{
+						Name:      targetRepoResourceName,
+						Namespace: testNamespace,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, replication)).To(Succeed())
+
+			Eventually(func() bool {
+				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
+				return conditions.IsReady(replication)
+			}).WithTimeout(10 * time.Second).Should(BeTrue())
+
+			By("Cleanup the resources")
+			Expect(k8sClient.Delete(ctx, replication)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, targetRepo)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, sourceRepo)).To(Succeed())
 		})
 	})
 })
