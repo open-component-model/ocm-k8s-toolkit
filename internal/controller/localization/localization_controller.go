@@ -99,7 +99,7 @@ func (r *Reconciler) reconcileDeletion(ctx context.Context, localization *v1alph
 
 		return nil
 	}
-	if err := r.Storage.Remove(*artifact); err != nil {
+	if err := r.Storage.Remove(artifact); err != nil {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove artifact: %w", err)
 		}

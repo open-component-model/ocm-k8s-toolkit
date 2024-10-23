@@ -30,7 +30,7 @@ func GetComponentSetForArtifact(storage *storage.Storage, artifact *artifactv1.A
 
 	// Instead of using the http-functionality of the storage-server, we use the storage directly for performance reasons.
 	// This assumes that the controllers and the storage are running in the same pod.
-	unlock, err := storage.Lock(*artifact)
+	unlock, err := storage.Lock(artifact)
 	if err != nil {
 		return nil, fmt.Errorf("failed to lock artifact: %w", err)
 	}
@@ -70,7 +70,7 @@ func GetAndVerifyArtifactForCollectable(
 	collectable storage.Collectable,
 ) (*artifactv1.Artifact, error) {
 	artifact := strg.NewArtifactFor(collectable.GetKind(), collectable.GetObjectMeta(), "", "")
-	if err := reader.Get(ctx, types.NamespacedName{Name: artifact.Name, Namespace: artifact.Namespace}, &artifact); err != nil {
+	if err := reader.Get(ctx, types.NamespacedName{Name: artifact.Name, Namespace: artifact.Namespace}, artifact); err != nil {
 		return nil, fmt.Errorf("failed to get artifact: %w", err)
 	}
 
@@ -79,7 +79,7 @@ func GetAndVerifyArtifactForCollectable(
 		return nil, rerror.AsRetryableError(fmt.Errorf("failed to verify artifact: %w", err))
 	}
 
-	return &artifact, nil
+	return artifact, nil
 }
 
 // CollectableHasValidArtifactBasedOnFileNameDigest verifies if the artifact for the given collectable is valid.
@@ -106,7 +106,7 @@ func CollectableHasValidArtifactBasedOnFileNameDigest(
 		return false, nil
 	}
 
-	existingFile := filepath.Base(strg.LocalPath(*artifact))
+	existingFile := filepath.Base(strg.LocalPath(artifact))
 
 	return existingFile != digest, nil
 }
@@ -124,7 +124,7 @@ func RemoveArtifactForCollectable(
 	}
 
 	if artifact != nil {
-		if err := strg.Remove(*artifact); err != nil {
+		if err := strg.Remove(artifact); err != nil {
 			if !os.IsNotExist(err) {
 				return fmt.Errorf("failed to remove artifact: %w", err)
 			}

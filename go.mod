@@ -6,9 +6,6 @@ go 1.23.2
 // xref: https://github.com/opencontainers/go-digest/pull/66
 replace github.com/opencontainers/go-digest => github.com/opencontainers/go-digest v1.0.1-0.20220411205349-bde1400a84be
 
-// TODO: Adjust when the fix is merged https://github.com/openfluxcd/controller-manager/pull/8
-replace github.com/openfluxcd/controller-manager => github.com/frewilhelm/controller-manager v0.0.0-20241022152441-f4225ab3f9a1
-
 require (
 	github.com/Masterminds/semver/v3 v3.3.0
 	github.com/Masterminds/sprig/v3 v3.3.0
@@ -26,7 +23,7 @@ require (
 	github.com/onsi/gomega v1.34.2
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/openfluxcd/artifact v0.1.0
-	github.com/openfluxcd/controller-manager v0.1.2-0.20241022091740-7e61db419bd9
+	github.com/openfluxcd/controller-manager v0.1.2-0.20241023121416-7a547692065f
 	github.com/stretchr/testify v1.9.0
 	k8s.io/api v0.31.1
 	k8s.io/apiextensions-apiserver v0.31.1

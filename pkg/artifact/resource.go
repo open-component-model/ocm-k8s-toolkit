@@ -68,9 +68,9 @@ func (r *ContentBackedByStorageAndResource) Open() (io.ReadCloser, error) {
 }
 
 func (r *ContentBackedByStorageAndResource) open() (io.ReadCloser, error) {
-	path := r.Storage.LocalPath(*r.Artifact)
+	path := r.Storage.LocalPath(r.Artifact)
 
-	unlock, err := r.Storage.Lock(*r.Artifact)
+	unlock, err := r.Storage.Lock(r.Artifact)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +160,7 @@ func GetContentBackedByStorageAndResource(
 		return nil, fmt.Errorf("failed to fetch artifact target %s: %w", resource.Status.ArtifactRef.Name, err)
 	}
 
-	if !strg.ArtifactExist(artifact) {
+	if !strg.ArtifactExist(&artifact) {
 		return nil, fmt.Errorf("artifact %s specified in component does not exist", artifact.Name)
 	}
 

@@ -31,7 +31,6 @@ rules:
   - delivery.ocm.software
   resources:
   - components
-  - configuredresources
   - localizedresources
   - ocmrepositories
   - resources
@@ -47,7 +46,6 @@ rules:
   - delivery.ocm.software
   resources:
   - components/finalizers
-  - configuredresources/finalizers
   - localizedresources/finalizers
   - ocmrepositories/finalizers
   - resources/finalizers
@@ -57,7 +55,6 @@ rules:
   - delivery.ocm.software
   resources:
   - components/status
-  - configuredresources/status
   - localizedresources/status
   - ocmrepositories/status
   - resources/status
@@ -69,7 +66,6 @@ rules:
   - delivery.ocm.software
   resources:
   - localizationconfigs
-  - resourceconfigurations
   verbs:
   - get
   - list

@@ -153,7 +153,7 @@ var _ = Describe("LocalizationRules Controller", func() {
 
 		Eventually(Object(art), "5s").Should(HaveField("Spec.URL", Not(BeEmpty())))
 
-		localized := strg.LocalPath(*art)
+		localized := strg.LocalPath(art)
 		Expect(localized).To(BeAnExistingFile())
 
 		memFs := vfs.New(memoryfs.New())
