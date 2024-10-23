@@ -270,7 +270,7 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource,
 
 	// Get the artifact to check if it is already present while reconciling it
 	artifactStorage := r.Storage.NewArtifactFor(resource.GetKind(), resource.GetObjectMeta(), "", "")
-	if err := r.Client.Get(ctx, types.NamespacedName{Name: artifactStorage.Name, Namespace: artifactStorage.Namespace}, &artifactStorage); err != nil {
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: artifactStorage.Name, Namespace: artifactStorage.Namespace}, artifactStorage); err != nil {
 		if !apierrors.IsNotFound(err) {
 			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetArtifactFailedReason, err.Error())
 
@@ -418,7 +418,7 @@ func reconcileArtifact(
 	resource *v1alpha1.Resource,
 	acc ocmctx.ResourceAccess,
 	revision string,
-	artifact artifactv1.Artifact,
+	artifact *artifactv1.Artifact,
 	verifyFunc func() rerror.ReconcileError,
 ) (
 	retErr rerror.ReconcileError,
