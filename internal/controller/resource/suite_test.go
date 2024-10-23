@@ -28,6 +28,8 @@ import (
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/server"
 	"github.com/openfluxcd/controller-manager/storage"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
@@ -127,6 +129,14 @@ var _ = BeforeSuite(func() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	DeferCleanup(cancel)
+
+	namespace := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: Namespace,
+		},
+	}
+	Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+
 	go func() {
 		defer GinkgoRecover()
 		Expect(artifactServer.Start(ctx)).To(Succeed())

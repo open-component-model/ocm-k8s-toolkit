@@ -55,7 +55,6 @@ import (
 const (
 	CTFPath          = "ocm-k8s-ctfstore--*"
 	Namespace        = "test-namespace"
-	RepositoryObj    = "test-repository"
 	Component        = "ocm.software/test-component"
 	ComponentObj     = "test-component"
 	ComponentVersion = "1.0.0"
@@ -85,17 +84,19 @@ var _ = Describe("Resource Controller", func() {
 	})
 
 	Context("resource controller", func() {
-		It("can reconcile a resource", func() {
-			By("creating namespace object")
-			namespace := &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: Namespace,
-				},
-			}
-			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+		var (
+			componentName string
+			testNumber    int
+			//componentObj  *v1alpha1.Component
+		)
 
-			By("preparing a mock component")
-			prepareComponent(ctx, env, ctfPath)
+		BeforeEach(func() {
+			By("mocking the component controller")
+			componentName = fmt.Sprintf("%s-%d", ComponentObj, testNumber)
+			mockComponentReconciler(ctx, env, ctfPath, componentName)
+		})
+
+		It("can reconcile a resource", func() {
 
 			By("creating a resource object")
 			resource := &v1alpha1.Resource{
@@ -105,7 +106,7 @@ var _ = Describe("Resource Controller", func() {
 				},
 				Spec: v1alpha1.ResourceSpec{
 					ComponentRef: corev1.LocalObjectReference{
-						Name: ComponentObj,
+						Name: componentName,
 					},
 					Resource: v1alpha1.ResourceID{
 						ByReference: v1alpha1.ResourceReference{
@@ -155,10 +156,8 @@ var _ = Describe("Resource Controller", func() {
 	})
 })
 
-// prepareComponent essentially mocks the behavior of the component reconciler to provider the necessary component and
-// artifact for the resource controller.
-func prepareComponent(ctx context.Context, env *Builder, ctfPath string) {
-	By("creating ocm repositories with a component and resource")
+func mockComponentReconciler(ctx context.Context, env *Builder, ctfPath, name string) {
+	// Create a ctf storing a component-version with a blob data as content
 	env.OCMCommonTransport(ctfPath, accessio.FormatDirectory, func() {
 		env.Component(Component, func() {
 			env.Version(ComponentVersion, func() {
@@ -169,27 +168,28 @@ func prepareComponent(ctx context.Context, env *Builder, ctfPath string) {
 		})
 	})
 
-	By("creating a component descriptor")
-	tmpDirCd := Must(os.MkdirTemp("/tmp", "descriptors-"))
+	// Creating component descriptor
+	tmp := Must(os.MkdirTemp("/tmp", "descriptors-"))
 	DeferCleanup(func() error {
-		return os.RemoveAll(tmpDirCd)
+		return os.RemoveAll(tmp)
 	})
+
 	repo := Must(ctf.Open(env, accessobj.ACC_WRITABLE, ctfPath, vfs.FileMode(vfs.O_RDWR), env))
 	cv := Must(repo.LookupComponentVersion(Component, ComponentVersion))
 	cd := Must(ocm.ListComponentDescriptors(ctx, cv, repo))
 	dataCds := Must(yaml.Marshal(cd))
-	MustBeSuccessful(os.WriteFile(filepath.Join(tmpDirCd, v1alpha1.OCMComponentDescriptorList), dataCds, 0o655))
+	MustBeSuccessful(os.WriteFile(filepath.Join(tmp, v1alpha1.OCMComponentDescriptorList), dataCds, 0o655))
 
-	By("creating a component object")
+	// Create a component object
 	component := &v1alpha1.Component{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: Namespace,
-			Name:      ComponentObj,
+			Name:      name,
 		},
 		Spec: v1alpha1.ComponentSpec{
 			RepositoryRef: v1alpha1.ObjectKey{
-				Namespace: Namespace,
-				Name:      RepositoryObj,
+				Namespace: "some-namespace",
+				Name:      "some-name",
 			},
 			Component: Component,
 			Semver:    ComponentVersion,
@@ -198,13 +198,12 @@ func prepareComponent(ctx context.Context, env *Builder, ctfPath string) {
 	}
 	Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-	By("creating an component artifact")
-	revision := ComponentObj + "-" + ComponentVersion
+	// Create a component artifact object
 	var artifactName string
-	Expect(globStorage.ReconcileArtifact(ctx, component, revision, tmpDirCd, revision+".tar.gz",
+	Expect(globStorage.ReconcileArtifact(ctx, component, "revision", tmp, "component-descriptor.tar.gz",
 		func(art *artifactv1.Artifact, _ string) error {
 			// Archive directory to storage
-			if err := globStorage.Archive(art, tmpDirCd, nil); err != nil {
+			if err := globStorage.Archive(art, tmp, nil); err != nil {
 				return fmt.Errorf("unable to archive artifact to storage: %w", err)
 			}
 
@@ -214,7 +213,7 @@ func prepareComponent(ctx context.Context, env *Builder, ctfPath string) {
 		},
 	)).To(Succeed())
 
-	By("checking that the artifact has been created successfully")
+	// Create a component artifact object
 	artifact := &artifactv1.Artifact{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      artifactName,
@@ -223,7 +222,7 @@ func prepareComponent(ctx context.Context, env *Builder, ctfPath string) {
 	}
 	Eventually(komega.Get(artifact)).Should(Succeed())
 
-	By("updating the component object with the respective status")
+	// Update the component object status
 	baseComponent := component.DeepCopy()
 	ready := *conditions.TrueCondition("Ready", "ready", "message")
 	ready.LastTransitionTime = metav1.Time{Time: time.Now()}
