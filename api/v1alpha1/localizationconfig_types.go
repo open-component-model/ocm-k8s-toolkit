@@ -47,7 +47,7 @@ func (in *LocalizationConfig) UnpackIntoDirectory(path string) error {
 		return err
 	}
 
-	return os.WriteFile(fmt.Sprintf("%s-%s.yaml", path, in.Name), buf.Bytes(), os.ModePerm)
+	return os.WriteFile(fmt.Sprintf("%s-%s.yaml", path, in.Name), buf.Bytes(), 0o600)
 }
 
 func (in *LocalizationConfig) GetDigest() string {

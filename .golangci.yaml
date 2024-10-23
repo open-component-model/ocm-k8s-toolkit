@@ -31,6 +31,10 @@ linters-settings:
       - vm
       - ns
       - ip
+  mnd:
+    ignored-functions:
+      - "os.WriteFile" # File Permissions are self-explanatory bitsets
+      - "os.OpenFile" # File Permissions are self-explanatory bitsets
 
 issues:
   exclude-dirs:
@@ -105,3 +109,6 @@ linters:
     - varnamelen
     - wrapcheck
     - wsl
+    - execinquery
+    - exportloopref
+    - gomnd

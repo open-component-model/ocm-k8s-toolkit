@@ -53,7 +53,7 @@ func (o *goTemplateSubstitutionStep) Substitute(path string) error {
 		return err
 	}
 
-	if err := os.WriteFile(path, buf.Bytes(), os.ModePerm); err != nil {
+	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
 		return fmt.Errorf("failed to write template result back to file: %w", err)
 	}
 
