@@ -32,10 +32,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/rerror"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
@@ -62,9 +62,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	// Always attempt to patch the object and status after each reconciliation.
 	defer func() {
-		if perr := status.UpdateStatus(ctx, patchHelper, ocmRepo, r.EventRecorder, ocmRepo.GetRequeueAfter(), retErr); perr != nil {
-			retErr = rerror.AsRetryableError(errors.Join(retErr, perr))
-		}
+		retErr = errors.Join(retErr, status.UpdateStatus(ctx, patchHelper, ocmRepo, r.EventRecorder, ocmRepo.GetRequeueAfter(), retErr))
 	}()
 
 	logger := log.FromContext(ctx)
@@ -85,32 +83,35 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, nil
 	}
 
-	return rerror.EvaluateReconcileError(r.reconcile(ctx, ocmRepo))
+	return r.reconcile(ctx, ocmRepo)
 }
 
-func (r *Reconciler) reconcile(ctx context.Context, ocmRepo *v1alpha1.OCMRepository) (_ ctrl.Result, retErr rerror.ReconcileError) {
-	var rerr rerror.ReconcileError
+func (r *Reconciler) reconcile(ctx context.Context, ocmRepo *v1alpha1.OCMRepository) (_ ctrl.Result, retErr error) {
+	var err error
+	logger := log.FromContext(ctx)
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
 	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
 	// instance and not at the global default context variable.
 	octx := ocmctx.New(datacontext.MODE_EXTENDED)
 	defer func() {
-		if err := octx.Finalize(); err != nil {
-			retErr = rerror.AsNonRetryableError(errors.Join(retErr, err))
+		err = octx.Finalize()
+		if err != nil {
+			logger.Error(errors.Join(retErr, err), "failed to close ocm context")
+			retErr = nil
 		}
 	}()
 	session := ocmctx.NewSession(datacontext.NewSession())
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
 
-	rerr = ocm.ConfigureOCMContext(ctx, r, octx, ocmRepo, ocmRepo)
-	if rerr != nil {
-		return ctrl.Result{}, rerr
+	err = ocm.ConfigureOCMContext(ctx, r, octx, ocmRepo, ocmRepo)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
-	rerr = r.validate(octx, session, ocmRepo)
-	if rerr != nil {
-		return ctrl.Result{}, rerr
+	err = r.validate(octx, session, ocmRepo)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	r.fillRepoStatusFromSpec(ocmRepo)
@@ -120,25 +121,25 @@ func (r *Reconciler) reconcile(ctx context.Context, ocmRepo *v1alpha1.OCMReposit
 	return ctrl.Result{}, nil
 }
 
-func (r *Reconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRepo *v1alpha1.OCMRepository) (retErr rerror.ReconcileError) {
+func (r *Reconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRepo *v1alpha1.OCMRepository) error {
 	spec, err := octx.RepositorySpecForConfig(ocmRepo.Spec.RepositorySpec.Raw, nil)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, "cannot create RepositorySpec from raw data")
 
-		return rerror.AsNonRetryableError(fmt.Errorf("cannot create RepositorySpec from raw data: %w", err))
+		return reconcile.TerminalError(fmt.Errorf("cannot create RepositorySpec from raw data: %w", err))
 	}
 
 	if err = spec.Validate(octx, nil); err != nil {
 		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, "invalid RepositorySpec")
 
-		return rerror.AsRetryableError(fmt.Errorf("invalid RepositorySpec: %w", err))
+		return fmt.Errorf("invalid RepositorySpec: %w", err)
 	}
 
 	_, err = session.LookupRepository(octx, spec)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, "cannot lookup repository for RepositorySpec")
 
-		return rerror.AsRetryableError(fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err))
+		return fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
 	}
 
 	return nil
