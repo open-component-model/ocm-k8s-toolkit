@@ -41,6 +41,7 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/component"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/ocmrepository"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/resource"
@@ -204,6 +205,17 @@ func main() {
 		Storage: storage,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LocalizedResource")
+		os.Exit(1)
+	}
+	if err = (&configuration.Reconciler{
+		BaseReconciler: &ocm.BaseReconciler{
+			Client:        mgr.GetClient(),
+			Scheme:        mgr.GetScheme(),
+			EventRecorder: eventsRecorder,
+		},
+		Storage: storage,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ConfiguredResource")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
