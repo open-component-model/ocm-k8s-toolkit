@@ -18,7 +18,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.20.2
 	github.com/onsi/gomega v1.34.2
 	github.com/openfluxcd/artifact v0.1.0
-	github.com/openfluxcd/controller-manager v0.1.2-0.20241023103356-ee8fe26641d1
+	github.com/openfluxcd/controller-manager v0.1.2-0.20241023121416-7a547692065f
 	github.com/stretchr/testify v1.9.0
 	k8s.io/api v0.31.1
 	k8s.io/apiextensions-apiserver v0.31.1
