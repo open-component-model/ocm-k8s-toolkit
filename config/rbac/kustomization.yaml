@@ -1,6 +1,6 @@
 resources:
 # All RBAC will be applied under this service account in
-# the deployment namespace. You may comment out this resource
+# the deployment namespace. You may comment out this util
 # if your manager will use a service account that exists at
 # runtime. Be sure to update RoleBinding and ClusterRoleBinding
 # subjects if changing service account names.
@@ -13,6 +13,8 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the Project itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- configuredresource_editor_role.yaml
+- configuredresource_viewer_role.yaml
 - resource_editor_role.yaml
 - resource_viewer_role.yaml
 - component_editor_role.yaml

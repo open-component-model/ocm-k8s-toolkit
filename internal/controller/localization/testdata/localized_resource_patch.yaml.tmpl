@@ -8,8 +8,8 @@ spec:
   target:
     kind: Resource
     name: {{ .TargetResourceName }}
-  # source is a resource in the same component as the target resource and contains the localization config
-  source:
+  # config is a resource in the same component as the target resource and contains the localization config
+  config:
     kind: Resource
     name: {{ .SourceResourceName }}
     strategy:

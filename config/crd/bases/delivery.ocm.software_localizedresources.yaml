@@ -38,12 +38,8 @@ spec:
             type: object
           spec:
             properties:
-              interval:
-                description: Interval at which to refresh the localization in case
-                  the Component Version is not yet ready
-                type: string
-              source:
-                description: Source of the localization data to be applied to Target
+              config:
+                description: Config of the localization data to be applied to Target
                   (applied in order of appearance)
                 minProperties: 1
                 properties:
@@ -61,15 +57,14 @@ spec:
                     description: Namespace of the referent, when not specified it
                       acts as LocalObjectReference.
                     type: string
-                  strategy:
-                    properties:
-                      mapped:
-                        type: object
-                    type: object
                 required:
                 - kind
                 - name
                 type: object
+              interval:
+                description: Interval at which to refresh the localization in case
+                  the Component Version is not yet ready
+                type: string
               suspend:
                 description: Suspend all localization behaviors, but keep existing
                   localizations in place
@@ -97,8 +92,8 @@ spec:
                 - name
                 type: object
             required:
+            - config
             - interval
-            - source
             - target
             type: object
           status:
@@ -171,8 +166,8 @@ spec:
                   - type
                   type: object
                 type: array
-              localizationDigest:
-                description: A unique digest of the combination of the source and
+              digest:
+                description: A unique digest of the combination of the config and
                   target resources applied through a LocalizationStrategy
                 type: string
               observedGeneration:

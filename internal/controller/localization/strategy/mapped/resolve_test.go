@@ -1,12 +1,11 @@
 package mapped
 
 import (
-	"archive/tar"
-	"bytes"
-	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"ocm.software/ocm/api/ocm/compdesc"
 	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
@@ -42,7 +41,7 @@ func TestResolveResourceReferenceFromComponentDescriptor(t *testing.T) {
 			Access: ociartifact.New("oci://example.com/image:tag"),
 		})
 
-		// Mock the resolver to return a resource with OCI artifact access spec
+		// Mock the resolver to return a util with OCI artifact access spec
 		resolver := MockedResolver{
 			lookupComponentVersion: func(name string, version string) (*compdesc.ComponentDescriptor, error) {
 				return componentDescriptor, nil
@@ -76,50 +75,19 @@ func TestValueFromTransformation(t *testing.T) {
 	})
 }
 
-func TestLocalizationConfigFromSource(t *testing.T) {
+func TestParseLocalizationConfig(t *testing.T) {
 	// Happy path
 	t.Run("reads config from plain yaml file", func(t *testing.T) {
-		source := types.NewLocalizationSourceWithStrategy(&types.MockedLocalizationReference{
-			Data: []byte("apiVersion: v1alpha1\nkind: LocalizationConfig\nmetadata:\n  name: test"),
-		}, v1alpha1.LocalizationStrategy{})
+		source := &types.MockedLocalizationReference{
+			Data: []byte("apiVersion: delivery.ocm.software/v1alpha1\nkind: LocalizationConfig\nmetadata:\n  name: test"),
+		}
+		schema := runtime.NewScheme()
+		assert.NoError(t, v1alpha1.AddToScheme(schema))
 
-		config, err := LocalizationConfigFromSource(source)
+		config, err := ParseLocalizationConfig(source, serializer.NewCodecFactory(schema).UniversalDeserializer())
 		assert.NoError(t, err)
-		assert.Equal(t, "test", config.GetName())
-	})
-}
-
-func TestDataFromTarOrPlain(t *testing.T) {
-	// Happy path
-	t.Run("reads data from tar archive", func(t *testing.T) {
-		var buf bytes.Buffer
-		tw := tar.NewWriter(&buf)
-		tw.WriteHeader(&tar.Header{
-			Name: "test.yaml",
-			Size: int64(len("content")),
-		})
-		tw.Write([]byte("content"))
-		tw.Close()
-
-		reader, err := DataFromTarOrPlain(&buf)
-		assert.NoError(t, err)
-
-		data, err := io.ReadAll(reader)
-		assert.NoError(t, err)
-		assert.Equal(t, "content", string(data))
-	})
-
-	// Edge case
-	t.Run("returns error for non-regular file in tar", func(t *testing.T) {
-		var buf bytes.Buffer
-		tw := tar.NewWriter(&buf)
-		tw.WriteHeader(&tar.Header{
-			Name:     "test.yaml",
-			Typeflag: tar.TypeDir,
-		})
-		tw.Close()
-
-		_, err := DataFromTarOrPlain(&buf)
-		assert.Error(t, err)
+		assert.IsType(t, &v1alpha1.LocalizationConfig{}, config)
+		typedConfig := config.(*v1alpha1.LocalizationConfig)
+		assert.Equal(t, "test", typedConfig.GetName())
 	})
 }

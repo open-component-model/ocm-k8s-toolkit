@@ -59,11 +59,11 @@ func (in *LocalizedResource) GetVID() map[string]string {
 type LocalizedResourceSpec struct {
 	// Target that is to be localized
 	// +required
-	Target LocalizationReference `json:"target,omitempty"`
+	Target ConfigurationReference `json:"target,omitempty"`
 
-	// Source of the localization data to be applied to Target (applied in order of appearance)
+	// Config of the localization data to be applied to Target (applied in order of appearance)
 	// +required
-	Source LocalizationSource `json:"source,omitempty"`
+	Config ConfigurationReference `json:"config,omitempty"`
 
 	// Interval at which to refresh the localization in case the Component Version is not yet ready
 	// +required
@@ -72,11 +72,6 @@ type LocalizedResourceSpec struct {
 	// Suspend all localization behaviors, but keep existing localizations in place
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
-}
-
-type LocalizationStrategy struct {
-	// +optional
-	Mapped *LocalizationStrategyMapped `json:"mapped,omitempty"`
 }
 
 type LocalizationStrategyMapped struct{}
@@ -108,14 +103,9 @@ type LocalizationSelectorReference struct {
 	Namespace string `json:"namespace,omitempty" yaml:"namespace,omitempty"`
 }
 
-type LocalizationSource struct {
-	LocalizationReference `json:",inline"`
-	Strategy              LocalizationStrategy `json:"strategy,omitempty"`
-}
-
-// LocalizationReference defines a resource which may be accessed via a snapshot or component version
+// ConfigurationReference defines a configuration which may be accessed through an object in the cluster
 // +kubebuilder:validation:MinProperties=1
-type LocalizationReference struct {
+type ConfigurationReference struct {
 	meta.NamespacedObjectKindReference `json:",inline"`
 }
 
@@ -129,9 +119,9 @@ type LocalizedResourceStatus struct {
 	// +optional
 	ArtifactRef *ObjectKey `json:"artifactRef,omitempty"`
 
-	// A unique digest of the combination of the source and target resources applied through a LocalizationStrategy
+	// A unique digest of the combination of the config and target resources applied through a LocalizationStrategy
 	// +optional
-	LocalizationDigest string `json:"localizationDigest,omitempty"`
+	LocalizationDigest string `json:"digest,omitempty"`
 }
 
 func init() {

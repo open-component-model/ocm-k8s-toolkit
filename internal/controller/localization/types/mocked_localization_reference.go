@@ -10,6 +10,7 @@ import (
 	"github.com/opencontainers/go-digest"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/artifact"
 )
 
 type MockedLocalizationReference struct {
@@ -19,7 +20,7 @@ type MockedLocalizationReference struct {
 }
 
 var (
-	_ LocalizationSource = &MockedLocalizationReference{}
+	_ LocalizationConfig = &MockedLocalizationReference{}
 	_ LocalizationTarget = &MockedLocalizationReference{}
 )
 
@@ -46,7 +47,7 @@ func (r *MockedLocalizationReference) GetRevision() string {
 func (r *MockedLocalizationReference) UnpackIntoDirectory(path string) (err error) {
 	fi, err := os.Stat(path)
 	if err == nil && fi.IsDir() {
-		return ErrAlreadyUnpacked
+		return artifact.ErrAlreadyUnpacked
 	}
 
 	if err = os.MkdirAll(path, os.ModeDir|os.ModePerm); err != nil {

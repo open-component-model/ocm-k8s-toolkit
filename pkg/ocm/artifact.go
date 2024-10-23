@@ -82,6 +82,35 @@ func GetAndVerifyArtifactForCollectable(
 	return &artifact, nil
 }
 
+// CollectableHasValidArtifactBasedOnFileNameDigest verifies if the artifact for the given collectable is valid.
+// This means that the artifact must be present in the cluster the reader is connected to and
+// the artifact must be present in strg.
+// Additionally the digest of the artifact must be different from the file name of the artifact.
+//
+// This method can be used to determine if an artifact needs an update or not because an artifact that does not
+// fullfil these conditions can be considered out of date (not in the cluster, not in the storage, or mismatching digest).
+//
+// Prerequisite for this method is that the artifact name is based on its original digest.
+func CollectableHasValidArtifactBasedOnFileNameDigest(
+	ctx context.Context,
+	reader ctrl.Reader,
+	strg *storage.Storage,
+	collectable storage.Collectable,
+	digest string,
+) (bool, error) {
+	artifact, err := GetAndVerifyArtifactForCollectable(ctx, reader, strg, collectable)
+	if ctrl.IgnoreNotFound(err) != nil {
+		return false, fmt.Errorf("failed to get artifact: %w", err)
+	}
+	if artifact == nil {
+		return false, nil
+	}
+
+	existingFile := filepath.Base(strg.LocalPath(*artifact))
+
+	return existingFile != digest, nil
+}
+
 // RemoveArtifactForCollectable removes the artifact for the given collectable from the given storage.
 func RemoveArtifactForCollectable(
 	ctx context.Context,

@@ -1,17 +1,12 @@
 package localization
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/fluxcd/pkg/runtime/patch"
-	"github.com/opencontainers/go-digest"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -24,9 +19,10 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	localizationclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/client"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/strategy/mapped"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/types"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/artifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/util"
 )
 
 const (
@@ -34,8 +30,6 @@ const (
 	ReasonSourceFetchFailed  = "SourceFetchFailed"
 	ReasonLocalizationFailed = "LocalizationFailed"
 )
-
-var ErrOnlyOneLocalizationStrategy = errors.New("only one localization strategy is supported")
 
 // Reconciler reconciles a LocalizationRules object.
 type Reconciler struct {
@@ -126,7 +120,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		return ctrl.Result{}, fmt.Errorf("failed to reconcile storage: %w", err)
 	}
 
-	loc := localizationclient.NewClientWithLocalStorage(r.Client, r.Storage)
+	loc := localizationclient.NewClientWithLocalStorage(r.Client, r.Storage, r.Scheme)
 
 	if localization.Spec.Target.Namespace == "" {
 		localization.Spec.Target.Namespace = localization.Namespace
@@ -139,27 +133,43 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		return ctrl.Result{}, fmt.Errorf("failed to fetch target: %w", err)
 	}
 
-	if localization.Spec.Source.Namespace == "" {
-		localization.Spec.Source.Namespace = localization.Namespace
+	targetBackedByResource, ok := target.(ArtifactContentBackedByResource)
+	if !ok {
+		return ctrl.Result{}, fmt.Errorf("target is not backed by a resource and cannot be localized")
 	}
 
-	source, err := loc.GetLocalizationSource(ctx, localization.Spec.Source)
+	if localization.Spec.Config.Namespace == "" {
+		localization.Spec.Config.Namespace = localization.Namespace
+	}
+
+	source, err := loc.GetLocalizationConfig(ctx, localization.Spec.Config)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, localization, ReasonSourceFetchFailed, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to fetch source: %w", err)
 	}
 
-	revisionAndDigest := NewMappedRevisionAndDigest(source, target)
+	revisionAndDigest := util.NewMappedRevisionAndDigest(source, target)
 
-	hasValidArtifact, err := hasValidArtifact(ctx, r.Client, r.Storage, localization, revisionAndDigest)
+	hasValidArtifact, err := ocm.CollectableHasValidArtifactBasedOnFileNameDigest(
+		ctx,
+		r.Client,
+		r.Storage,
+		localization,
+		revisionAndDigest.GetDigest(),
+	)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to check if artifact is valid: %w", err)
 	}
 
 	var localized string
 	if !hasValidArtifact {
-		if localized, err = r.localize(ctx, source, target); err != nil {
+		basePath, err := os.MkdirTemp("", "localization-")
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("tmp dir error: %w", err)
+		}
+
+		if localized, err = mapped.Localize(ctx, loc, r.Storage, source, targetBackedByResource, basePath); err != nil {
 			status.MarkNotReady(r.EventRecorder, localization, ReasonLocalizationFailed, err.Error())
 			logger.Error(err, "failed to localize, retrying later", "interval", localization.Spec.Interval.Duration)
 
@@ -167,12 +177,12 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		}
 	}
 
-	localization.Status.LocalizationDigest = revisionAndDigest.Digest()
+	localization.Status.LocalizationDigest = revisionAndDigest.GetDigest()
 
 	if err := r.Storage.ReconcileArtifact(
 		ctx,
 		localization,
-		revisionAndDigest.Revision(),
+		revisionAndDigest.GetRevision(),
 		localized,
 		revisionAndDigest.ToArchiveFileName(),
 		func(artifact *artifactv1.Artifact, dir string) error {
@@ -200,86 +210,13 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 	return ctrl.Result{RequeueAfter: localization.Spec.Interval.Duration}, nil
 }
 
-type RenderTarget string
-
-func (r *Reconciler) localize(ctx context.Context,
-	src types.LocalizationSourceWithStrategy,
-	trgt types.LocalizationTarget,
-) (string, error) {
-	strategy := src.GetStrategy()
-	instructions := 0
-	var localize func(ctx context.Context, src types.LocalizationSourceWithStrategy, trgt types.LocalizationTarget) (string, error)
-
-	if strategy.Mapped != nil {
-		instructions++
-		localize = func(ctx context.Context, src types.LocalizationSourceWithStrategy, trgt types.LocalizationTarget) (string, error) {
-			return mapped.Localize(ctx, localizationclient.NewClientWithLocalStorage(r.Client, r.Storage), r.Storage, src, trgt)
-		}
-	}
-
-	if instructions == 0 {
-		return mapped.Localize(ctx, localizationclient.NewClientWithLocalStorage(r.Client, r.Storage), r.Storage, src, trgt)
-	} else if instructions > 1 {
-		return "", fmt.Errorf("%w: %v", ErrOnlyOneLocalizationStrategy, strategy)
-	}
-
-	return localize(ctx, src, trgt)
-}
-
-func NewMappedRevisionAndDigest(source types.LocalizationSourceWithStrategy, target types.LocalizationTarget) MappedRevisionAndDigest {
-	return MappedRevisionAndDigest{
-		SourceRevision:          source.GetRevision(),
-		StrategyCustomizationID: digest.FromString(encodeJSONToString(source.GetStrategy())).String(),
-		SourceDigest:            source.GetDigest(),
-		TargetRevision:          target.GetRevision(),
-		TargetDigest:            target.GetDigest(),
-	}
-}
-
-type MappedRevisionAndDigest struct {
-	SourceRevision          string `json:"source"`
-	TargetRevision          string `json:"target"`
-	StrategyCustomizationID string `json:"strategy"`
-	SourceDigest            string `json:"-"`
-	TargetDigest            string `json:"-"`
-}
-
-func (r MappedRevisionAndDigest) String() string {
-	return encodeJSONToString(r)
-}
-
-func encodeJSONToString[T any](toEncode T) string {
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-	if err := encoder.Encode(toEncode); err != nil {
-		return "invalid mapped revision: " + err.Error()
-	}
-
-	return buf.String()
-}
-
-func (r MappedRevisionAndDigest) Digest() string {
-	return digest.FromString(r.SourceDigest + r.TargetDigest + r.StrategyCustomizationID).String()
-}
-
-func (r MappedRevisionAndDigest) Revision() string {
-	return fmt.Sprintf("%s localized with %s (strategy customization id %s)", r.SourceRevision, r.TargetRevision, r.StrategyCustomizationID)
-}
-
-func (r MappedRevisionAndDigest) ToArchiveFileName() string {
-	return strings.ReplaceAll(r.Digest(), ":", "_") + ".tar.gz"
-}
-
-func hasValidArtifact(ctx context.Context, reader client.Reader, strg *storage.Storage, localization *v1alpha1.LocalizedResource, revisionAndDigest MappedRevisionAndDigest) (bool, error) {
-	artifact, err := ocm.GetAndVerifyArtifactForCollectable(ctx, reader, strg, localization)
-	if client.IgnoreNotFound(err) != nil {
-		return false, fmt.Errorf("failed to get artifact: %w", err)
-	}
-	if artifact == nil {
-		return false, nil
-	}
-
-	existingFile := filepath.Base(strg.LocalPath(*artifact))
-
-	return existingFile != revisionAndDigest.Digest(), nil
+// ArtifactContentBackedByResource is an artifact content that is backed by a resource.
+// TODO This is currently only necessary because we introspect the relationship of the artifact content to the resource.
+// We do this to determine the context of the localization so that we can draw the correct component descriptor
+// from the underlying component version.
+// If we remove this introspection, we can remove this interface but need to find another way to get the introspection
+// working.
+type ArtifactContentBackedByResource interface {
+	artifact.Content
+	GetResource() *v1alpha1.Resource
 }

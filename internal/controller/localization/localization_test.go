@@ -55,8 +55,8 @@ const (
 	Namespace         = "test-namespace"
 	RepositoryObj     = "test-repository"
 	ComponentObj      = "test-component"
-	SourceResourceObj = "source-test-resource"
-	TargetResourceObj = "target-test-resource"
+	SourceResourceObj = "source-test-util"
+	TargetResourceObj = "target-test-util"
 	Localization      = "test-localization"
 )
 
@@ -87,7 +87,7 @@ var _ = Describe("LocalizationRules Controller", func() {
 		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 	})
 
-	It("should localize an artifact from a resource based on a config supplied in a sibling resource", func(ctx SpecContext) {
+	It("should localize an artifact from a util based on a config supplied in a sibling util", func(ctx SpecContext) {
 		component := SetupComponentWithDescriptorList(ctx,
 			ComponentObj,
 			Namespace,
@@ -178,9 +178,9 @@ var _ = Describe("LocalizationRules Controller", func() {
 type options struct {
 	basePath string
 
-	// option one to create a resource: directly pass the data
+	// option one to create a util: directly pass the data
 	data io.Reader
-	// option two to create a resource: pass the path to the data
+	// option two to create a util: pass the path to the data
 	dataPath string
 
 	componentRef v1alpha1.ObjectKey
@@ -248,7 +248,7 @@ func SetupMockResourceWithData(ctx context.Context,
 	Eventually(Object(art), "5s").Should(HaveField("Spec.URL", Not(BeEmpty())))
 
 	Eventually(func(ctx context.Context) error {
-		status.MarkReady(recorder, res, "applied mock resource")
+		status.MarkReady(recorder, res, "applied mock util")
 		return status.UpdateStatus(ctx, patchHelper, res, recorder, time.Hour, nil)
 	}).WithContext(ctx).Should(Succeed())
 

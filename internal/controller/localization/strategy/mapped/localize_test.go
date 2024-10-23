@@ -15,9 +15,9 @@ import (
 	"github.com/openfluxcd/controller-manager/storage"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"ocm.software/ocm/api/utils/tarutils"
+	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
@@ -42,32 +42,27 @@ var _ = Describe("mapped localize", func() {
 		It("and map as well as successfully substitute correctly", func(ctx SpecContext) {
 			tmp := GinkgoT().TempDir()
 
-			var ls localizationTypes.LocalizationSourceWithStrategy
+			var ls localizationTypes.LocalizationConfig
 
 			By("reading in the localization config as source", func() {
 				configDir := filepath.Join(tmp, "config")
 				Expect(os.Mkdir(configDir, os.ModePerm|os.ModeDir))
 				configPath := filepath.Join(configDir, "localization.yaml")
 				Expect(os.WriteFile(configPath, configYAML, os.ModePerm)).To(Succeed())
-				ls = localizationTypes.NewLocalizationSourceWithStrategy(
-					&localizationTypes.MockedLocalizationReference{
-						Resource: &v1alpha1.Resource{
-							ObjectMeta: metav1.ObjectMeta{
-								Name:      "deployment-localization",
-								Namespace: "default",
-							},
-							Spec: v1alpha1.ResourceSpec{
-								ComponentRef: v1.LocalObjectReference{
-									Name: "component",
-								},
+				ls = &localizationTypes.MockedLocalizationReference{
+					Resource: &v1alpha1.Resource{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "deployment-localization",
+							Namespace: "default",
+						},
+						Spec: v1alpha1.ResourceSpec{
+							ComponentRef: v1.LocalObjectReference{
+								Name: "component",
 							},
 						},
-						Path: configPath,
 					},
-					v1alpha1.LocalizationStrategy{
-						Mapped: &v1alpha1.LocalizationStrategyMapped{},
-					},
-				)
+					Path: configPath,
+				}
 			})
 
 			var trgt localizationTypes.MockedLocalizationReference
@@ -96,7 +91,7 @@ var _ = Describe("mapped localize", func() {
 				}
 			})
 
-			var objs []runtime.Object
+			var objs []ctrl.Object
 			By("leveraging the introspective artifact access of component version lists in the referenced component", func() {
 				descriptorDir := filepath.Join(tmp, "descriptor")
 				Expect(os.Mkdir(descriptorDir, os.ModePerm|os.ModeDir))
@@ -112,7 +107,7 @@ var _ = Describe("mapped localize", func() {
 				descriptorListArtifactURL, err := filepath.Rel(tmp, descriptorListTGZPath)
 				Expect(err).ToNot(HaveOccurred())
 
-				objs = []runtime.Object{
+				objs = []ctrl.Object{
 					&v1alpha1.Component{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "component",
@@ -143,12 +138,18 @@ var _ = Describe("mapped localize", func() {
 			})
 
 			By("being able to reference and replace values in the target dynamically based on the component descriptor", func() {
-				clnt := fake.NewFakeClient(objs...)
+				schema := scheme.Scheme
+				Expect(v1alpha1.AddToScheme(schema)).To(Succeed())
+				Expect(artifactv1.AddToScheme(schema)).To(Succeed())
 
-				strg, err := storage.NewStorage(clnt, scheme.Scheme, tmp, "localhost", 0, 0)
+				clnt := fake.NewClientBuilder().WithScheme(schema).WithObjects(objs...).Build()
+
+				strg, err := storage.NewStorage(clnt, schema, tmp, "localhost", 0, 0)
 				Expect(err).ToNot(HaveOccurred())
 
-				path, err := Localize(ctx, localizationclient.NewClientWithLocalStorage(clnt, strg), strg, ls, &trgt)
+				base := GinkgoT().TempDir()
+
+				path, err := Localize(ctx, localizationclient.NewClientWithLocalStorage(clnt, strg, schema), strg, ls, &trgt, base)
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(path).ToNot(BeEmpty())

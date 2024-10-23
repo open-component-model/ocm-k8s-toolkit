@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"os"
 	"path/filepath"
 	"text/template"
 
@@ -15,6 +14,8 @@ import (
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"ocm.software/ocm/api/ocm/compdesc"
 	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	"ocm.software/ocm/api/ocm/ocmutils/localize"
@@ -22,17 +23,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	localizationclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/client"
-	loctypes "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/types"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/artifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/substitute"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/substitute/steps"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/util"
 )
 
-type Source interface {
+type Config interface {
 	UnpackIntoDirectory(path string) error
-	GetStrategy() v1alpha1.LocalizationStrategy
 	Open() (io.ReadCloser, error)
+}
+
+type LocalizationConfig interface {
+	GetRules() []v1alpha1.LocalizationRule
 }
 
 type Target interface {
@@ -41,41 +45,36 @@ type Target interface {
 }
 
 type Client interface {
-	localizationclient.Client
+	client.Reader
+	// Scheme returns the scheme this client is using.
+	Scheme() *runtime.Scheme
 }
 
-// Localize localizes the target with the source mapping rules according to localization.Config.
-// The target is localized in a temporary directory and the path to the directory is returned.
-// The caller is responsible for cleaning up the directory.
+// Localize localizes the target with the source mapping rules according to Config.
+// The target is localized in a temporary directory under basePath and the path to the directory is returned.
 //
 // The function returns an error if the localization itself (the substitution) or the resolution of any reference fails.
 func Localize(ctx context.Context,
 	clnt Client,
 	strg *storage.Storage,
-	src Source,
+	cfg Config,
 	trgt Target,
+	basePath string,
 ) (string, error) {
 	logger := log.FromContext(ctx)
 
-	// DO NOT Defer remove this, it will be removed once it has been tarred outside the localization.
-	// The contract of this function is to return the path to the directory where the localized target is stored.
-	basePath, err := os.MkdirTemp("", "mapped-")
-	if err != nil {
-		return "", fmt.Errorf("tmp dir error: %w", err)
-	}
-
 	targetDir := filepath.Join(basePath, "target")
-	if err := trgt.UnpackIntoDirectory(targetDir); errors.Is(err, loctypes.ErrAlreadyUnpacked) {
+	if err := trgt.UnpackIntoDirectory(targetDir); errors.Is(err, artifact.ErrAlreadyUnpacked) {
 		logger.Info("target was already present, reusing existing directory", "path", targetDir)
 	} else if err != nil {
-		return "", fmt.Errorf("failed to get target directory: %w", err)
+		return "", fmt.Errorf("failed to Get target directory: %w", err)
 	}
 
 	// TODO Workaround because the tarball from artifact storer uses a folder
-	// named after the resource name instead of storing at artifact root level as this is the expected format
+	// named after the util name instead of storing at artifact root level as this is the expected format
 	// for helm tgz archives.
 	// See issue: https://github.com/helm/helm/issues/5552
-	useSubDir, subDir, err := isHelmChart(targetDir)
+	useSubDir, subDir, err := util.IsHelmChart(targetDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to determine if target is a helm chart to traverse into subdirectory: %w", err)
 	}
@@ -84,9 +83,9 @@ func Localize(ctx context.Context,
 	}
 
 	// based on the source, determine the localization rules / config for localization
-	config, err := LocalizationConfigFromSource(src)
+	config, err := ParseLocalizationConfig(cfg, serializer.NewCodecFactory(clnt.Scheme()).UniversalDeserializer())
 	if err != nil {
-		return "", fmt.Errorf("failed to get config: %w", err)
+		return "", fmt.Errorf("failed to Get config: %w", err)
 	}
 
 	// now resolve the targetResource reference from the target, to "self-localize" the target with resources contained
@@ -97,7 +96,7 @@ func Localize(ctx context.Context,
 	targetResource := trgt.GetResource()
 	componentSet, componentDescriptor, err := ComponentDescriptorAndSetFromResource(ctx, clnt, strg, targetResource)
 	if err != nil {
-		return "", fmt.Errorf("failed to get component descriptor and set: %w", err)
+		return "", fmt.Errorf("failed to Get component descriptor and set: %w", err)
 	}
 
 	// now setup the substitution engine on our target directory
@@ -113,7 +112,7 @@ func Localize(ctx context.Context,
 	goTemplateRules := make([]v1alpha1.LocalizationRule, 0)
 	substitutionRules := make([]v1alpha1.LocalizationRule, 0)
 
-	for _, rule := range config.Spec.Rules {
+	for _, rule := range config.GetRules() {
 		if rule.Transformation.Type == v1alpha1.TransformationTypeGoTemplate {
 			goTemplateRules = append(goTemplateRules, rule)
 
@@ -164,56 +163,26 @@ func Localize(ctx context.Context,
 	return targetDir, nil
 }
 
-// isHelmChart is a hacky helper script because if the target is a Helm TGZ archive, it is stored in a subdirectory
-// instead of at Root. Because we do not want users to need to know this abstracted subdirectory
-// we have this function to tell us if we are dealing with one to correctly traverse into the directory
-// before applying any localizations. This is safe because we only have one subdirectory in the Helm TGZ archive.
-func isHelmChart(targetDir string) (bool, string, error) {
-	entries, err := os.ReadDir(targetDir)
-	if err != nil {
-		return false, "", fmt.Errorf("failed to read target directory: %w", err)
-	}
-
-	// if we have only one entry and it is a directory, we assume it is a Helm Chart (for now), otherwise abort
-	if len(entries) != 1 || !entries[0].IsDir() {
-		return false, "", nil
-	}
-
-	// now make sure we really deal with a helm chart by checking if the subdirectory contains a Chart.yaml in dir.
-	subDir := filepath.Join(targetDir, entries[0].Name())
-	dir, err := os.ReadDir(subDir)
-	if err != nil {
-		return false, "", fmt.Errorf("failed to read only target sub-directory to determine if we are dealing with a Helm Chart: %w", err)
-	}
-	for _, entry := range dir {
-		if entry.Name() == "Chart.yaml" {
-			return true, subDir, nil
-		}
-	}
-
-	return false, "", nil
-}
-
 func ComponentDescriptorAndSetFromResource(
 	ctx context.Context,
 	clnt client.Reader,
 	strg *storage.Storage,
 	targetResource *v1alpha1.Resource,
 ) (compdesc.ComponentVersionResolver, *compdesc.ComponentDescriptor, error) {
-	component, err := get[v1alpha1.Component](ctx, clnt, v1alpha1.ObjectKey{
+	component, err := util.Get[v1alpha1.Component](ctx, clnt, v1alpha1.ObjectKey{
 		Name:      targetResource.Spec.ComponentRef.Name,
 		Namespace: targetResource.Namespace,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get component: %w", err)
+		return nil, nil, fmt.Errorf("failed to Get component: %w", err)
 	}
-	artifact, err := getNamespaced[artifactv1.Artifact](ctx, clnt, component.Status.ArtifactRef, component.Namespace)
+	artifact, err := util.GetNamespaced[artifactv1.Artifact](ctx, clnt, component.Status.ArtifactRef, component.Namespace)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get artifact: %w", err)
+		return nil, nil, fmt.Errorf("failed to Get artifact: %w", err)
 	}
 	componentSet, err := ocm.GetComponentSetForArtifact(strg, artifact)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get component version set: %w", err)
+		return nil, nil, fmt.Errorf("failed to Get component version set: %w", err)
 	}
 	componentDescriptor, err := componentSet.LookupComponentVersion(component.Spec.Component, component.Status.Component.Version)
 	if err != nil {
@@ -225,7 +194,7 @@ func ComponentDescriptorAndSetFromResource(
 
 // OCMPathSubstitutionStep creates a substitution step that substitutes based on the given
 // localization rules. It processes rules at follows:
-// 1. Use the Resource reference from rule.Source as base
+// 1. Use the Resource reference from rule.Config as base
 // 2. Resolve it against the given component descriptor (with given resolver) into its actual value
 // 3. Based on the Transformation.Type, extract the value from the resolved reference
 // 4. Add the resolved value to the substitution list to be replaced.
@@ -246,15 +215,20 @@ func OCMPathSubstitutionStep(
 		unresolved := unresolvedRefFromSource(rule.Source.Resource.Name, extraID)
 		resolved, err := resolveResourceReferenceFromComponentDescriptor(unresolved, componentDescriptor, resolver)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get targetResource reference from component descriptor based on rule: %w", err)
+			return nil, fmt.Errorf("failed to Get targetResource reference from component descriptor based on rule: %w", err)
 		}
 
 		val, err := valueFromTransformation(resolved, rule.Transformation.Type)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get value for resolving a localization rule: %w", err)
+			return nil, fmt.Errorf("failed to Get value for resolving a localization rule: %w", err)
 		}
 
-		if err := substitutions.Add("resource-reference", rule.Target.FileTarget.Path, rule.Target.FileTarget.Value, val); err != nil {
+		if err := substitutions.Add(
+			"util-reference",
+			rule.Target.FileTarget.Path,
+			rule.Target.FileTarget.Value,
+			val,
+		); err != nil {
 			return nil, fmt.Errorf("failed to add resolved rule: %w", err)
 		}
 	}
@@ -267,7 +241,7 @@ func OCMPathSubstitutionStep(
 // It processes rules at follows:
 // 1. Create a set of go template functions (see GoTemplateFuncs) that can be used in any template
 // 2. Potentially add any additional data for the template to be filled with when specified in the rule
-// 3. Create a step for each rule that parses each file from the resource target path.
+// 3. Create a step for each rule that parses each file from the util target path.
 func GoTemplateSubstitutionStep(
 	funcs template.FuncMap,
 	goTemplateRules []v1alpha1.LocalizationRule,
@@ -296,10 +270,10 @@ func GoTemplateSubstitutionStep(
 }
 
 // OCMResourceReferenceTemplateFunc creates a template function map that can be used in a GoTemplate
-// to resolve a resource reference from a component descriptor.
+// to resolve a util reference from a component descriptor.
 // Example:
 // {{ OCMResourceReference "image" "Registry" }}
-// this looks up the resource reference "my-resource" in the component descriptor and returns the image reference
+// this looks up the util reference "my-util" in the component descriptor and returns the image reference
 // with v1alpha1.TransformationTypeRegistry, e.g. "registry.example.com/my-image" would become "registry.example.com".
 func OCMResourceReferenceTemplateFunc(
 	contextualResource *v1alpha1.Resource,
@@ -316,7 +290,7 @@ func OCMResourceReferenceTemplateFunc(
 			unresolved := unresolvedRefFromSource(resource, extraID)
 			resolved, err := resolveResourceReferenceFromComponentDescriptor(unresolved, descriptor, resolver)
 			if err != nil {
-				return "", fmt.Errorf("failed to get resource reference from component descriptor: %w", err)
+				return "", fmt.Errorf("failed to Get util reference from component descriptor: %w", err)
 			}
 
 			return valueFromTransformation(resolved, transformationType)
@@ -338,7 +312,7 @@ func KubernetesObjectReferenceTemplateFunc(
 		"KubernetesObjectReference": func(namespace, name string) (any, error) {
 			obj := &unstructured.Unstructured{}
 			if err := clnt.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, obj); err != nil {
-				return "", fmt.Errorf("failed to get object: %w", err)
+				return "", fmt.Errorf("failed to Get object: %w", err)
 			}
 
 			return obj.UnstructuredContent(), nil
