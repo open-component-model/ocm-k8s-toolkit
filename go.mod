@@ -14,7 +14,6 @@ require (
 	github.com/fluxcd/pkg/apis/meta v1.5.0
 	github.com/fluxcd/pkg/runtime v0.47.1
 	github.com/fluxcd/pkg/tar v0.8.0
-	github.com/go-jose/go-jose/v4 v4.0.4
 	github.com/google/go-containerregistry v0.20.2
 	github.com/mandelsoft/filepath v0.0.0-20240223090642-3e2777258aa3
 	github.com/mandelsoft/goutils v0.0.0-20241005173814-114fa825bbdc
@@ -155,6 +154,7 @@ require (
 	github.com/go-git/go-billy/v5 v5.5.0 // indirect
 	github.com/go-git/go-git/v5 v5.12.0 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.3 // indirect
+	github.com/go-jose/go-jose/v4 v4.0.4 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
