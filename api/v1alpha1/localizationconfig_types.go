@@ -43,84 +43,63 @@ type LocalizationConfigSpec struct {
 // Each rule contains a source reference, a target reference, and a transformation, with each of these fields
 // being omittable except for target.
 type LocalizationRule struct {
-	// The Source reference is used to declare where the data from the localization process should come from.
-	// For instance, when specifying a resource as the source, the localization will look inside the same component
-	// for the resource reference to resolve its access type.
-	//
-	// A resource reference will always look inside the same component as the component that is being localized.
-	//
-	// Example:
-	//   source:
-	//	   resource:
-	//	     name: image
-	//
-	Source LocalizationRuleSource `json:"source,omitempty"`
-	// The Target reference is used to identify the content inside the resource that should be localized.
-	// It will be used to determine where the localized content should be stored.
-	// To store the image fetched from source into a file called values.yaml inside deploy.image, one can use the following target:
-	//
-	// Example:
-	//   target:
-	//     file:
-	//       path: values.yaml
-	//       value: deploy.image
-	Target LocalizationRuleTarget `json:"target"`
-	// The Transformation is used to tell the Localization additional information about how to localize the content.
-	// The transformation can be used to digest the source in a different way or interpret the rule differently.
-	// A simple example of this is the TransformationTypeRepository,
-	// which extracts the registry portion of an image reference:
-	//  - transformation:
-	//      type: Repository
-	//
-	// The default TransformationType is TransformationTypeImage, which extracts the full image reference.
-	//
-	// Another example of this is the GoTemplate transformation, which allows the user to use Go templates to transform the source.
-	// With this transformation, one can switch from using the Target and fully customize their localization:
-	//  - transformation:
-	//      type: GoTemplate
-	//
-	// For more information on individual TransformationType's, see their respective documentation.
-	Transformation Transformation `json:"transformation,omitempty"`
+	Map        *LocalizationRuleMap        `json:"map,omitempty"`
+	GoTemplate *LocalizationRuleGoTemplate `json:"goTemplate,omitempty"`
 }
 
-// LocalizationRuleSource describes a source of information where the rule will get its data from.
-// Currently only LocalizationResourceReference is supported.
-type LocalizationRuleSource struct {
+type LocalizationRuleMap struct {
 	// The Resource reference is used to identify the resource that will be used to fill in the target reference.
 	// If one has a ComponentDescriptor with 2 resources, one can use this to reference between them.
 	// For a Component Descriptor with two resources, a "deployment-instruction" (to be localized)
 	// and an "image" (to be localized from), one can use the following source:
-	// - source:
+	//
+	//   map:
 	//     resource:
 	//       name: image
 	//
 	// The localization will then look into the corresponding descriptor and resolve its AccessType:
-	// components:
-	//  - component:
-	//      # ...
-	//      resources:
-	//        - access:
-	//            imageReference: ghcr.io/stefanprodan/podinfo:6.2.0
-	//            type: ociArtifact
-	//          name: image
-	//          relation: external
-	//          type: ociImage
-	//          version: 6.2.0
-	//      sources: []
-	//      version: 1.0.0
-	//    meta:
-	//      schemaVersion: v2
+	//   components:
+	//    - component:
+	//        # ...
+	//        resources:
+	//          - access:
+	//              imageReference: ghcr.io/stefanprodan/podinfo:6.2.0
+	//              type: ociArtifact
+	//            name: image
+	//            relation: external
+	//            type: ociImage
+	//            version: 6.2.0
+	//        sources: []
+	//        version: 1.0.0
+	//      meta:
+	//        schemaVersion: v2
 	//
 	// This would then lead to a value of "ghcr.io/stefanprodan/podinfo:6.2.0".
 	Resource LocalizationResourceReference `json:"resource"`
-}
-
-// LocalizationRuleTarget describes a target where the rule will store its data.
-// Currently only FileTarget is supported.
-type LocalizationRuleTarget struct {
 	// The File target is used to identify the file where the rule will apply its sources to after considering
 	// the transformation.
 	FileTarget FileTarget `json:"file"`
+	// The Transformation is used to tell the Localization additional information about how to localize the content.
+	// The transformation can be used to digest the source in a different way or interpret the rule differently.
+	// A simple example of this is the TransformationTypeRepository,
+	// which extracts the registry portion of an image reference:
+	//
+	// Example:
+	//   map:
+	//     transformation:
+	//       type: Repository
+	//
+	// The default TransformationType is TransformationTypeImage, which extracts the full image reference.
+	// For more information on individual TransformationType's, see their respective documentation.
+	Transformation Transformation `json:"transformation,omitempty"`
+}
+
+type LocalizationRuleGoTemplate struct {
+	// The File target is used to identify the file where the rule will apply its sources to after considering
+	// the transformation.
+	FileTarget FileTarget            `json:"file"`
+	Data       *apiextensionsv1.JSON `json:"data,omitempty"`
+	Delimiters *GoTemplateDelimiters `json:"delimiters,omitempty"`
 }
 
 // FileTarget describes a file inside the Resource that is currently being localized.
@@ -129,12 +108,9 @@ type LocalizationRuleTarget struct {
 // If one wants to store the image fetched from source into a file called values.yaml inside deploy.image,
 // one can use the following value:
 //
-// Example:
-//
-//	  target:
-//		   file:
-//		     value: deploy.image
-//		     path: values.yaml
+//	 file:
+//	   value: deploy.image
+//		  path: values.yaml
 type FileTarget struct {
 	// The Path is the filepath (relative to the Resource) to the file inside the resource.
 	Path string `json:"path"`
@@ -143,8 +119,8 @@ type FileTarget struct {
 }
 
 type Transformation struct {
-	Type       TransformationType        `json:"type"`
-	GoTemplate *GoTemplateTransformation `json:"goTemplate,omitempty"`
+	//+kubebuilder:default=Image
+	Type TransformationType `json:"type,omitempty"`
 }
 
 type TransformationType string
@@ -175,17 +151,7 @@ const (
 	// Example:
 	//   "docker.io/library/nginx:latest" -> "latest".
 	TransformationTypeTag TransformationType = "Tag"
-
-	// TransformationTypeGoTemplate is a transformation that uses Go templates.
-	// This transformation type does not support source references or target path references.
-	// TODO Add support for this case so someone could write something like "{{ .Repository }}{{ .Tag }}".
-	TransformationTypeGoTemplate TransformationType = "GoTemplate"
 )
-
-type GoTemplateTransformation struct {
-	Data       *apiextensionsv1.JSON `json:"data,omitempty"`
-	Delimiters *GoTemplateDelimiters `json:"delimiters,omitempty"`
-}
 
 type GoTemplateDelimiters struct {
 	Left  string `json:"left"`

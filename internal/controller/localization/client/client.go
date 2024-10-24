@@ -55,40 +55,29 @@ func (clnt *localStorageBackedClient) GetLocalizationTarget(
 	ctx context.Context,
 	ref v1alpha1.ConfigurationReference,
 ) (types.LocalizationTarget, error) {
-	mapped := map[string]func(context.Context, v1alpha1.ConfigurationReference) (types.LocalizationTarget, error){
-		"Resource": func(ctx context.Context, reference v1alpha1.ConfigurationReference) (types.LocalizationTarget, error) {
-			return artifactutil.GetContentBackedByStorageAndResource(ctx, clnt.Reader, clnt.Storage, reference.NamespacedObjectKindReference)
-		},
+	switch ref.Kind {
+	case "Resource":
+		return artifactutil.GetContentBackedByStorageAndResource(ctx, clnt.Reader, clnt.Storage, ref.NamespacedObjectKindReference)
+	default:
+		return nil, fmt.Errorf("unsupported localization target kind: %s", ref.Kind)
 	}
-
-	if fn, ok := mapped[ref.Kind]; ok {
-		return fn(ctx, ref)
-	}
-
-	return nil, fmt.Errorf("unsupported localization target kind: %s", ref.Kind)
 }
 
 func (clnt *localStorageBackedClient) GetLocalizationConfig(
 	ctx context.Context,
 	ref v1alpha1.ConfigurationReference,
-) (source types.LocalizationConfig, err error) {
-	mapped := map[string]func(context.Context, v1alpha1.ConfigurationReference) (types.LocalizationConfig, error){
-		"Resource": func(ctx context.Context, reference v1alpha1.ConfigurationReference) (types.LocalizationConfig, error) {
-			return artifactutil.GetContentBackedByStorageAndResource(ctx, clnt.Reader, clnt.Storage, reference.NamespacedObjectKindReference)
-		},
-		"LocalizationConfig": func(ctx context.Context, reference v1alpha1.ConfigurationReference) (types.LocalizationConfig, error) {
-			return GetFromLocalizationConfigInKubernetes(ctx, clnt, reference)
-		},
+) (types.LocalizationConfig, error) {
+	switch ref.Kind {
+	case "Resource":
+		return artifactutil.GetContentBackedByStorageAndResource(ctx, clnt.Reader, clnt.Storage, ref.NamespacedObjectKindReference)
+	case "LocalizationConfig":
+		return GetLocalizationConfigFromKubernetes(ctx, clnt, ref)
+	default:
+		return nil, fmt.Errorf("unsupported localization config kind: %s", ref.Kind)
 	}
-
-	if fn, ok := mapped[ref.Kind]; ok {
-		return fn(ctx, ref)
-	}
-
-	return nil, fmt.Errorf("unsupported localization config kind: %s", ref.Kind)
 }
 
-func GetFromLocalizationConfigInKubernetes(ctx context.Context, clnt client.Reader, reference v1alpha1.ConfigurationReference) (types.LocalizationConfig, error) {
+func GetLocalizationConfigFromKubernetes(ctx context.Context, clnt client.Reader, reference v1alpha1.ConfigurationReference) (types.LocalizationConfig, error) {
 	if reference.APIVersion == "" {
 		reference.APIVersion = v1alpha1.GroupVersion.String()
 	}
@@ -101,7 +90,7 @@ func GetFromLocalizationConfigInKubernetes(ctx context.Context, clnt client.Read
 		Namespace: reference.Namespace,
 		Name:      reference.Name,
 	}, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to fetch localization source %s: %w", reference.Name, err)
+		return nil, fmt.Errorf("failed to fetch localization config %s: %w", reference.Name, err)
 	}
 
 	return &LocalizationConfig{&cfg}, nil

@@ -64,15 +64,6 @@ func TestValueFromTransformation(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, "example.com", result)
 	})
-
-	// Edge case
-	t.Run("returns error for unsupported transformation type", func(t *testing.T) {
-		ref := "example.com/repo/image:tag"
-		transformationType := v1alpha1.TransformationTypeGoTemplate
-
-		_, err := valueFromTransformation(ref, transformationType)
-		assert.Error(t, err)
-	})
 }
 
 func TestParseLocalizationConfig(t *testing.T) {

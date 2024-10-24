@@ -84,10 +84,10 @@ func GetAndVerifyArtifactForCollectable(
 // CollectableHasValidArtifactBasedOnFileNameDigest verifies if the artifact for the given collectable is valid.
 // This means that the artifact must be present in the cluster the reader is connected to and
 // the artifact must be present in strg.
-// Additionally the digest of the artifact must be different from the file name of the artifact.
+// Additionally, the digest of the artifact must be different from the file name of the artifact.
 //
 // This method can be used to determine if an artifact needs an update or not because an artifact that does not
-// fullfil these conditions can be considered out of date (not in the cluster, not in the storage, or mismatching digest).
+// fulfill these conditions can be considered out of date (not in the cluster, not in the storage, or mismatching digest).
 //
 // Prerequisite for this method is that the artifact name is based on its original digest.
 func CollectableHasValidArtifactBasedOnFileNameDigest(

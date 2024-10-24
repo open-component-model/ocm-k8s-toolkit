@@ -42,14 +42,14 @@ var _ = Describe("mapped localize", func() {
 		It("and map as well as successfully substitute correctly", func(ctx SpecContext) {
 			tmp := GinkgoT().TempDir()
 
-			var ls localizationTypes.LocalizationConfig
+			var cfg localizationTypes.LocalizationConfig
 
 			By("reading in the localization config as source", func() {
 				configDir := filepath.Join(tmp, "config")
 				Expect(os.Mkdir(configDir, os.ModePerm|os.ModeDir))
 				configPath := filepath.Join(configDir, "localization.yaml")
 				Expect(os.WriteFile(configPath, configYAML, os.ModePerm)).To(Succeed())
-				ls = &localizationTypes.MockedLocalizationReference{
+				cfg = &localizationTypes.MockedLocalizationReference{
 					Resource: &v1alpha1.Resource{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      "deployment-localization",
@@ -149,7 +149,7 @@ var _ = Describe("mapped localize", func() {
 
 				base := GinkgoT().TempDir()
 
-				path, err := Localize(ctx, localizationclient.NewClientWithLocalStorage(clnt, strg, schema), strg, ls, &trgt, base)
+				path, err := Localize(ctx, localizationclient.NewClientWithLocalStorage(clnt, strg, schema), strg, cfg, &trgt, base)
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(path).ToNot(BeEmpty())

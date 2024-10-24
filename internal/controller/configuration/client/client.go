@@ -44,29 +44,19 @@ func (clnt *localStorageBackedClient) Scheme() *runtime.Scheme {
 }
 
 func (clnt *localStorageBackedClient) GetConfigurationTarget(ctx context.Context, ref v1alpha1.ConfigurationReference) (target types.ConfigurationTarget, err error) {
-	mapped := map[string]func(context.Context, v1alpha1.ConfigurationReference) (types.ConfigurationTarget, error){
-		"Resource": func(ctx context.Context, reference v1alpha1.ConfigurationReference) (types.ConfigurationTarget, error) {
-			return artifactutil.GetContentBackedByStorageAndResource(ctx, clnt.Reader, clnt.Storage, reference.NamespacedObjectKindReference)
-		},
+	switch ref.Kind {
+	case "Resource":
+		return artifactutil.GetContentBackedByStorageAndResource(ctx, clnt.Reader, clnt.Storage, ref.NamespacedObjectKindReference)
+	default:
+		return nil, fmt.Errorf("unsupported configuration target kind: %s", ref.Kind)
 	}
-
-	if fn, ok := mapped[ref.Kind]; ok {
-		return fn(ctx, ref)
-	}
-
-	return nil, fmt.Errorf("unsupported configuration target kind: %s", ref.Kind)
 }
 
 func (clnt *localStorageBackedClient) GetConfigurationSource(ctx context.Context, ref v1alpha1.ConfigurationReference) (source types.ConfigurationSource, err error) {
-	mapped := map[string]func(context.Context, v1alpha1.ConfigurationReference) (types.ConfigurationSource, error){
-		"Resource": func(ctx context.Context, reference v1alpha1.ConfigurationReference) (types.ConfigurationSource, error) {
-			return artifactutil.GetContentBackedByStorageAndResource(ctx, clnt.Reader, clnt.Storage, reference.NamespacedObjectKindReference)
-		},
+	switch ref.Kind {
+	case "Resource":
+		return artifactutil.GetContentBackedByStorageAndResource(ctx, clnt.Reader, clnt.Storage, ref.NamespacedObjectKindReference)
+	default:
+		return nil, fmt.Errorf("unsupported configuration source kind: %s", ref.Kind)
 	}
-
-	if fn, ok := mapped[ref.Kind]; ok {
-		return fn(ctx, ref)
-	}
-
-	return nil, fmt.Errorf("unsupported configuration source kind: %s", ref.Kind)
 }

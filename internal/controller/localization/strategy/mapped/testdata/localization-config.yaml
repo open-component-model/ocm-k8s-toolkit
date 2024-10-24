@@ -4,22 +4,18 @@ metadata:
   name: deployment-localization
 spec:
   rules:
-  - source:
+  - map:
       resource:
         name: image
-    target:
       file:
         path: values.yaml
         value: deploy.image
-  - target:
+  - goTemplate:
       file:
         path: templates/deployment.yaml
-    transformation:
-      type: GoTemplate
-      goTemplate:
-        delimiters:
-          left: "ocm{"
-          right: "}"
-        data:
-          Replicas: 3
+      delimiters:
+        left: "ocm{"
+        right: "}"
+      data:
+        Replicas: 3
 

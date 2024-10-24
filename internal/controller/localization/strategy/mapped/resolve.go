@@ -97,8 +97,6 @@ func valueFromTransformation(ref string, transformationType v1alpha1.Transformat
 		value = parsed.Identifier()
 	case v1alpha1.TransformationTypeImageNoTag:
 		value = parsed.Context().Name()
-	case v1alpha1.TransformationTypeGoTemplate:
-		return "", fmt.Errorf("unsupported transformation type for reference resolution: %s", transformationType)
 	case v1alpha1.TransformationTypeImage:
 		// By default treat the reference as a full image reference
 		fallthrough

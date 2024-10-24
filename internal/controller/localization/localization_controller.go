@@ -46,10 +46,6 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *Reconciler) GetStorage() *storage.Storage {
-	return r.Storage
-}
-
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=localizedresources,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=localizedresources/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=localizedresources/finalizers,verbs=update
@@ -70,47 +66,44 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	if !localization.GetDeletionTimestamp().IsZero() {
-		return ctrl.Result{}, r.reconcileDeletion(ctx, localization)
+		// TODO: This is a temporary solution until a artifact-reconciler is written to handle the deletion of artifacts
+		if err := ocm.RemoveArtifactForCollectable(ctx, r.Client, r.Storage, localization); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to remove artifact: %w", err)
+		}
+
+		if removed := controllerutil.RemoveFinalizer(localization, v1alpha1.ArtifactFinalizer); removed {
+			if err := r.Update(ctx, localization); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
+			}
+		}
+
+		return ctrl.Result{}, nil
 	}
 
 	if added := controllerutil.AddFinalizer(localization, v1alpha1.ArtifactFinalizer); added {
-		return ctrl.Result{Requeue: true}, r.Update(ctx, localization)
+		if err := r.Update(ctx, localization); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
+		}
+
+		return ctrl.Result{Requeue: true}, nil
 	}
 
-	patchHelper := patch.NewSerialPatcher(localization, r.Client)
-
-	// Always attempt to patch the object and status after each reconciliation.
-	defer func() {
-		if statusErr := status.UpdateStatus(ctx, patchHelper, localization, r.EventRecorder, localization.Spec.Interval.Duration, err); statusErr != nil {
-			err = errors.Join(err, statusErr)
-		}
-	}()
-
-	return r.reconcileExists(ctx, localization)
+	return r.reconcileWithStatusUpdate(ctx, localization)
 }
 
-func (r *Reconciler) reconcileDeletion(ctx context.Context, localization *v1alpha1.LocalizedResource) error {
-	artifact, err := ocm.GetAndVerifyArtifactForCollectable(ctx, r, r.Storage, localization)
-	if client.IgnoreNotFound(err) != nil {
-		return fmt.Errorf("failed to get artifact: %w", err)
-	}
-	if artifact == nil {
-		log.FromContext(ctx).Info("artifact belonging to localization not found, skipping deletion")
+func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, localization *v1alpha1.LocalizedResource) (ctrl.Result, error) {
+	patchHelper := patch.NewSerialPatcher(localization, r.Client)
 
-		return nil
-	}
-	if err := r.Storage.Remove(artifact); err != nil {
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("failed to remove artifact: %w", err)
-		}
-	}
-	if removed := controllerutil.RemoveFinalizer(localization, v1alpha1.ArtifactFinalizer); removed {
-		if err := r.Update(ctx, localization); err != nil {
-			return fmt.Errorf("failed to remove finalizer: %w", err)
-		}
+	result, err := r.reconcileExists(ctx, localization)
+
+	if err = errors.Join(
+		err,
+		status.UpdateStatus(ctx, patchHelper, localization, r.EventRecorder, localization.Spec.Interval.Duration, err),
+	); err != nil {
+		return ctrl.Result{}, err
 	}
 
-	return nil
+	return result, nil
 }
 
 func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1.LocalizedResource) (ctrl.Result, error) {
@@ -172,10 +165,16 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 
 	var localized string
 	if !hasValidArtifact {
-		localize := func(basePath string) (string, error) {
-			return mapped.Localize(ctx, loc, r.Storage, cfg, targetBackedByResource, basePath)
+		basePath, err := os.MkdirTemp("", "localized-")
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to create temporary directory to perform localization: %w", err)
 		}
-		if localized, err = runInTempDir(localize); err != nil {
+		defer func() {
+			if err := os.RemoveAll(basePath); err != nil {
+				logger.Error(err, "failed to remove temporary directory after localization completed", "path", basePath)
+			}
+		}()
+		if localized, err = mapped.Localize(ctx, loc, r.Storage, cfg, targetBackedByResource, basePath); err != nil {
 			status.MarkNotReady(r.EventRecorder, localization, ReasonLocalizationFailed, err.Error())
 			logger.Error(err, "failed to localize", "interval", localization.Spec.Interval.Duration)
 
@@ -204,27 +203,18 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 				Namespace: artifact.Namespace,
 			}
 
-			return os.RemoveAll(dir)
+			return nil
 		},
 	); err != nil {
 		status.MarkNotReady(r.EventRecorder, localization, v1alpha1.ReconcileArtifactFailedReason, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to reconcile artifact: %w", err)
 	}
 
 	logger.Info("localization successful", "artifact", localization.Status.ArtifactRef)
 	status.MarkReady(r.EventRecorder, localization, "localized successfully")
 
 	return ctrl.Result{RequeueAfter: localization.Spec.Interval.Duration}, nil
-}
-
-func runInTempDir(withinPath func(basePath string) (string, error)) (_ string, err error) {
-	basePath, err := os.MkdirTemp("", "localization-")
-	if err != nil {
-		return "", fmt.Errorf("tmp dir error: %w", err)
-	}
-	defer func() {
-		err = errors.Join(err, os.RemoveAll(basePath))
-	}()
-	return withinPath(basePath)
 }
 
 // ArtifactContentBackedByResource is an artifact content that is backed by a resource.

@@ -51,69 +51,20 @@ spec:
                     Each rule contains a source reference, a target reference, and a transformation, with each of these fields
                     being omittable except for target.
                   properties:
-                    source:
-                      description: "The Source reference is used to declare where
-                        the data from the localization process should come from.\nFor
-                        instance, when specifying a resource as the source, the localization
-                        will look inside the same component\nfor the resource reference
-                        to resolve its access type.\n\nA resource reference will always
-                        look inside the same component as the component that is being
-                        localized.\n\nExample:\n  source:\n\t   resource:\n\t     name:
-                        image"
+                    goTemplate:
                       properties:
-                        resource:
-                          description: |-
-                            The Resource reference is used to identify the resource that will be used to fill in the target reference.
-                            If one has a ComponentDescriptor with 2 resources, one can use this to reference between them.
-                            For a Component Descriptor with two resources, a "deployment-instruction" (to be localized)
-                            and an "image" (to be localized from), one can use the following source:
-                            - source:
-                                resource:
-                                  name: image
-
-                            The localization will then look into the corresponding descriptor and resolve its AccessType:
-                            components:
-                             - component:
-                                 # ...
-                                 resources:
-                                   - access:
-                                       imageReference: ghcr.io/stefanprodan/podinfo:6.2.0
-                                       type: ociArtifact
-                                     name: image
-                                     relation: external
-                                     type: ociImage
-                                     version: 6.2.0
-                                 sources: []
-                                 version: 1.0.0
-                               meta:
-                                 schemaVersion: v2
-
-                            This would then lead to a value of "ghcr.io/stefanprodan/podinfo:6.2.0".
+                        data:
+                          x-kubernetes-preserve-unknown-fields: true
+                        delimiters:
                           properties:
-                            extraIdentity:
-                              additionalProperties:
-                                type: string
-                              type: object
-                            name:
+                            left:
+                              type: string
+                            right:
                               type: string
                           required:
-                          - name
+                          - left
+                          - right
                           type: object
-                      required:
-                      - resource
-                      type: object
-                    target:
-                      description: |-
-                        The Target reference is used to identify the content inside the resource that should be localized.
-                        It will be used to determine where the localized content should be stored.
-                        To store the image fetched from source into a file called values.yaml inside deploy.image, one can use the following target:
-
-                        Example:
-                          target:
-                            file:
-                              path: values.yaml
-                              value: deploy.image
-                      properties:
                         file:
                           description: |-
                             The File target is used to identify the file where the rule will apply its sources to after considering
@@ -133,46 +84,86 @@ spec:
                       required:
                       - file
                       type: object
-                    transformation:
-                      description: |-
-                        The Transformation is used to tell the Localization additional information about how to localize the content.
-                        The transformation can be used to digest the source in a different way or interpret the rule differently.
-                        A simple example of this is the TransformationTypeRepository,
-                        which extracts the registry portion of an image reference:
-                         - transformation:
-                             type: Repository
-
-                        The default TransformationType is TransformationTypeImage, which extracts the full image reference.
-
-                        Another example of this is the GoTemplate transformation, which allows the user to use Go templates to transform the source.
-                        With this transformation, one can switch from using the Target and fully customize their localization:
-                         - transformation:
-                             type: GoTemplate
-
-                        For more information on individual TransformationType's, see their respective documentation.
+                    map:
                       properties:
-                        goTemplate:
+                        file:
+                          description: |-
+                            The File target is used to identify the file where the rule will apply its sources to after considering
+                            the transformation.
                           properties:
-                            data:
-                              x-kubernetes-preserve-unknown-fields: true
-                            delimiters:
-                              properties:
-                                left:
-                                  type: string
-                                right:
-                                  type: string
-                              required:
-                              - left
-                              - right
-                              type: object
+                            path:
+                              description: The Path is the filepath (relative to the
+                                Resource) to the file inside the resource.
+                              type: string
+                            value:
+                              description: The Value is a reference to the content
+                                that should be localized.
+                              type: string
+                          required:
+                          - path
                           type: object
-                        type:
-                          type: string
+                        resource:
+                          description: |-
+                            The Resource reference is used to identify the resource that will be used to fill in the target reference.
+                            If one has a ComponentDescriptor with 2 resources, one can use this to reference between them.
+                            For a Component Descriptor with two resources, a "deployment-instruction" (to be localized)
+                            and an "image" (to be localized from), one can use the following source:
+
+                              map:
+                                resource:
+                                  name: image
+
+                            The localization will then look into the corresponding descriptor and resolve its AccessType:
+                              components:
+                               - component:
+                                   # ...
+                                   resources:
+                                     - access:
+                                         imageReference: ghcr.io/stefanprodan/podinfo:6.2.0
+                                         type: ociArtifact
+                                       name: image
+                                       relation: external
+                                       type: ociImage
+                                       version: 6.2.0
+                                   sources: []
+                                   version: 1.0.0
+                                 meta:
+                                   schemaVersion: v2
+
+                            This would then lead to a value of "ghcr.io/stefanprodan/podinfo:6.2.0".
+                          properties:
+                            extraIdentity:
+                              additionalProperties:
+                                type: string
+                              type: object
+                            name:
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        transformation:
+                          description: |-
+                            The Transformation is used to tell the Localization additional information about how to localize the content.
+                            The transformation can be used to digest the source in a different way or interpret the rule differently.
+                            A simple example of this is the TransformationTypeRepository,
+                            which extracts the registry portion of an image reference:
+
+                            Example:
+                              map:
+                                transformation:
+                                  type: Repository
+
+                            The default TransformationType is TransformationTypeImage, which extracts the full image reference.
+                            For more information on individual TransformationType's, see their respective documentation.
+                          properties:
+                            type:
+                              default: Image
+                              type: string
+                          type: object
                       required:
-                      - type
+                      - file
+                      - resource
                       type: object
-                  required:
-                  - target
                   type: object
                 type: array
             type: object

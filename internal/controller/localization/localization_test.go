@@ -55,7 +55,7 @@ const (
 	Namespace         = "test-namespace"
 	RepositoryObj     = "test-repository"
 	ComponentObj      = "test-component"
-	SourceResourceObj = "source-test-util"
+	CfgResourceObj    = "cfg-test-util"
 	TargetResourceObj = "target-test-util"
 	Localization      = "test-localization"
 )
@@ -66,7 +66,7 @@ var _ = Describe("LocalizationRules Controller", func() {
 		env *ocmbuilder.Builder
 
 		targetResource *v1alpha1.Resource
-		sourceResource *v1alpha1.Resource
+		cfgResource    *v1alpha1.Resource
 	)
 
 	BeforeEach(func() {
@@ -118,8 +118,8 @@ var _ = Describe("LocalizationRules Controller", func() {
 		DeferCleanup(func(ctx SpecContext) {
 			Expect(k8sClient.Delete(ctx, targetResource, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
 		})
-		sourceResource = SetupMockResourceWithData(ctx,
-			SourceResourceObj,
+		cfgResource = SetupMockResourceWithData(ctx,
+			CfgResourceObj,
 			Namespace,
 			options{
 				basePath: tmp,
@@ -131,14 +131,14 @@ var _ = Describe("LocalizationRules Controller", func() {
 			},
 		)
 		DeferCleanup(func(ctx SpecContext) {
-			Expect(k8sClient.Delete(ctx, sourceResource, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
+			Expect(k8sClient.Delete(ctx, cfgResource, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
 		})
 
 		localization := SetupLocalizedResource(ctx, map[string]string{
 			"Namespace":          Namespace,
 			"Name":               Localization,
 			"TargetResourceName": targetResource.Name,
-			"SourceResourceName": sourceResource.Name,
+			"ConfigResourceName": cfgResource.Name,
 		})
 		DeferCleanup(func(ctx SpecContext) {
 			Expect(k8sClient.Delete(ctx, localization, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
@@ -178,9 +178,9 @@ var _ = Describe("LocalizationRules Controller", func() {
 type options struct {
 	basePath string
 
-	// option one to create a util: directly pass the data
+	// option one to create a resource: directly pass the data
 	data io.Reader
-	// option two to create a util: pass the path to the data
+	// option two to create a resource: pass the path to the data
 	dataPath string
 
 	componentRef v1alpha1.ObjectKey

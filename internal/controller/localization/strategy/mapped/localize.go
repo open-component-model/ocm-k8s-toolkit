@@ -2,6 +2,7 @@ package mapped
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,7 +11,6 @@ import (
 	"text/template"
 
 	"github.com/Masterminds/sprig/v3"
-	"github.com/go-jose/go-jose/v4/json"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -109,16 +109,18 @@ func Localize(ctx context.Context,
 	// The order of execution is
 	// 1. GoTemplate rules applied in order of occurrence as individual steps
 	// 2. Substitution rules applied at the end as one step that goes over all files
-	goTemplateRules := make([]v1alpha1.LocalizationRule, 0)
-	substitutionRules := make([]v1alpha1.LocalizationRule, 0)
+	goTemplateRules := make([]*v1alpha1.LocalizationRuleGoTemplate, 0)
+	substitutionRules := make([]*v1alpha1.LocalizationRuleMap, 0)
 
 	for _, rule := range config.GetRules() {
-		if rule.Transformation.Type == v1alpha1.TransformationTypeGoTemplate {
-			goTemplateRules = append(goTemplateRules, rule)
+		if rule.GoTemplate != nil {
+			goTemplateRules = append(goTemplateRules, rule.GoTemplate)
 
 			continue
 		}
-		substitutionRules = append(substitutionRules, rule)
+		if rule.Map != nil {
+			substitutionRules = append(substitutionRules, rule.Map)
+		}
 	}
 
 	if len(goTemplateRules) > 0 {
@@ -199,7 +201,7 @@ func ComponentDescriptorAndSetFromResource(
 // 3. Based on the Transformation.Type, extract the value from the resolved reference
 // 4. Add the resolved value to the substitution list to be replaced.
 func OCMPathSubstitutionStep(
-	substitutionRules []v1alpha1.LocalizationRule,
+	substitutionRules []*v1alpha1.LocalizationRuleMap,
 	targetResource *v1alpha1.Resource,
 	componentDescriptor *compdesc.ComponentDescriptor,
 	resolver compdesc.ComponentVersionResolver,
@@ -212,7 +214,7 @@ func OCMPathSubstitutionStep(
 	}
 
 	for _, rule := range substitutionRules {
-		unresolved := unresolvedRefFromSource(rule.Source.Resource.Name, extraID)
+		unresolved := unresolvedRefFromSource(rule.Resource.Name, extraID)
 		resolved, err := resolveResourceReferenceFromComponentDescriptor(unresolved, componentDescriptor, resolver)
 		if err != nil {
 			return nil, fmt.Errorf("failed to Get targetResource reference from component descriptor based on rule: %w", err)
@@ -225,8 +227,8 @@ func OCMPathSubstitutionStep(
 
 		if err := substitutions.Add(
 			"util-reference",
-			rule.Target.FileTarget.Path,
-			rule.Target.FileTarget.Value,
+			rule.FileTarget.Path,
+			rule.FileTarget.Value,
 			val,
 		); err != nil {
 			return nil, fmt.Errorf("failed to add resolved rule: %w", err)
@@ -244,23 +246,24 @@ func OCMPathSubstitutionStep(
 // 3. Create a step for each rule that parses each file from the util target path.
 func GoTemplateSubstitutionStep(
 	funcs template.FuncMap,
-	goTemplateRules []v1alpha1.LocalizationRule,
+	goTemplateRules []*v1alpha1.LocalizationRuleGoTemplate,
 ) ([]steps.Step, error) {
 	stepsFromRules := make([]steps.Step, 0, len(goTemplateRules))
 	for _, rule := range goTemplateRules {
 		var data map[string]any
-		if rule.Transformation.GoTemplate != nil {
-			if err := json.Unmarshal(rule.Transformation.GoTemplate.Data.Raw, &data); err != nil {
+		if rule.Data != nil {
+			if err := json.Unmarshal(rule.Data.Raw, &data); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal gotemplate data for transformation: %w", err)
 			}
 		}
+
 		step := steps.NewGoTemplateBasedSubstitutionStep(
-			rule.Target.FileTarget.Path,
+			rule.FileTarget.Path,
 			funcs,
 			data,
 			&steps.Delimiters{
-				Left:  rule.Transformation.GoTemplate.Delimiters.Left,
-				Right: rule.Transformation.GoTemplate.Delimiters.Right,
+				Left:  rule.Delimiters.Left,
+				Right: rule.Delimiters.Right,
 			},
 		)
 		stepsFromRules = append(stepsFromRules, step)
