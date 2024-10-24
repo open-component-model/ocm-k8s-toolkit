@@ -120,7 +120,7 @@ func (r *Reconciler) reconcileOCM(ctx context.Context, ocmRepo *v1alpha1.OCMRepo
 	return result, nil
 }
 
-func (r *Reconciler) reconcileRepository(ctx context.Context, octx ocmctx.Context, ocmRepo *v1alpha1.OCMRepository) (ctrl.Result, error) { //nolint:unparam // needed
+func (r *Reconciler) reconcileRepository(ctx context.Context, octx ocmctx.Context, ocmRepo *v1alpha1.OCMRepository) (ctrl.Result, error) {
 	session := ocmctx.NewSession(datacontext.NewSession())
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
