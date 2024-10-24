@@ -32,10 +32,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/rerror"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
@@ -52,32 +52,47 @@ type Reconciler struct {
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmrepositories/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmrepositories/finalizers,verbs=update
 
-func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	ocmRepo := &v1alpha1.OCMRepository{}
 	if err := r.Get(ctx, req.NamespacedName, ocmRepo); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	return r.reconcileWithStatusUpdate(ctx, ocmRepo)
+}
+
+func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, ocmRepo *v1alpha1.OCMRepository) (ctrl.Result, error) {
 	patchHelper := patch.NewSerialPatcher(ocmRepo, r.Client)
 
-	// Always attempt to patch the object and status after each reconciliation.
-	defer func() {
-		if perr := status.UpdateStatus(ctx, patchHelper, ocmRepo, r.EventRecorder, ocmRepo.GetRequeueAfter(), retErr); perr != nil {
-			retErr = rerror.AsRetryableError(errors.Join(retErr, perr))
-		}
-	}()
+	result, err := r.reconcileExists(ctx, ocmRepo)
 
+	err = errors.Join(err, status.UpdateStatus(ctx, patchHelper, ocmRepo, r.EventRecorder, ocmRepo.GetRequeueAfter(), err))
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return result, nil
+}
+
+func (r *Reconciler) reconcileExists(ctx context.Context, ocmRepo *v1alpha1.OCMRepository) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	if ocmRepo.GetDeletionTimestamp() != nil {
 		if !controllerutil.ContainsFinalizer(ocmRepo, repositoryFinalizer) {
 			return ctrl.Result{}, nil
 		}
 
-		return ctrl.Result{}, r.reconcileDeleteRepository(ctx, ocmRepo)
+		return r.reconcileDeleteRepository(ctx, ocmRepo)
 	}
 
-	// AddFinalizer is not present already.
-	controllerutil.AddFinalizer(ocmRepo, repositoryFinalizer)
+	// AddFinalizer if not present already.
+	if added := controllerutil.AddFinalizer(ocmRepo, repositoryFinalizer); added {
+		err := r.Update(ctx, ocmRepo)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
+		}
+
+		return ctrl.Result{Requeue: true}, nil
+	}
 
 	if ocmRepo.Spec.Suspend {
 		logger.Info("component is suspended, skipping reconciliation")
@@ -85,32 +100,39 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, nil
 	}
 
-	return rerror.EvaluateReconcileError(r.reconcile(ctx, ocmRepo))
+	return r.reconcileOCM(ctx, ocmRepo)
 }
 
-func (r *Reconciler) reconcile(ctx context.Context, ocmRepo *v1alpha1.OCMRepository) (_ ctrl.Result, retErr rerror.ReconcileError) {
-	var rerr rerror.ReconcileError
-	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
-	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
-	// instance and not at the global default context variable.
+func (r *Reconciler) reconcileOCM(ctx context.Context, ocmRepo *v1alpha1.OCMRepository) (ctrl.Result, error) {
 	octx := ocmctx.New(datacontext.MODE_EXTENDED)
-	defer func() {
-		if err := octx.Finalize(); err != nil {
-			retErr = rerror.AsNonRetryableError(errors.Join(retErr, err))
-		}
-	}()
+
+	result, err := r.reconcileRepository(ctx, octx, ocmRepo)
+
+	// Always finalize ocm context after reconciliation
+	err = errors.Join(err, octx.Finalize())
+	if err != nil {
+		// this should be retryable, as it is difficult to forsee whether
+		// another error condition might lead to problems closing the ocm
+		// context
+		return ctrl.Result{}, err
+	}
+
+	return result, nil
+}
+
+func (r *Reconciler) reconcileRepository(ctx context.Context, octx ocmctx.Context, ocmRepo *v1alpha1.OCMRepository) (ctrl.Result, error) { //nolint:unparam // needed
 	session := ocmctx.NewSession(datacontext.NewSession())
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
 
-	rerr = ocm.ConfigureOCMContext(ctx, r, octx, ocmRepo, ocmRepo)
-	if rerr != nil {
-		return ctrl.Result{}, rerr
+	err := ocm.ConfigureOCMContext(ctx, r, octx, ocmRepo, ocmRepo)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
-	rerr = r.validate(octx, session, ocmRepo)
-	if rerr != nil {
-		return ctrl.Result{}, rerr
+	err = r.validate(octx, session, ocmRepo)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	r.fillRepoStatusFromSpec(ocmRepo)
@@ -120,25 +142,25 @@ func (r *Reconciler) reconcile(ctx context.Context, ocmRepo *v1alpha1.OCMReposit
 	return ctrl.Result{}, nil
 }
 
-func (r *Reconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRepo *v1alpha1.OCMRepository) (retErr rerror.ReconcileError) {
+func (r *Reconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRepo *v1alpha1.OCMRepository) error {
 	spec, err := octx.RepositorySpecForConfig(ocmRepo.Spec.RepositorySpec.Raw, nil)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, "cannot create RepositorySpec from raw data")
 
-		return rerror.AsNonRetryableError(fmt.Errorf("cannot create RepositorySpec from raw data: %w", err))
+		return reconcile.TerminalError(fmt.Errorf("cannot create RepositorySpec from raw data: %w", err))
 	}
 
 	if err = spec.Validate(octx, nil); err != nil {
 		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, "invalid RepositorySpec")
 
-		return rerror.AsRetryableError(fmt.Errorf("invalid RepositorySpec: %w", err))
+		return fmt.Errorf("invalid RepositorySpec: %w", err)
 	}
 
 	_, err = session.LookupRepository(octx, spec)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, "cannot lookup repository for RepositorySpec")
 
-		return rerror.AsRetryableError(fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err))
+		return fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
 	}
 
 	return nil
@@ -168,13 +190,13 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *Reconciler) reconcileDeleteRepository(ctx context.Context, obj *v1alpha1.OCMRepository) error {
+func (r *Reconciler) reconcileDeleteRepository(ctx context.Context, obj *v1alpha1.OCMRepository) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	componentList := &v1alpha1.ComponentList{}
 	if err := r.List(ctx, componentList, &client.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(repositoryKey, client.ObjectKeyFromObject(obj).String()),
 	}); err != nil {
-		return fmt.Errorf("failed to list components: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to list components: %w", err)
 	}
 
 	if len(componentList.Items) > 0 {
@@ -185,10 +207,10 @@ func (r *Reconciler) reconcileDeleteRepository(ctx context.Context, obj *v1alpha
 
 		logger.Info("repository is being deleted, please remove the following components referencing it", "names", names)
 
-		return fmt.Errorf("failed to remove repository referencing components: %s", strings.Join(names, ","))
+		return ctrl.Result{}, fmt.Errorf("failed to remove repository referencing components: %s", strings.Join(names, ","))
 	}
 
 	controllerutil.RemoveFinalizer(obj, repositoryFinalizer)
 
-	return nil
+	return ctrl.Result{}, nil
 }
