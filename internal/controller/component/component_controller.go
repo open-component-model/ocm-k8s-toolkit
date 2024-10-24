@@ -159,7 +159,7 @@ func (r *Reconciler) reconcileOCM(ctx context.Context, component *v1alpha1.Compo
 	// Always finalize ocm context after reconciliation
 	err = errors.Join(err, octx.Finalize())
 	if err != nil {
-		// this should be retryable, as it is difficult to forsee whether
+		// this should be retryable, as it is difficult to foresee whether
 		// another error condition might lead to problems closing the ocm
 		// context
 		return ctrl.Result{}, err
