@@ -87,7 +87,7 @@ var _ = Describe("LocalizationRules Controller", func() {
 		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 	})
 
-	It("should localize an artifact from a util based on a config supplied in a sibling util", func(ctx SpecContext) {
+	It("should localize an artifact from a resource based on a config supplied in a sibling resource", func(ctx SpecContext) {
 		component := SetupComponentWithDescriptorList(ctx,
 			ComponentObj,
 			Namespace,
