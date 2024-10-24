@@ -121,7 +121,7 @@ type LocalizedResourceStatus struct {
 
 	// A unique digest of the combination of the config and target resources applied through a LocalizationStrategy
 	// +optional
-	LocalizationDigest string `json:"digest,omitempty"`
+	Digest string `json:"digest,omitempty"`
 }
 
 func init() {

@@ -47,6 +47,20 @@ type LocalizationRule struct {
 	GoTemplate *LocalizationRuleGoTemplate `json:"goTemplate,omitempty"`
 }
 
+// LocalizationRuleMap is a rule that can be used to localize resources based on a mapping from resources to paths.
+//
+// Example:
+//
+//	map:
+//	  resource:
+//	    name: image
+//	  file:
+//	    path: values.yaml
+//	    value: deploy.image
+//	  transformation:
+//	    type: Repository
+//
+// For more information on the Map type, see the subtypes for Resource, FileTarget and Transformation.
 type LocalizationRuleMap struct {
 	// The Resource reference is used to identify the resource that will be used to fill in the target reference.
 	// If one has a ComponentDescriptor with 2 resources, one can use this to reference between them.
@@ -75,11 +89,11 @@ type LocalizationRuleMap struct {
 	//        schemaVersion: v2
 	//
 	// This would then lead to a value of "ghcr.io/stefanprodan/podinfo:6.2.0".
-	Resource LocalizationResourceReference `json:"resource"`
-	// The File target is used to identify the file where the rule will apply its sources to after considering
+	Resource ConfigurationResourceReference `json:"resource"`
+	// FileTarget is used to identify the file where the rule will apply its data to after considering
 	// the transformation.
 	FileTarget FileTarget `json:"file"`
-	// The Transformation is used to tell the Localization additional information about how to localize the content.
+	// The Transformation is used to tell the rule additional information about how to transform the content.
 	// The transformation can be used to digest the source in a different way or interpret the rule differently.
 	// A simple example of this is the TransformationTypeRepository,
 	// which extracts the registry portion of an image reference:
@@ -94,11 +108,37 @@ type LocalizationRuleMap struct {
 	Transformation Transformation `json:"transformation,omitempty"`
 }
 
+// LocalizationRuleGoTemplate is a rule that can be used to localize resources based on a goTemplate applied to a file.
+//
+// Example:
+//
+//	goTemplate:
+//	  file:
+//	    path: values.yaml
+//	  data:
+//	    key: value
+//	  delimiters:
+//	    left: "ocm{{"
+//	    right: "}}ocm"
+//
+// For more information on the Map type, see the subtypes for Resource, FileTarget and Transformation.
 type LocalizationRuleGoTemplate struct {
-	// The File target is used to identify the file where the rule will apply its sources to after considering
-	// the transformation.
-	FileTarget FileTarget            `json:"file"`
-	Data       *apiextensionsv1.JSON `json:"data,omitempty"`
+	// FileTarget is used to identify the file where the rule will apply its data to (parse the GoTemplate)
+	FileTarget FileTarget `json:"file"`
+
+	// GoTemplateData is an arbitrary object that is forwarded to the GoTemplate for use as a struct.
+	//
+	// Example:
+	//
+	//	goTemplate:
+	//	  data:
+	//	    key: value
+	//
+	// This would then lead to a struct that can be used in the GoTemplate (assuming standard Delimiters):
+	//
+	//	{{ .key }}
+	Data *apiextensionsv1.JSON `json:"data,omitempty"`
+
 	Delimiters *GoTemplateDelimiters `json:"delimiters,omitempty"`
 }
 
@@ -108,9 +148,9 @@ type LocalizationRuleGoTemplate struct {
 // If one wants to store the image fetched from source into a file called values.yaml inside deploy.image,
 // one can use the following value:
 //
-//	 file:
-//	   value: deploy.image
-//		  path: values.yaml
+//	file:
+//	  value: deploy.image
+//	  path: values.yaml
 type FileTarget struct {
 	// The Path is the filepath (relative to the Resource) to the file inside the resource.
 	Path string `json:"path"`
@@ -153,12 +193,14 @@ const (
 	TransformationTypeTag TransformationType = "Tag"
 )
 
+// GoTemplateDelimiters are used to specify the delimiters that are used in the GoTemplate parsing process.
+// If one wants to use a different delimiter than the default "{{" and "}}", one can specify them here.
 type GoTemplateDelimiters struct {
 	Left  string `json:"left"`
 	Right string `json:"right"`
 }
 
-type LocalizationResourceReference struct {
+type ConfigurationResourceReference struct {
 	Name          string            `json:"name"`
 	ExtraIdentity map[string]string `json:"extraIdentity,omitempty"`
 }

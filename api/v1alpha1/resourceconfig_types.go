@@ -1,6 +1,9 @@
 package v1alpha1
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 // +kubebuilder:object:root=true
 
@@ -35,8 +38,34 @@ type ResourceConfigSpec struct {
 }
 
 type ConfigurationRule struct {
-	Source ConfigurationRuleSource `json:"source"`
-	Target ConfigurationRuleTarget `json:"target"`
+	Map        *ConfigurationRuleMap        `json:"map,omitempty"`
+	GoTemplate *ConfigurationRuleGoTemplate `json:"goTemplate,omitempty"`
+}
+
+type ConfigurationRuleMap struct {
+	// Value is the value that will be used to replace the target in the file.
+	Value string `json:"value"`
+	// FileTarget is used to identify the file where the rule will apply its data to
+	FileTarget FileTarget `json:"file"`
+}
+
+type ConfigurationRuleGoTemplate struct {
+	// FileTarget is used to identify the file where the rule will apply its data to (parse the GoTemplate)
+	FileTarget FileTarget `json:"file"`
+	// GoTemplateData is an arbitrary object that is forwarded to the GoTemplate for use as a struct.
+	//
+	// Example:
+	//
+	//	goTemplate:
+	//	  data:
+	//	    key: value
+	//
+	// This would then lead to a struct that can be used in the GoTemplate (assuming standard Delimiters):
+	//
+	//	{{ .key }}
+	Data *apiextensionsv1.JSON `json:"data,omitempty"`
+
+	Delimiters *GoTemplateDelimiters `json:"delimiters,omitempty"`
 }
 
 // ConfigurationRuleSource describes a source of information where the rule will get its data from.

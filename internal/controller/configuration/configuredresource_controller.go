@@ -41,8 +41,8 @@ import (
 
 const (
 	ReasonTargetFetchFailed        = "TargetFetchFailed"
-	ReasonSourceFetchFailed        = "SourceFetchFailed"
-	ReasonLocalizationFailed       = "LocalizationFailed"
+	ReasonConfigFetchFailed        = "ConfigFetchFailed"
+	ReasonConfigurationFailed      = "ConfigurationFailed"
 	ReasonUniqueIDGenerationFailed = "UniqueIDGenerationFailed"
 )
 
@@ -151,7 +151,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 
 	cfg, err := cfgclnt.GetConfigurationSource(ctx, configuration.Spec.Source)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, configuration, ReasonSourceFetchFailed, err.Error())
+		status.MarkNotReady(r.EventRecorder, configuration, ReasonConfigFetchFailed, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to fetch cfg: %w", err)
 	}
@@ -176,20 +176,25 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 
 	var localized string
 	if !hasValidArtifact {
-		basePath, err := os.MkdirTemp("", "localization-")
+		basePath, err := os.MkdirTemp("", "configured-")
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("tmp dir error: %w", err)
 		}
+		defer func() {
+			if err := os.RemoveAll(basePath); err != nil {
+				logger.Error(err, "failed to remove temporary directory after configuration completed", "path", basePath)
+			}
+		}()
 
 		if localized, err = mapped.Configure(ctx, cfgclnt, cfg, target, basePath); err != nil {
-			status.MarkNotReady(r.EventRecorder, configuration, ReasonLocalizationFailed, err.Error())
-			logger.Error(err, "failed to localize, retrying later", "interval", configuration.Spec.Interval.Duration)
+			status.MarkNotReady(r.EventRecorder, configuration, ReasonConfigurationFailed, err.Error())
+			logger.Error(err, "failed to configure, retrying later", "interval", configuration.Spec.Interval.Duration)
 
 			return ctrl.Result{RequeueAfter: configuration.Spec.Interval.Duration}, nil
 		}
 	}
 
-	configuration.Status.ConfigurationDigest = digest
+	configuration.Status.Digest = digest
 
 	if err := r.Storage.ReconcileArtifact(
 		ctx,
@@ -214,6 +219,8 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		},
 	); err != nil {
 		status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.ReconcileArtifactFailedReason, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to reconcile artifact: %w", err)
 	}
 
 	logger.Info("configuration successful", "artifact", configuration.Status.ArtifactRef)

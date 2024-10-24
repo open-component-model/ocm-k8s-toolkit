@@ -26,7 +26,7 @@ import (
 
 const (
 	ReasonTargetFetchFailed        = "TargetFetchFailed"
-	ReasonSourceFetchFailed        = "SourceFetchFailed"
+	ReasonConfigFetchFailed        = "ConfigFetchFailed"
 	ReasonLocalizationFailed       = "LocalizationFailed"
 	ReasonUniqueIDGenerationFailed = "UniqueIDGenerationFailed"
 )
@@ -140,9 +140,9 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 
 	cfg, err := loc.GetLocalizationConfig(ctx, localization.Spec.Config)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, localization, ReasonSourceFetchFailed, err.Error())
+		status.MarkNotReady(r.EventRecorder, localization, ReasonConfigFetchFailed, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to fetch source: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to fetch config: %w", err)
 	}
 
 	digest, revision, file, err := artifact.UniqueIDsForArtifactContentCombination(cfg, target)
@@ -182,7 +182,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		}
 	}
 
-	localization.Status.LocalizationDigest = digest
+	localization.Status.Digest = digest
 
 	if err := r.Storage.ReconcileArtifact(
 		ctx,

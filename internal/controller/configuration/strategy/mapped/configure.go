@@ -2,11 +2,15 @@ package mapped
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"path/filepath"
+	"text/template"
 
+	"github.com/Masterminds/sprig/v3"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"ocm.software/ocm/api/ocm/ocmutils/localize"
@@ -59,7 +63,15 @@ func Configure(ctx context.Context,
 		return "", fmt.Errorf("failed to parse configuration: %w", err)
 	}
 
-	substitutionSteps, err := substitutionStepsFromConfig(cfg)
+	templateFunctions := template.FuncMap{}
+	for _, fm := range []template.FuncMap{
+		sprig.FuncMap(),
+		util.KubernetesObjectReferenceTemplateFunc(ctx, clnt),
+	} {
+		maps.Copy(templateFunctions, fm)
+	}
+
+	substitutionSteps, err := substitutionStepsFromConfig(cfg, templateFunctions)
 	if err != nil {
 		return "", fmt.Errorf("failed to create substitution steps: %w", err)
 	}
@@ -78,22 +90,49 @@ func Configure(ctx context.Context,
 	return target, nil
 }
 
-func substitutionStepsFromConfig(cfg Config) ([]steps.Step, error) {
+func substitutionStepsFromConfig(cfg Config, templateFunctions template.FuncMap) ([]steps.Step, error) {
+	var st []steps.Step
+
 	rules := cfg.GetRules()
 	substitutions := make(localize.Substitutions, 0, len(rules))
 	for _, rule := range rules {
-		if err := substitutions.Add(
-			"util-reference",
-			rule.Target.FileTarget.Path,
-			rule.Target.FileTarget.Value,
-			rule.Source.ValueSource,
-		); err != nil {
-			return nil, fmt.Errorf("failed to add resolved rule: %w", err)
+		if mapRule := rule.Map; mapRule != nil {
+			if err := substitutions.Add(
+				"util-reference",
+				mapRule.FileTarget.Path,
+				mapRule.FileTarget.Value,
+				mapRule.Value,
+			); err != nil {
+				return nil, fmt.Errorf("failed to add resolved rule: %w", err)
+			}
+
+			continue
+		}
+
+		if goTemplate := rule.GoTemplate; goTemplate != nil {
+			var data map[string]any
+			if goTemplate.Data != nil {
+				if err := json.Unmarshal(goTemplate.Data.Raw, &data); err != nil {
+					return nil, fmt.Errorf("failed to unmarshal gotemplate data for transformation: %w", err)
+				}
+			}
+			step := steps.NewGoTemplateBasedSubstitutionStep(
+				rule.GoTemplate.FileTarget.Path,
+				templateFunctions,
+				data,
+				&steps.Delimiters{
+					Left:  goTemplate.Delimiters.Left,
+					Right: goTemplate.Delimiters.Right,
+				},
+			)
+			st = append(st, step)
 		}
 	}
-	step := steps.NewOCMPathBasedSubstitutionStep(substitutions)
+	if len(substitutions) > 0 {
+		st = append(st, steps.NewOCMPathBasedSubstitutionStep(substitutions))
+	}
 
-	return []steps.Step{step}, nil
+	return st, nil
 }
 
 func prepareTargetDirInBasePath(ctx context.Context, basePath string, trgt Target) (string, error) {

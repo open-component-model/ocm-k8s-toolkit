@@ -44,23 +44,31 @@ spec:
               rules:
                 items:
                   properties:
-                    source:
-                      description: |-
-                        ConfigurationRuleSource describes a source of information where the rule will get its data from.
-                        Currently only ValueSource is supported.
+                    goTemplate:
                       properties:
-                        value:
-                          type: string
-                      type: object
-                    target:
-                      description: |-
-                        ConfigurationRuleTarget describes a target where the rule will store its data.
-                        Currently only FileTarget is supported.
-                      properties:
-                        file:
+                        data:
+                          description: "GoTemplateData is an arbitrary object that
+                            is forwarded to the GoTemplate for use as a struct.\n\nExample:\n\n\tgoTemplate:\n\t
+                            \ data:\n\t    key: value\n\nThis would then lead to a
+                            struct that can be used in the GoTemplate (assuming standard
+                            Delimiters):\n\n\t{{ .key }}"
+                          x-kubernetes-preserve-unknown-fields: true
+                        delimiters:
                           description: |-
-                            The File target is used to identify the file where the rule will apply its sources to after considering
-                            the transformation.
+                            GoTemplateDelimiters are used to specify the delimiters that are used in the GoTemplate parsing process.
+                            If one wants to use a different delimiter than the default "{{" and "}}", one can specify them here.
+                          properties:
+                            left:
+                              type: string
+                            right:
+                              type: string
+                          required:
+                          - left
+                          - right
+                          type: object
+                        file:
+                          description: FileTarget is used to identify the file where
+                            the rule will apply its data to (parse the GoTemplate)
                           properties:
                             path:
                               description: The Path is the filepath (relative to the
@@ -76,9 +84,31 @@ spec:
                       required:
                       - file
                       type: object
-                  required:
-                  - source
-                  - target
+                    map:
+                      properties:
+                        file:
+                          description: FileTarget is used to identify the file where
+                            the rule will apply its data to
+                          properties:
+                            path:
+                              description: The Path is the filepath (relative to the
+                                Resource) to the file inside the resource.
+                              type: string
+                            value:
+                              description: The Value is a reference to the content
+                                that should be localized.
+                              type: string
+                          required:
+                          - path
+                          type: object
+                        value:
+                          description: Value is the value that will be used to replace
+                            the target in the file.
+                          type: string
+                      required:
+                      - file
+                      - value
+                      type: object
                   type: object
                 type: array
             type: object
