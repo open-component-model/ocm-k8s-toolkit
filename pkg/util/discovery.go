@@ -53,7 +53,7 @@ func DataFromTarOrPlain(reader io.Reader) (io.Reader, error) {
 		return nil, fmt.Errorf("failed to read tar header even though data was recognized as tar: %w", err)
 	}
 	if fi.Typeflag != tar.TypeReg {
-		return nil, fmt.Errorf("expected exactly one regular file in tar, got type flag %x", fi.Typeflag)
+		return nil, fmt.Errorf("expected exactly one regular file in tar, got type flag %s", string(rune(fi.Typeflag)))
 	}
 
 	return t, nil

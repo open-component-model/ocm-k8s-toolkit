@@ -41,8 +41,21 @@ var _ ocm.Reconciler = (*Reconciler)(nil)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+	targetFieldMatcher, configFieldMatcher, err := indexTargetAndConfig(mgr)
+	if err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.LocalizedResource{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		// Update when the owned artifact containing the localized data changes
+		Owns(&artifactv1.Artifact{}).
+		// Update when a resource specified as target changes
+		Watches(&v1alpha1.Resource{}, enqueueForFieldMatcher(mgr.GetClient(), targetFieldMatcher)).
+		// Update when a localization config coming from a resource changes
+		Watches(&v1alpha1.Resource{}, enqueueForFieldMatcher(mgr.GetClient(), configFieldMatcher)).
+		// Update when a localization config coming from the cluster changes
+		Watches(&v1alpha1.LocalizationConfig{}, enqueueForFieldMatcher(mgr.GetClient(), configFieldMatcher)).
 		Complete(r)
 }
 
@@ -152,6 +165,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		return ctrl.Result{}, fmt.Errorf("failed to map digest from config to target: %w", err)
 	}
 
+	logger.V(1).Info("verifying localization", "digest", digest, "revision", revision)
 	hasValidArtifact, err := ocm.CollectableHasValidArtifactBasedOnFileNameDigest(
 		ctx,
 		r.Client,
@@ -165,6 +179,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 
 	var localized string
 	if !hasValidArtifact {
+		logger.V(1).Info("localizing", "digest", digest, "revision", revision)
 		basePath, err := os.MkdirTemp("", "localized-")
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to create temporary directory to perform localization: %w", err)

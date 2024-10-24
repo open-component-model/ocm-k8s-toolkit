@@ -78,13 +78,8 @@ func Configure(ctx context.Context,
 		return "", fmt.Errorf("failed to parse configuration: %w", err)
 	}
 
-	templateFunctions := template.FuncMap{}
-	for _, fm := range []template.FuncMap{
-		sprig.FuncMap(),
-		util.KubernetesObjectReferenceTemplateFunc(ctx, clnt),
-	} {
-		maps.Copy(templateFunctions, fm)
-	}
+	templateFunctions := sprig.FuncMap()
+	maps.Copy(templateFunctions, util.KubernetesObjectReferenceTemplateFunc(ctx, clnt))
 
 	substitutionSteps, err := substitutionStepsFromConfig(cfg, templateFunctions)
 	if err != nil {

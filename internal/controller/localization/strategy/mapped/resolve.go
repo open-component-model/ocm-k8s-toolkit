@@ -3,11 +3,10 @@ package mapped
 import (
 	"errors"
 	"fmt"
-	"io"
 
-	"github.com/containers/image/v5/pkg/compression"
 	"github.com/google/go-containerregistry/pkg/name"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	ocmctx "ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/compdesc"
 	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
@@ -107,43 +106,11 @@ func valueFromTransformation(ref string, transformationType v1alpha1.Transformat
 	return
 }
 
-// ParseLocalizationConfig reads the localization config from the source.
-// It autodecompresses the source and reads the config via DataFromTarOrPlain.
-// This allows the source to be either
-// - a plain yaml file in a (compressed or uncompressed) tar archive
-// - a plain yaml file
-//
-// Note that if the tar archive contains multiple files, only the first one is read as stored in the tar.
-func ParseLocalizationConfig(source Config, decoder runtime.Decoder) (config LocalizationConfig, err error) {
+func ParseConfig(source RawConfig, scheme *runtime.Scheme) (config Config, err error) {
 	cfgReader, err := source.Open()
 	defer func() {
 		err = errors.Join(err, cfgReader.Close())
 	}()
-	decompressed, _, err := compression.AutoDecompress(cfgReader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to autodecompress config: %w", err)
-	}
-	defer func() {
-		err = errors.Join(err, decompressed.Close())
-	}()
-	data, err := util.DataFromTarOrPlain(decompressed)
-	if err != nil {
-		return nil, fmt.Errorf("failed to Get data from tar or plain: %w", err)
-	}
 
-	cfg, err := io.ReadAll(data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config: %w", err)
-	}
-
-	obj, _, err := decoder.Decode(cfg, nil, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode config: %w", err)
-	}
-	cfgObj, ok := obj.(LocalizationConfig)
-	if !ok {
-		return nil, fmt.Errorf("failed to decode config (not a valid LocalizationConfig): %w", err)
-	}
-
-	return cfgObj, nil
+	return util.Parse[v1alpha1.LocalizationConfig](cfgReader, serializer.NewCodecFactory(scheme).UniversalDeserializer())
 }

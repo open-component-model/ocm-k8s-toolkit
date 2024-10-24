@@ -527,7 +527,7 @@ func reconcileArtifact(
 	}
 
 	// Provide artifact in storage
-	if err := storage.ReconcileArtifact(ctx, resource, revision, dirPath, revision+".tar.gz", archiveFunc); err != nil {
+	if err := storage.ReconcileArtifact(ctx, resource, revision, dirPath, revision, archiveFunc); err != nil {
 		return fmt.Errorf("failed to reconcile resource artifact: %w", err)
 	}
 

@@ -14,7 +14,6 @@ import (
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"ocm.software/ocm/api/ocm/compdesc"
 	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	"ocm.software/ocm/api/ocm/ocmutils/localize"
@@ -29,12 +28,12 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/util"
 )
 
-type Config interface {
+type RawConfig interface {
 	UnpackIntoDirectory(path string) error
 	Open() (io.ReadCloser, error)
 }
 
-type LocalizationConfig interface {
+type Config interface {
 	GetRules() []v1alpha1.LocalizationRule
 }
 
@@ -56,7 +55,7 @@ type Client interface {
 func Localize(ctx context.Context,
 	clnt Client,
 	strg *storage.Storage,
-	cfg Config,
+	rawConfig RawConfig,
 	trgt Target,
 	basePath string,
 ) (string, error) {
@@ -82,7 +81,7 @@ func Localize(ctx context.Context,
 	}
 
 	// based on the source, determine the localization rules / config for localization
-	config, err := ParseLocalizationConfig(cfg, serializer.NewCodecFactory(clnt.Scheme()).UniversalDeserializer())
+	config, err := ParseConfig(rawConfig, clnt.Scheme())
 	if err != nil {
 		return "", fmt.Errorf("failed to Get config: %w", err)
 	}

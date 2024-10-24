@@ -5,7 +5,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"ocm.software/ocm/api/ocm/compdesc"
 	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
@@ -75,7 +74,7 @@ func TestParseLocalizationConfig(t *testing.T) {
 		schema := runtime.NewScheme()
 		assert.NoError(t, v1alpha1.AddToScheme(schema))
 
-		config, err := ParseLocalizationConfig(source, serializer.NewCodecFactory(schema).UniversalDeserializer())
+		config, err := ParseConfig(source, schema)
 		assert.NoError(t, err)
 		assert.IsType(t, &v1alpha1.LocalizationConfig{}, config)
 		typedConfig := config.(*v1alpha1.LocalizationConfig)

@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
+	"github.com/containers/image/v5/pkg/compression"
 	"github.com/fluxcd/pkg/apis/meta"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	fluxtar "github.com/fluxcd/pkg/tar"
@@ -19,8 +21,8 @@ import (
 )
 
 var (
-	ErrAlreadyUnpacked   = errors.New("already unpacked")
-	ErrSourceNotYetReady = errors.New("target is not yet ready")
+	ErrAlreadyUnpacked = errors.New("already unpacked")
+	ErrNotYetReady     = errors.New("not yet ready")
 )
 
 // Content is an interface that represents the content of an artifact.
@@ -103,7 +105,32 @@ func (r *ContentBackedByStorageAndResource) UnpackIntoDirectory(path string) (er
 		err = errors.Join(err, data.Close())
 	}()
 
-	return fluxtar.Untar(data, path)
+	decompressed, _, err := compression.AutoDecompress(data)
+	if err != nil {
+		return fmt.Errorf("failed to autodecompress: %w", err)
+	}
+	defer func() {
+		err = errors.Join(err, decompressed.Close())
+	}()
+
+	isTar, reader := util.IsTar(decompressed)
+	if isTar {
+		return fluxtar.Untar(reader, path, fluxtar.WithSkipGzip())
+	}
+
+	path = filepath.Join(path, filepath.Base(r.Storage.LocalPath(r.Artifact)))
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("failed to unpack file at %s: %w", path, err)
+	}
+	defer func() {
+		err = errors.Join(err, file.Close())
+	}()
+	if _, err := io.Copy(file, reader); err != nil {
+		return fmt.Errorf("failed to copy file to %s: %w", path, err)
+	}
+
+	return nil
 }
 
 func (r *ContentBackedByStorageAndResource) GetResource() *v1alpha1.Resource {
@@ -149,7 +176,7 @@ func GetContentBackedByStorageAndResource(
 	}
 
 	if !conditions.IsReady(&resource) {
-		return nil, fmt.Errorf("%w: util %s is not ready", ErrSourceNotYetReady, resource.Name)
+		return nil, fmt.Errorf("%w: resource %s", ErrNotYetReady, resource.Name)
 	}
 
 	artifact := artifactv1.Artifact{}

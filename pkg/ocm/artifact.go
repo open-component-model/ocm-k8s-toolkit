@@ -98,6 +98,9 @@ func CollectableHasValidArtifactBasedOnFileNameDigest(
 	digest string,
 ) (bool, error) {
 	artifact, err := GetAndVerifyArtifactForCollectable(ctx, reader, strg, collectable)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
 	if ctrl.IgnoreNotFound(err) != nil {
 		return false, fmt.Errorf("failed to get artifact: %w", err)
 	}
