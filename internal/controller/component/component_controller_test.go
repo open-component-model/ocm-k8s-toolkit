@@ -341,7 +341,7 @@ var _ = Describe("Component Controller", func() {
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 
 				cond := conditions.Get(component, meta.ReadyCondition)
-				return cond.Message == "component version cannot be downgraded from version 0.0.3 to version 0.0.2"
+				return cond.Message == "terminal error: component version cannot be downgraded from version 0.0.3 to version 0.0.2"
 			}).WithTimeout(15 * time.Second).Should(BeTrue())
 		})
 
