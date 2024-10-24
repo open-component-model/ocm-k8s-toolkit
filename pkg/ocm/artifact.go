@@ -15,7 +15,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/rerror"
 )
 
 // GetComponentSetForArtifact returns the component descriptor set for the given artifact.
@@ -25,7 +24,7 @@ func GetComponentSetForArtifact(storage *storage.Storage, artifact *artifactv1.A
 		return nil, fmt.Errorf("failed to create temporary directory: %w", err)
 	}
 	defer func() {
-		retErr = rerror.AsRetryableError(errors.Join(retErr, os.RemoveAll(tmp)))
+		retErr = errors.Join(retErr, os.RemoveAll(tmp))
 	}()
 
 	// Instead of using the http-functionality of the storage-server, we use the storage directly for performance reasons.
@@ -39,7 +38,7 @@ func GetComponentSetForArtifact(storage *storage.Storage, artifact *artifactv1.A
 	filePath := filepath.Join(tmp, v1alpha1.OCMComponentDescriptorList)
 
 	if err := storage.CopyToPath(artifact, v1alpha1.OCMComponentDescriptorList, filePath); err != nil {
-		return nil, rerror.AsRetryableError(fmt.Errorf("failed to copy artifact to path: %w", err))
+		return nil, fmt.Errorf("failed to copy artifact to path: %w", err)
 	}
 
 	// Read component descriptor list
@@ -58,7 +57,7 @@ func GetComponentSetForArtifact(storage *storage.Storage, artifact *artifactv1.A
 		return nil, fmt.Errorf("failed to unmarshal component descriptors: %w", err)
 	}
 
-	return compdesc.NewComponentVersionSet(cds.List...), retErr
+	return compdesc.NewComponentVersionSet(cds.List...), nil
 }
 
 // GetAndVerifyArtifactForCollectable gets the artifact for the given collectable and verifies it against the given strg.
@@ -76,7 +75,7 @@ func GetAndVerifyArtifactForCollectable(
 
 	// Check the digest of the archive and compare it to the one in the artifact
 	if err := strg.VerifyArtifact(artifact); err != nil {
-		return nil, rerror.AsRetryableError(fmt.Errorf("failed to verify artifact: %w", err))
+		return nil, fmt.Errorf("failed to verify artifact: %w", err)
 	}
 
 	return artifact, nil
