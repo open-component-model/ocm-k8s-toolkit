@@ -19,17 +19,26 @@ type RevisionAndDigest interface {
 
 	// GetDigest is the digest of the packed source in the form of '<algorithm>:<checksum>'.
 	// It can be used to verify the integrity of the target or to identify it.
-	GetDigest() string
+	GetDigest() (string, error)
 }
 
 // NewMappedRevisionAndDigest generates a MappedRevisionAndDigest based on 2 RevisionAndDigest combinations.
-func NewMappedRevisionAndDigest(config, target RevisionAndDigest) MappedRevisionAndDigest {
+func NewMappedRevisionAndDigest(config, target RevisionAndDigest) (MappedRevisionAndDigest, error) {
+	configDigest, err := config.GetDigest()
+	if err != nil {
+		return MappedRevisionAndDigest{}, err
+	}
+	targetDigest, err := target.GetDigest()
+	if err != nil {
+		return MappedRevisionAndDigest{}, err
+	}
+
 	return MappedRevisionAndDigest{
 		ConfigRevision: config.GetRevision(),
-		ConfigDigest:   config.GetDigest(),
+		ConfigDigest:   configDigest,
 		TargetRevision: target.GetRevision(),
-		TargetDigest:   target.GetDigest(),
-	}
+		TargetDigest:   targetDigest,
+	}, nil
 }
 
 // MappedRevisionAndDigest is a struct that represents a mapping between a config revision and a target revision.
@@ -56,7 +65,11 @@ func encodeJSONToString[T any](toEncode T) string {
 	return buf.String()
 }
 
-func (r MappedRevisionAndDigest) GetDigest() string {
+func (r MappedRevisionAndDigest) GetDigest() (string, error) {
+	return r.digest(), nil
+}
+
+func (r MappedRevisionAndDigest) digest() string {
 	return digest.FromString(r.ConfigDigest + r.TargetDigest).String()
 }
 
@@ -65,5 +78,5 @@ func (r MappedRevisionAndDigest) GetRevision() string {
 }
 
 func (r MappedRevisionAndDigest) ToArchiveFileName() string {
-	return strings.ReplaceAll(r.GetDigest(), ":", "_") + ".tar.gz"
+	return strings.ReplaceAll(r.digest(), ":", "_") + ".tar.gz"
 }

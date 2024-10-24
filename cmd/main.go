@@ -62,6 +62,7 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 }
 
+//nolint:funlen // this is the main function
 func main() {
 	var (
 		metricsAddr              string

@@ -34,15 +34,16 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	configurationclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/client"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/strategy/mapped"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/artifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/util"
 )
 
 const (
-	ReasonTargetFetchFailed  = "TargetFetchFailed"
-	ReasonSourceFetchFailed  = "SourceFetchFailed"
-	ReasonLocalizationFailed = "LocalizationFailed"
+	ReasonTargetFetchFailed        = "TargetFetchFailed"
+	ReasonSourceFetchFailed        = "SourceFetchFailed"
+	ReasonLocalizationFailed       = "LocalizationFailed"
+	ReasonUniqueIDGenerationFailed = "UniqueIDGenerationFailed"
 )
 
 // SetupWithManager sets up the controller with the Manager.
@@ -148,21 +149,26 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		configuration.Spec.Source.Namespace = configuration.Namespace
 	}
 
-	source, err := cfgclnt.GetConfigurationSource(ctx, configuration.Spec.Source)
+	cfg, err := cfgclnt.GetConfigurationSource(ctx, configuration.Spec.Source)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, configuration, ReasonSourceFetchFailed, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to fetch source: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to fetch cfg: %w", err)
 	}
 
-	revisionAndDigest := util.NewMappedRevisionAndDigest(source, target)
+	digest, revision, file, err := artifact.UniqueIDsForArtifactContentCombination(cfg, target)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, configuration, ReasonUniqueIDGenerationFailed, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to map digest from config to target: %w", err)
+	}
 
 	hasValidArtifact, err := ocm.CollectableHasValidArtifactBasedOnFileNameDigest(
 		ctx,
 		r.Client,
 		r.Storage,
 		configuration,
-		revisionAndDigest.GetDigest(),
+		digest,
 	)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to check if artifact is valid: %w", err)
@@ -175,7 +181,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 			return ctrl.Result{}, fmt.Errorf("tmp dir error: %w", err)
 		}
 
-		if localized, err = mapped.Configure(ctx, cfgclnt, source, target, basePath); err != nil {
+		if localized, err = mapped.Configure(ctx, cfgclnt, cfg, target, basePath); err != nil {
 			status.MarkNotReady(r.EventRecorder, configuration, ReasonLocalizationFailed, err.Error())
 			logger.Error(err, "failed to localize, retrying later", "interval", configuration.Spec.Interval.Duration)
 
@@ -183,14 +189,14 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		}
 	}
 
-	configuration.Status.ConfigurationDigest = revisionAndDigest.GetDigest()
+	configuration.Status.ConfigurationDigest = digest
 
 	if err := r.Storage.ReconcileArtifact(
 		ctx,
 		configuration,
-		revisionAndDigest.GetRevision(),
+		revision,
 		localized,
-		revisionAndDigest.ToArchiveFileName(),
+		file,
 		func(artifact *artifactv1.Artifact, dir string) error {
 			if !hasValidArtifact {
 				// Archive directory to storage

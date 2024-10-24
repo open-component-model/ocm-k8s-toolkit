@@ -32,12 +32,12 @@ func (r *MockedLocalizationReference) Open() (io.ReadCloser, error) {
 	return os.Open(r.Path)
 }
 
-func (r *MockedLocalizationReference) GetDigest() string {
+func (r *MockedLocalizationReference) GetDigest() (string, error) {
 	if r.Data != nil {
-		return digest.NewDigestFromBytes(digest.SHA256, r.Data).String()
+		return digest.NewDigestFromBytes(digest.SHA256, r.Data).String(), nil
 	}
 
-	return digest.NewDigestFromBytes(digest.SHA256, []byte(r.Path)).String()
+	return digest.NewDigestFromBytes(digest.SHA256, []byte(r.Path)).String(), nil
 }
 
 func (r *MockedLocalizationReference) GetRevision() string {

@@ -1,12 +1,17 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"os"
 
+	"github.com/opencontainers/go-digest"
 	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	yaml "sigs.k8s.io/yaml/goyaml.v3"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/types"
@@ -99,5 +104,52 @@ func GetFromLocalizationConfigInKubernetes(ctx context.Context, clnt client.Read
 		return nil, fmt.Errorf("failed to fetch localization source %s: %w", reference.Name, err)
 	}
 
-	return &cfg, nil
+	return &LocalizationConfig{&cfg}, nil
+}
+
+// LocalizationConfig is a wrapper around the v1alpha1.LocalizationConfig that implements the types.LocalizationConfig interface.
+type LocalizationConfig struct {
+	*v1alpha1.LocalizationConfig
+}
+
+var _ types.LocalizationConfig = &LocalizationConfig{}
+
+func (in *LocalizationConfig) Open() (io.ReadCloser, error) {
+	buf, err := in.AsBuf()
+	if err != nil {
+		return nil, err
+	}
+
+	return io.NopCloser(buf), nil
+}
+
+func (in *LocalizationConfig) AsBuf() (*bytes.Buffer, error) {
+	var buf bytes.Buffer
+	if err := yaml.NewDecoder(&buf).Decode(in); err != nil {
+		return nil, err
+	}
+
+	return &buf, nil
+}
+
+func (in *LocalizationConfig) UnpackIntoDirectory(path string) error {
+	buf, err := in.AsBuf()
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(fmt.Sprintf("%s-%s.yaml", path, in.Name), buf.Bytes(), 0o600)
+}
+
+func (in *LocalizationConfig) GetDigest() (string, error) {
+	buf, err := in.AsBuf()
+	if err != nil {
+		return "", err
+	}
+
+	return digest.NewDigestFromBytes(digest.SHA256, buf.Bytes()).String(), err
+}
+
+func (in *LocalizationConfig) GetRevision() string {
+	return fmt.Sprintf("ResourceVersion: %s", in.GetResourceVersion())
 }

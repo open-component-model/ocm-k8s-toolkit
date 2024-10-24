@@ -55,8 +55,8 @@ type ContentBackedByStorageAndResource struct {
 	Resource *v1alpha1.Resource
 }
 
-func (r *ContentBackedByStorageAndResource) GetDigest() string {
-	return r.Artifact.Spec.Digest
+func (r *ContentBackedByStorageAndResource) GetDigest() (string, error) {
+	return r.Artifact.Spec.Digest, nil
 }
 
 func (r *ContentBackedByStorageAndResource) GetRevision() string {
@@ -165,4 +165,22 @@ func GetContentBackedByStorageAndResource(
 	}
 
 	return NewContentBackedByStorageAndResource(strg, &artifact, &resource), nil
+}
+
+// UniqueIDsForArtifactContentCombination returns a set of unique identifiers for the combination of two Content.
+// This compromises of
+// - the digest of 'a' applied to 'b', machine identifiable and unique
+// - the revision of 'a' applied to 'b', human-readable
+// - the archive file name of 'a' applied to 'b'.
+func UniqueIDsForArtifactContentCombination(a, b Content) (string, string, string, error) {
+	revisionAndDigest, err := util.NewMappedRevisionAndDigest(a, b)
+	if err != nil {
+		return "", "", "", fmt.Errorf("unable to create unique revision and digest: %w", err)
+	}
+	digest, err := revisionAndDigest.GetDigest()
+	if err != nil {
+		return "", "", "", fmt.Errorf("unable to get digest: %w", err)
+	}
+
+	return digest, revisionAndDigest.GetRevision(), revisionAndDigest.ToArchiveFileName(), nil
 }

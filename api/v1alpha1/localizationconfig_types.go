@@ -1,15 +1,8 @@
 package v1alpha1
 
 import (
-	"bytes"
-	"fmt"
-	"io"
-	"os"
-
-	"github.com/opencontainers/go-digest"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	yaml "sigs.k8s.io/yaml/goyaml.v3"
 )
 
 // +kubebuilder:object:root=true
@@ -33,46 +26,6 @@ type LocalizationConfigList struct {
 
 func init() {
 	SchemeBuilder.Register(&LocalizationConfig{}, &LocalizationConfigList{})
-}
-
-func (in *LocalizationConfig) Open() (io.ReadCloser, error) {
-	buf, err := in.asBuf()
-	if err != nil {
-		return nil, err
-	}
-
-	return io.NopCloser(buf), nil
-}
-
-func (in *LocalizationConfig) asBuf() (*bytes.Buffer, error) {
-	var buf bytes.Buffer
-	if err := yaml.NewDecoder(&buf).Decode(in); err != nil {
-		return nil, err
-	}
-
-	return &buf, nil
-}
-
-func (in *LocalizationConfig) UnpackIntoDirectory(path string) error {
-	buf, err := in.asBuf()
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(fmt.Sprintf("%s-%s.yaml", path, in.Name), buf.Bytes(), 0o600)
-}
-
-func (in *LocalizationConfig) GetDigest() string {
-	buf, err := in.asBuf()
-	if err != nil {
-		panic(err)
-	}
-
-	return digest.NewDigestFromBytes(digest.SHA256, buf.Bytes()).String()
-}
-
-func (in *LocalizationConfig) GetRevision() string {
-	return fmt.Sprintf("ResourceVersion: %s", in.GetResourceVersion())
 }
 
 func (in *LocalizationConfig) GetRules() []LocalizationRule {
@@ -176,6 +129,8 @@ type LocalizationRuleTarget struct {
 // If one wants to store the image fetched from source into a file called values.yaml inside deploy.image,
 // one can use the following value:
 //
+// Example:
+//
 //	  target:
 //		   file:
 //		     value: deploy.image
@@ -200,22 +155,27 @@ const (
 	// Example:
 	//   "docker.io/library/nginx:latest" -> "docker.io/library/nginx:latest".
 	TransformationTypeImage TransformationType = "Image"
+
 	// TransformationTypeImageNoTag is a transformation that extracts the image reference without the tag.
 	// Example:
 	//   "docker.io/library/nginx:latest" -> "docker.io/library/nginx".
 	TransformationTypeImageNoTag TransformationType = "ImageNoTag"
+
 	// TransformationTypeRegistry is a transformation that extracts the registry part of an image reference.
 	// Example:
 	//   "docker.io/library/nginx:latest" -> "docker.io".
 	TransformationTypeRegistry TransformationType = "Registry"
+
 	// TransformationTypeRepository is a transformation that extracts the repository part of an image reference.
 	// Example:
 	//   "docker.io/library/nginx:latest" -> "library/nginx".
 	TransformationTypeRepository TransformationType = "Repository"
+
 	// TransformationTypeTag is a transformation that extracts the tag part of an image reference.
 	// Example:
 	//   "docker.io/library/nginx:latest" -> "latest".
 	TransformationTypeTag TransformationType = "Tag"
+
 	// TransformationTypeGoTemplate is a transformation that uses Go templates.
 	// This transformation type does not support source references or target path references.
 	// TODO Add support for this case so someone could write something like "{{ .Repository }}{{ .Tag }}".

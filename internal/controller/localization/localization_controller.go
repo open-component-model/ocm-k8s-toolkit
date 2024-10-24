@@ -22,13 +22,13 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/artifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/util"
 )
 
 const (
-	ReasonTargetFetchFailed  = "TargetFetchFailed"
-	ReasonSourceFetchFailed  = "SourceFetchFailed"
-	ReasonLocalizationFailed = "LocalizationFailed"
+	ReasonTargetFetchFailed        = "TargetFetchFailed"
+	ReasonSourceFetchFailed        = "SourceFetchFailed"
+	ReasonLocalizationFailed       = "LocalizationFailed"
+	ReasonUniqueIDGenerationFailed = "UniqueIDGenerationFailed"
 )
 
 // Reconciler reconciles a LocalizationRules object.
@@ -135,28 +135,36 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 
 	targetBackedByResource, ok := target.(ArtifactContentBackedByResource)
 	if !ok {
-		return ctrl.Result{}, fmt.Errorf("target is not backed by a resource and cannot be localized")
+		err = fmt.Errorf("target is not backed by a resource and cannot be localized")
+		status.MarkNotReady(r.EventRecorder, localization, ReasonTargetFetchFailed, err.Error())
+
+		return ctrl.Result{}, err
 	}
 
 	if localization.Spec.Config.Namespace == "" {
 		localization.Spec.Config.Namespace = localization.Namespace
 	}
 
-	source, err := loc.GetLocalizationConfig(ctx, localization.Spec.Config)
+	cfg, err := loc.GetLocalizationConfig(ctx, localization.Spec.Config)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, localization, ReasonSourceFetchFailed, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to fetch source: %w", err)
 	}
 
-	revisionAndDigest := util.NewMappedRevisionAndDigest(source, target)
+	digest, revision, file, err := artifact.UniqueIDsForArtifactContentCombination(cfg, target)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, localization, ReasonUniqueIDGenerationFailed, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to map digest from config to target: %w", err)
+	}
 
 	hasValidArtifact, err := ocm.CollectableHasValidArtifactBasedOnFileNameDigest(
 		ctx,
 		r.Client,
 		r.Storage,
 		localization,
-		revisionAndDigest.GetDigest(),
+		digest,
 	)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to check if artifact is valid: %w", err)
@@ -164,27 +172,25 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 
 	var localized string
 	if !hasValidArtifact {
-		basePath, err := os.MkdirTemp("", "localization-")
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("tmp dir error: %w", err)
+		localize := func(basePath string) (string, error) {
+			return mapped.Localize(ctx, loc, r.Storage, cfg, targetBackedByResource, basePath)
 		}
-
-		if localized, err = mapped.Localize(ctx, loc, r.Storage, source, targetBackedByResource, basePath); err != nil {
+		if localized, err = runInTempDir(localize); err != nil {
 			status.MarkNotReady(r.EventRecorder, localization, ReasonLocalizationFailed, err.Error())
-			logger.Error(err, "failed to localize, retrying later", "interval", localization.Spec.Interval.Duration)
+			logger.Error(err, "failed to localize", "interval", localization.Spec.Interval.Duration)
 
-			return ctrl.Result{RequeueAfter: localization.Spec.Interval.Duration}, nil
+			return ctrl.Result{}, err
 		}
 	}
 
-	localization.Status.LocalizationDigest = revisionAndDigest.GetDigest()
+	localization.Status.LocalizationDigest = digest
 
 	if err := r.Storage.ReconcileArtifact(
 		ctx,
 		localization,
-		revisionAndDigest.GetRevision(),
+		revision,
 		localized,
-		revisionAndDigest.ToArchiveFileName(),
+		file,
 		func(artifact *artifactv1.Artifact, dir string) error {
 			if !hasValidArtifact {
 				// Archive directory to storage
@@ -208,6 +214,17 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 	status.MarkReady(r.EventRecorder, localization, "localized successfully")
 
 	return ctrl.Result{RequeueAfter: localization.Spec.Interval.Duration}, nil
+}
+
+func runInTempDir(withinPath func(basePath string) (string, error)) (_ string, err error) {
+	basePath, err := os.MkdirTemp("", "localization-")
+	if err != nil {
+		return "", fmt.Errorf("tmp dir error: %w", err)
+	}
+	defer func() {
+		err = errors.Join(err, os.RemoveAll(basePath))
+	}()
+	return withinPath(basePath)
 }
 
 // ArtifactContentBackedByResource is an artifact content that is backed by a resource.
