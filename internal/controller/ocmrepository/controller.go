@@ -139,7 +139,7 @@ func (r *Reconciler) reconcileRepository(ctx context.Context, octx ocmctx.Contex
 
 	status.MarkReady(r.EventRecorder, ocmRepo, "Successfully reconciled")
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: ocmRepo.GetRequeueAfter()}, nil
 }
 
 func (r *Reconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRepo *v1alpha1.OCMRepository) error {

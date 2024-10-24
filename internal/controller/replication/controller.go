@@ -36,7 +36,6 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/rerror"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
@@ -58,20 +57,29 @@ type Reconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
-func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	replication := &v1alpha1.Replication{}
 	if err := r.Get(ctx, req.NamespacedName, replication); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	return r.reconcileWithStatusUpdate(ctx, replication)
+}
+
+func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, replication *v1alpha1.Replication) (ctrl.Result, error) {
 	patchHelper := patch.NewSerialPatcher(replication, r.Client)
 
-	// Always attempt to patch the object and status after each reconciliation.
-	defer func() {
-		if perr := status.UpdateStatus(ctx, patchHelper, replication, r.EventRecorder, replication.GetRequeueAfter(), retErr); perr != nil {
-			retErr = rerror.AsRetryableError(errors.Join(retErr, perr))
-		}
-	}()
+	result, err := r.reconcileExists(ctx, replication)
+
+	err = errors.Join(err, status.UpdateStatus(ctx, patchHelper, replication, r.EventRecorder, replication.GetRequeueAfter(), err))
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return result, nil
+}
+
+func (r *Reconciler) reconcileExists(ctx context.Context, replication *v1alpha1.Replication) (ctrl.Result, error) {
 
 	logger := log.FromContext(ctx)
 	if replication.GetDeletionTimestamp() != nil {
@@ -92,10 +100,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, nil
 	}
 
-	return rerror.EvaluateReconcileError(r.reconcile(ctx, replication))
+	return r.reconcile(ctx, replication)
 }
 
-func (r *Reconciler) reconcile(ctx context.Context, replication *v1alpha1.Replication) (_ ctrl.Result, retErr rerror.ReconcileError) {
+func (r *Reconciler) reconcile(ctx context.Context, replication *v1alpha1.Replication) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// get component to be copied
@@ -106,11 +114,13 @@ func (r *Reconciler) reconcile(ctx context.Context, replication *v1alpha1.Replic
 	}, comp); err != nil {
 		logger.Info("failed to get component")
 
-		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to get component: %w", err))
+		return ctrl.Result{}, fmt.Errorf("failed to get component: %w", err)
 	}
 
 	if comp.DeletionTimestamp != nil {
-		return ctrl.Result{}, rerror.AsNonRetryableError(errors.New("component is being deleted, please do not use it"))
+		logger.Info("component is being deleted, please do not use it", "name", comp.Name)
+
+		return ctrl.Result{}, nil
 	}
 
 	if !conditions.IsReady(comp) {
@@ -128,11 +138,13 @@ func (r *Reconciler) reconcile(ctx context.Context, replication *v1alpha1.Replic
 	}, repo); err != nil {
 		logger.Info("failed to get repository")
 
-		return ctrl.Result{}, rerror.AsRetryableError(fmt.Errorf("failed to get repository: %w", err))
+		return ctrl.Result{}, fmt.Errorf("failed to get repository: %w", err)
 	}
 
 	if repo.DeletionTimestamp != nil {
-		return ctrl.Result{}, rerror.AsNonRetryableError(errors.New("repository is being deleted, please do not use it"))
+		logger.Info("repository is being deleted, please do not use it", "name", repo.Name)
+
+		return ctrl.Result{}, nil
 	}
 
 	if !conditions.IsReady(repo) {
@@ -152,10 +164,10 @@ func (r *Reconciler) reconcile(ctx context.Context, replication *v1alpha1.Replic
 
 	status.MarkReady(r.EventRecorder, replication, "Successfully replicated %s:%s to %s", comp.Status.Component.Component, comp.Status.Component.Version, repo.Name)
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: replication.GetRequeueAfter()}, nil
 }
 
-func (r *Reconciler) transfer(comp *v1alpha1.Component, targetOCMRepo *v1alpha1.OCMRepository) (retErr rerror.ReconcileError) {
+func (r *Reconciler) transfer(comp *v1alpha1.Component, targetOCMRepo *v1alpha1.OCMRepository) (retErr error) {
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
 	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
 	// instance and not at the global default context variable.
@@ -163,7 +175,7 @@ func (r *Reconciler) transfer(comp *v1alpha1.Component, targetOCMRepo *v1alpha1.
 	defer func() {
 		err := octx.Finalize()
 		if err != nil {
-			retErr = rerror.AsNonRetryableError(errors.Join(retErr, err))
+			retErr = errors.Join(retErr, err)
 		}
 	}()
 	// session := ocmctx.NewSession(datacontext.NewSession())
@@ -174,31 +186,31 @@ func (r *Reconciler) transfer(comp *v1alpha1.Component, targetOCMRepo *v1alpha1.
 
 	sourceSpec, err := octx.RepositorySpecForConfig(comp.Status.Component.RepositorySpec.Raw, nil)
 	if err != nil {
-		return rerror.AsNonRetryableError(fmt.Errorf("cannot create RepositorySpec from raw data: %w", err))
+		return fmt.Errorf("cannot create RepositorySpec from raw data: %w", err)
 	}
 
 	// sourceRepo, err := session.LookupRepository(octx, sourceSpec)
 	sourceRepo, err := octx.RepositoryForSpec(sourceSpec)
 	if err != nil {
-		return rerror.AsRetryableError(fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err))
+		return fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
 	}
 	defer sourceRepo.Close()
 
 	cv, err := sourceRepo.LookupComponentVersion(comp.Status.Component.Component, comp.Status.Component.Version)
 	if err != nil {
-		return rerror.AsRetryableError(fmt.Errorf("cannot lookup component version in source repository: %w", err))
+		return fmt.Errorf("cannot lookup component version in source repository: %w", err)
 	}
 	defer cv.Close()
 
 	targetSpec, err := octx.RepositorySpecForConfig(targetOCMRepo.Spec.RepositorySpec.Raw, nil)
 	if err != nil {
-		return rerror.AsNonRetryableError(fmt.Errorf("cannot create RepositorySpec from raw data: %w", err))
+		return fmt.Errorf("cannot create RepositorySpec from raw data: %w", err)
 	}
 
 	// targetRepo, err := session.LookupRepository(octx, targetSpec)
 	targetRepo, err := octx.RepositoryForSpec(targetSpec)
 	if err != nil {
-		return rerror.AsRetryableError(fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err))
+		return fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
 	}
 	defer targetRepo.Close()
 
@@ -206,13 +218,13 @@ func (r *Reconciler) transfer(comp *v1alpha1.Component, targetOCMRepo *v1alpha1.
 
 	err = transfer.Transfer(cv, targetRepo)
 	if err != nil {
-		return rerror.AsRetryableError(fmt.Errorf("cannot transfer component version to target repository: %w", err))
+		return fmt.Errorf("cannot transfer component version to target repository: %w", err)
 	}
 
 	// check if the component version was transferred successfully
 	tcv, err := targetRepo.LookupComponentVersion(comp.Status.Component.Component, comp.Status.Component.Version)
 	if err != nil {
-		return rerror.AsRetryableError(fmt.Errorf("cannot lookup component version in target repository: %w", err))
+		return fmt.Errorf("cannot lookup component version in target repository: %w", err)
 	}
 	defer tcv.Close()
 
@@ -220,12 +232,12 @@ func (r *Reconciler) transfer(comp *v1alpha1.Component, targetOCMRepo *v1alpha1.
 
 	result, err := check.Check().ForId(targetRepo, ocmutils.NewNameVersion(comp.Status.Component.Component, comp.Status.Component.Version))
 	if err != nil {
-		return rerror.AsRetryableError(fmt.Errorf("error checking component version in target repository: %w", err))
+		return fmt.Errorf("error checking component version in target repository: %w", err)
 	}
 	if result != nil {
 		msgBytes, err := json.Marshal(result)
 		if err != nil {
-			return rerror.AsRetryableError(fmt.Errorf("error checking component version in target repository: %s", string(msgBytes)))
+			return fmt.Errorf("error checking component version in target repository: %s", string(msgBytes))
 		}
 	}
 
