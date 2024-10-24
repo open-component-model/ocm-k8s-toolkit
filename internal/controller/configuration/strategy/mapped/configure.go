@@ -50,12 +50,27 @@ type Client interface {
 func Configure(ctx context.Context,
 	clnt Client,
 	rawConfig RawConfig,
-	trgt Target,
+	target Target,
 	basePath string,
 ) (string, error) {
-	target, err := prepareTargetDirInBasePath(ctx, basePath, trgt)
+	logger := log.FromContext(ctx)
+	targetDir := filepath.Join(basePath, "target")
+	if err := target.UnpackIntoDirectory(targetDir); errors.Is(err, artifact.ErrAlreadyUnpacked) {
+		logger.Info("target was already present, reusing existing directory", "path", targetDir)
+	} else if err != nil {
+		return "", fmt.Errorf("failed to get target directory: %w", err)
+	}
+
+	// TODO Workaround because the tarball from artifact storer uses a folder
+	// named after the util name instead of storing at artifact root level as this is the expected format
+	// for helm tgz archives.
+	// See issue: https://github.com/helm/helm/issues/5552
+	useSubDir, subDir, err := util.IsHelmChart(targetDir)
 	if err != nil {
-		return "", fmt.Errorf("failed to prepare target directory: %w", err)
+		return "", fmt.Errorf("failed to determine if target is a helm chart to traverse into subdirectory: %w", err)
+	}
+	if useSubDir {
+		targetDir = subDir
 	}
 
 	cfg, err := ParseConfig(rawConfig, clnt.Scheme())
@@ -76,7 +91,7 @@ func Configure(ctx context.Context,
 		return "", fmt.Errorf("failed to create substitution steps: %w", err)
 	}
 
-	engine, err := substitute.NewEngine(target)
+	engine, err := substitute.NewEngine(targetDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to create substitution engine: %w", err)
 	}
@@ -87,7 +102,13 @@ func Configure(ctx context.Context,
 		return "", fmt.Errorf("failed to substitute: %w", err)
 	}
 
-	return target, nil
+	if useSubDir {
+		// if we are using a subdirectory (see above),
+		// we need to direct the artifact path to the original directory again to return a proper localization
+		return filepath.Dir(targetDir), nil
+	}
+
+	return targetDir, nil
 }
 
 func substitutionStepsFromConfig(cfg Config, templateFunctions template.FuncMap) ([]steps.Step, error) {
@@ -133,36 +154,6 @@ func substitutionStepsFromConfig(cfg Config, templateFunctions template.FuncMap)
 	}
 
 	return st, nil
-}
-
-func prepareTargetDirInBasePath(ctx context.Context, basePath string, trgt Target) (string, error) {
-	logger := log.FromContext(ctx)
-	targetDir := filepath.Join(basePath, "target")
-	if err := trgt.UnpackIntoDirectory(targetDir); errors.Is(err, artifact.ErrAlreadyUnpacked) {
-		logger.Info("target was already present, reusing existing directory", "path", targetDir)
-	} else if err != nil {
-		return "", fmt.Errorf("failed to get target directory: %w", err)
-	}
-
-	// TODO Workaround because the tarball from artifact storer uses a folder
-	// named after the util name instead of storing at artifact root level as this is the expected format
-	// for helm tgz archives.
-	// See issue: https://github.com/helm/helm/issues/5552
-	useSubDir, subDir, err := util.IsHelmChart(targetDir)
-	if err != nil {
-		return "", fmt.Errorf("failed to determine if target is a helm chart to traverse into subdirectory: %w", err)
-	}
-	if useSubDir {
-		targetDir = subDir
-	}
-
-	if useSubDir {
-		// if we are using a subdirectory (see above),
-		// we need to direct the artifact path to the original directory again to return a proper localization
-		return filepath.Dir(targetDir), nil
-	}
-
-	return targetDir, nil
 }
 
 func ParseConfig(source RawConfig, scheme *runtime.Scheme) (config Config, err error) {
