@@ -121,11 +121,31 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups=openfluxcd.mandelsoft.org,resources=artifacts/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openfluxcd.mandelsoft.org,resources=artifacts/finalizers,verbs=update
 
-func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	resource := &v1alpha1.Resource{}
 	if err := r.Get(ctx, req.NamespacedName, resource); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	return r.reconcileWithStatusUpdate(ctx, resource)
+}
+
+func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, resource *v1alpha1.Resource) (ctrl.Result, error) {
+	patchHelper := patch.NewSerialPatcher(resource, r.Client)
+
+	result, err := r.reconcileExists(ctx, resource)
+
+	err = errors.Join(err, status.UpdateStatus(ctx, patchHelper, resource, r.EventRecorder, resource.GetRequeueAfter(), err))
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return result, nil
+}
+
+func (r *Reconciler) reconcileExists(ctx context.Context, resource *v1alpha1.Resource) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.V(1).Info("preparing reconciling resource")
 
 	if resource.Spec.Suspend {
 		return ctrl.Result{}, nil
@@ -147,22 +167,19 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	if added := controllerutil.AddFinalizer(resource, v1alpha1.ArtifactFinalizer); added {
-		return ctrl.Result{Requeue: true}, r.Update(ctx, resource)
+		err := r.Update(ctx, resource)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
+		}
+
+		return ctrl.Result{Requeue: true}, nil
 	}
 
-	patchHelper := patch.NewSerialPatcher(resource, r.Client)
-
-	// Always attempt to patch the object and status after each reconciliation.
-	defer func() {
-		retErr = errors.Join(retErr, status.UpdateStatus(ctx, patchHelper, resource, r.EventRecorder, resource.GetRequeueAfter(), retErr))
-	}()
-
-	return r.reconcileExists(ctx, resource)
+	return r.reconcile(ctx, resource)
 }
 
-func (r *Reconciler) reconcileExists(ctx context.Context, resource *v1alpha1.Resource) (_ ctrl.Result, retErr error) {
+func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("preparing reconciling resource")
 	// Get component to resolve resource from component descriptor and verify digest
 	component := &v1alpha1.Component{}
 	if err := r.Get(ctx, types.NamespacedName{
@@ -185,24 +202,30 @@ func (r *Reconciler) reconcileExists(ctx context.Context, resource *v1alpha1.Res
 		return ctrl.Result{}, errors.New("component is not ready")
 	}
 
-	return r.reconcile(ctx, resource, component)
+	return r.reconcileOCM(ctx, resource, component)
 }
 
-func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource, component *v1alpha1.Component) (ret ctrl.Result, retErr error) {
+func (r *Reconciler) reconcileOCM(ctx context.Context, resource *v1alpha1.Resource, component *v1alpha1.Component) (ctrl.Result, error) {
+	octx := ocmctx.New(datacontext.MODE_EXTENDED)
+
+	result, err := r.reconcileResource(ctx, octx, resource, component)
+
+	// Always finalize ocm context after reconciliation
+	err = errors.Join(err, octx.Finalize())
+	if err != nil {
+		// this should be retryable, as it is difficult to forsee whether
+		// another error condition might lead to problems closing the ocm
+		// context
+		return ctrl.Result{}, err
+	}
+
+	return result, nil
+}
+
+func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context, resource *v1alpha1.Resource, component *v1alpha1.Component) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("reconciling resource")
 
-	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
-	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
-	// instance and not at the global default context variable.
-	octx := ocmctx.New(datacontext.MODE_EXTENDED)
-	defer func() {
-		err := octx.Finalize()
-		if err != nil {
-			logger.Error(errors.Join(retErr, err), "failed to close ocm context")
-			retErr = nil
-		}
-	}()
 	session := ocmctx.NewSession(datacontext.NewSession())
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
@@ -508,7 +531,7 @@ func reconcileArtifact(
 		return fmt.Errorf("failed to reconcile resource artifact: %w", err)
 	}
 
-	return retErr
+	return nil
 }
 
 // setResourceStatus updates the resource status with the all required information.

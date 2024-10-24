@@ -84,7 +84,21 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	return r.reconcileExists(ctx, component)
+	return r.reconcileWithStatusUpdate(ctx, component)
+}
+
+func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, component *v1alpha1.Component) (ctrl.Result, error) {
+	patchHelper := patch.NewSerialPatcher(component, r.Client)
+
+	result, err := r.reconcileExists(ctx, component)
+
+	// Always attempt to patch the object and status after each reconciliation.
+	err = errors.Join(err, status.UpdateStatus(ctx, patchHelper, component, r.EventRecorder, component.GetRequeueAfter(), err))
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return result, nil
 }
 
 func (r *Reconciler) reconcileExists(ctx context.Context, component *v1alpha1.Component) (_ ctrl.Result, retErr error) {
@@ -101,18 +115,11 @@ func (r *Reconciler) reconcileExists(ctx context.Context, component *v1alpha1.Co
 		return ctrl.Result{}, nil
 	}
 
-	return r.reconcilePrepare(ctx, component)
+	return r.reconcile(ctx, component)
 }
 
-func (r *Reconciler) reconcilePrepare(ctx context.Context, component *v1alpha1.Component) (_ ctrl.Result, retErr error) {
+func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Component) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-
-	patchHelper := patch.NewSerialPatcher(component, r.Client)
-
-	// Always attempt to patch the object and status after each reconciliation.
-	defer func() {
-		retErr = errors.Join(retErr, status.UpdateStatus(ctx, patchHelper, component, r.EventRecorder, component.GetRequeueAfter(), retErr))
-	}()
 
 	repo := &v1alpha1.OCMRepository{}
 	if err := r.Get(ctx, types.NamespacedName{
@@ -138,22 +145,32 @@ func (r *Reconciler) reconcilePrepare(ctx context.Context, component *v1alpha1.C
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	return r.reconcile(ctx, component, repo)
+	return r.reconcileOCM(ctx, component, repo)
 }
 
-func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Component, repository *v1alpha1.OCMRepository) (_ ctrl.Result, retErr error) {
-	logger := log.FromContext(ctx)
+func (r *Reconciler) reconcileOCM(ctx context.Context, component *v1alpha1.Component, repository *v1alpha1.OCMRepository) (ctrl.Result, error) {
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
 	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
 	// instance and not at the global default context variable.
 	octx := ocmctx.New(datacontext.MODE_EXTENDED)
-	defer func() {
-		err := octx.Finalize()
-		if err != nil {
-			logger.Error(errors.Join(retErr, err), "failed to close ocm context")
-			retErr = nil
-		}
-	}()
+
+	result, err := r.reconcileComponent(ctx, octx, component, repository)
+
+	// Always finalize ocm context after reconciliation
+	err = errors.Join(err, octx.Finalize())
+	if err != nil {
+		// this should be retryable, as it is difficult to forsee whether
+		// another error condition might lead to problems closing the ocm
+		// context
+		return ctrl.Result{}, err
+	}
+
+	return result, nil
+}
+
+func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context, component *v1alpha1.Component, repository *v1alpha1.OCMRepository) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
 	session := ocmctx.NewSession(datacontext.NewSession())
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
@@ -203,11 +220,11 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 		return ctrl.Result{}, fmt.Errorf("failed to get component version: %w", err)
 	}
 
-	descriptors, rerr := r.verifyComponentVersionAndListDescriptors(ctx, octx, component, cv)
-	if rerr != nil {
+	descriptors, err := r.verifyComponentVersionAndListDescriptors(ctx, octx, component, cv)
+	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.VerificationFailedReason, err.Error())
 
-		return ctrl.Result{}, rerr
+		return ctrl.Result{}, err
 	}
 
 	err = r.Storage.ReconcileStorage(ctx, component)
@@ -217,11 +234,11 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 		return ctrl.Result{}, fmt.Errorf("failed to reconcileComponent storage: %w", err)
 	}
 
-	rerr = r.createArtifactForDescriptors(ctx, octx, component, cv, descriptors)
-	if rerr != nil {
+	err = r.createArtifactForDescriptors(ctx, octx, component, cv, descriptors)
+	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, err.Error())
 
-		return ctrl.Result{}, rerr
+		return ctrl.Result{}, err
 	}
 
 	// Update status

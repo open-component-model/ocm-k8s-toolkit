@@ -68,7 +68,7 @@ var _ = Describe("OCMRepository Controller", func() {
 		}).WithTimeout(10 * time.Second).Should(Succeed())
 	})
 
-	Describe("Reconsiling with different RepositorySpec specifications", func() {
+	Describe("Reconciling with different RepositorySpec specifications", func() {
 
 		Context("When correct RepositorySpec is provided", func() {
 			It("OCMRepository can be reconciled", func() {
