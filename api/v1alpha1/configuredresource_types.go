@@ -87,7 +87,7 @@ type ConfiguredResourceStatus struct {
 	// +optional
 	ArtifactRef *ObjectKey `json:"artifactRef,omitempty"`
 
-	ConfigurationDigest string `json:"digest,omitempty"`
+	Digest string `json:"digest,omitempty"`
 }
 
 // +kubebuilder:object:root=true

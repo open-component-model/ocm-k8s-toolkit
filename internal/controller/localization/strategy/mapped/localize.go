@@ -13,7 +13,6 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"ocm.software/ocm/api/ocm/compdesc"
@@ -128,7 +127,7 @@ func Localize(ctx context.Context,
 		for _, fm := range []template.FuncMap{
 			sprig.FuncMap(),
 			OCMResourceReferenceTemplateFunc(targetResource, componentDescriptor, componentSet),
-			KubernetesObjectReferenceTemplateFunc(ctx, clnt),
+			util.KubernetesObjectReferenceTemplateFunc(ctx, clnt),
 		} {
 			maps.Copy(funcs, fm)
 		}
@@ -297,28 +296,6 @@ func OCMResourceReferenceTemplateFunc(
 			}
 
 			return valueFromTransformation(resolved, transformationType)
-		},
-	}
-}
-
-// KubernetesObjectReferenceTemplateFunc creates a template function map that can be used in a GoTemplate
-// to resolve a Kubernetes object reference from the cluster.
-// Example:
-// {{ KubernetesObjectReference "my-namespace" "my-name" }}
-// this looks up the object with the name "my-name" in the namespace "my-namespace" and returns the object as JSON.
-// Note that this usually requires coupling with the sprig "mustFromJson" function to parse the object.
-func KubernetesObjectReferenceTemplateFunc(
-	ctx context.Context,
-	clnt Client,
-) template.FuncMap {
-	return template.FuncMap{
-		"KubernetesObjectReference": func(namespace, name string) (any, error) {
-			obj := &unstructured.Unstructured{}
-			if err := clnt.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, obj); err != nil {
-				return "", fmt.Errorf("failed to Get object: %w", err)
-			}
-
-			return obj.UnstructuredContent(), nil
 		},
 	}
 }

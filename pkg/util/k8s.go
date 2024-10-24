@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"text/template"
 
 	"github.com/containers/image/v5/pkg/compression"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -72,4 +74,26 @@ func Parse[T any, P ObjectPointerType[T]](source io.Reader, decoder runtime.Deco
 	}
 
 	return cfgObj, nil
+}
+
+// KubernetesObjectReferenceTemplateFunc creates a template function map that can be used in a GoTemplate
+// to resolve a Kubernetes object reference from the cluster.
+// Example:
+// {{ KubernetesObjectReference "my-namespace" "my-name" }}
+// this looks up the object with the name "my-name" in the namespace "my-namespace" and returns the object as JSON.
+// Note that this usually requires coupling with the sprig "mustFromJson" function to parse the object.
+func KubernetesObjectReferenceTemplateFunc(
+	ctx context.Context,
+	clnt ctrl.Reader,
+) template.FuncMap {
+	return template.FuncMap{
+		"KubernetesObjectReference": func(namespace, name string) (any, error) {
+			obj := &unstructured.Unstructured{}
+			if err := clnt.Get(ctx, ctrl.ObjectKey{Name: name, Namespace: namespace}, obj); err != nil {
+				return "", fmt.Errorf("failed to Get object: %w", err)
+			}
+
+			return obj.UnstructuredContent(), nil
+		},
+	}
 }

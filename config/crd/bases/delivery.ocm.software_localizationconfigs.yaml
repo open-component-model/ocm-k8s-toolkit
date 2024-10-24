@@ -52,10 +52,25 @@ spec:
                     being omittable except for target.
                   properties:
                     goTemplate:
+                      description: "LocalizationRuleGoTemplate is a rule that can
+                        be used to localize resources based on a goTemplate applied
+                        to a file.\n\nExample:\n\n\tgoTemplate:\n\t  file:\n\t    path:
+                        values.yaml\n\t  data:\n\t    key: value\n\t  delimiters:\n\t
+                        \   left: \"ocm{{\"\n\t    right: \"}}ocm\"\n\nFor more information
+                        on the Map type, see the subtypes for Resource, FileTarget
+                        and Transformation."
                       properties:
                         data:
+                          description: "GoTemplateData is an arbitrary object that
+                            is forwarded to the GoTemplate for use as a struct.\n\nExample:\n\n\tgoTemplate:\n\t
+                            \ data:\n\t    key: value\n\nThis would then lead to a
+                            struct that can be used in the GoTemplate (assuming standard
+                            Delimiters):\n\n\t{{ .key }}"
                           x-kubernetes-preserve-unknown-fields: true
                         delimiters:
+                          description: |-
+                            GoTemplateDelimiters are used to specify the delimiters that are used in the GoTemplate parsing process.
+                            If one wants to use a different delimiter than the default "{{" and "}}", one can specify them here.
                           properties:
                             left:
                               type: string
@@ -66,9 +81,8 @@ spec:
                           - right
                           type: object
                         file:
-                          description: |-
-                            The File target is used to identify the file where the rule will apply its sources to after considering
-                            the transformation.
+                          description: FileTarget is used to identify the file where
+                            the rule will apply its data to (parse the GoTemplate)
                           properties:
                             path:
                               description: The Path is the filepath (relative to the
@@ -85,10 +99,17 @@ spec:
                       - file
                       type: object
                     map:
+                      description: "LocalizationRuleMap is a rule that can be used
+                        to localize resources based on a mapping from resources to
+                        paths.\n\nExample:\n\n\tmap:\n\t  resource:\n\t    name: image\n\t
+                        \ file:\n\t    path: values.yaml\n\t    value: deploy.image\n\t
+                        \ transformation:\n\t    type: Repository\n\nFor more information
+                        on the Map type, see the subtypes for Resource, FileTarget
+                        and Transformation."
                       properties:
                         file:
                           description: |-
-                            The File target is used to identify the file where the rule will apply its sources to after considering
+                            FileTarget is used to identify the file where the rule will apply its data to after considering
                             the transformation.
                           properties:
                             path:
@@ -143,7 +164,7 @@ spec:
                           type: object
                         transformation:
                           description: |-
-                            The Transformation is used to tell the Localization additional information about how to localize the content.
+                            The Transformation is used to tell the rule additional information about how to transform the content.
                             The transformation can be used to digest the source in a different way or interpret the rule differently.
                             A simple example of this is the TransformationTypeRepository,
                             which extracts the registry portion of an image reference:
