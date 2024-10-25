@@ -298,6 +298,8 @@ spec:
                   x-kubernetes-map-type: atomic
                 type: array
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true
