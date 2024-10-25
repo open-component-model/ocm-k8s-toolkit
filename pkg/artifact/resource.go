@@ -39,37 +39,40 @@ type Content interface {
 	util.RevisionAndDigest
 }
 
-func NewContentBackedByStorageAndResource(
+func NewContentBackedByComponentResourceArtifact(
 	storage *storage.Storage,
-	artifact *artifactv1.Artifact,
+	component *v1alpha1.Component,
 	resource *v1alpha1.Resource,
+	artifact *artifactv1.Artifact,
 ) Content {
-	return &ContentBackedByStorageAndResource{
-		Storage:  storage,
-		Artifact: artifact,
-		Resource: resource,
+	return &ContentBackedByStorageAndComponent{
+		Storage:   storage,
+		Component: component,
+		Resource:  resource,
+		Artifact:  artifact,
 	}
 }
 
-type ContentBackedByStorageAndResource struct {
-	Storage  *storage.Storage
-	Artifact *artifactv1.Artifact
-	Resource *v1alpha1.Resource
+type ContentBackedByStorageAndComponent struct {
+	Storage   *storage.Storage
+	Component *v1alpha1.Component
+	Resource  *v1alpha1.Resource
+	Artifact  *artifactv1.Artifact
 }
 
-func (r *ContentBackedByStorageAndResource) GetDigest() (string, error) {
+func (r *ContentBackedByStorageAndComponent) GetDigest() (string, error) {
 	return r.Artifact.Spec.Digest, nil
 }
 
-func (r *ContentBackedByStorageAndResource) GetRevision() string {
+func (r *ContentBackedByStorageAndComponent) GetRevision() string {
 	return r.Artifact.Spec.Revision
 }
 
-func (r *ContentBackedByStorageAndResource) Open() (io.ReadCloser, error) {
+func (r *ContentBackedByStorageAndComponent) Open() (io.ReadCloser, error) {
 	return r.open()
 }
 
-func (r *ContentBackedByStorageAndResource) open() (io.ReadCloser, error) {
+func (r *ContentBackedByStorageAndComponent) open() (io.ReadCloser, error) {
 	path := r.Storage.LocalPath(r.Artifact)
 
 	unlock, err := r.Storage.Lock(r.Artifact)
@@ -90,7 +93,7 @@ func (r *ContentBackedByStorageAndResource) open() (io.ReadCloser, error) {
 
 var _ io.ReadCloser = &lockedReadCloser{}
 
-func (r *ContentBackedByStorageAndResource) UnpackIntoDirectory(path string) (err error) {
+func (r *ContentBackedByStorageAndComponent) UnpackIntoDirectory(path string) (err error) {
 	fi, err := os.Stat(path)
 	if err == nil && fi.IsDir() {
 		return ErrAlreadyUnpacked
@@ -133,7 +136,11 @@ func (r *ContentBackedByStorageAndResource) UnpackIntoDirectory(path string) (er
 	return nil
 }
 
-func (r *ContentBackedByStorageAndResource) GetResource() *v1alpha1.Resource {
+func (r *ContentBackedByStorageAndComponent) GetComponent() *v1alpha1.Component {
+	return r.Component
+}
+
+func (r *ContentBackedByStorageAndComponent) GetResource() *v1alpha1.Resource {
 	return r.Resource
 }
 
@@ -150,7 +157,7 @@ func (l *lockedReadCloser) Close() error {
 	return l.ReadCloser.Close()
 }
 
-func GetContentBackedByStorageAndResource(
+func GetContentBackedByArtifactFromComponent(
 	ctx context.Context,
 	clnt client.Reader,
 	strg *storage.Storage,
@@ -159,39 +166,100 @@ func GetContentBackedByStorageAndResource(
 	if ref.APIVersion == "" {
 		ref.APIVersion = v1alpha1.GroupVersion.String()
 	}
-	if ref.APIVersion != v1alpha1.GroupVersion.String() || ref.Kind != "Resource" {
+	if ref.APIVersion != v1alpha1.GroupVersion.String() || ref.Kind != v1alpha1.KindResource {
 		return nil, fmt.Errorf("unsupported localization reference type: %s/%s", ref.APIVersion, ref.Kind)
 	}
 
-	resource := v1alpha1.Resource{}
-	if err := clnt.Get(ctx, client.ObjectKey{
-		Namespace: ref.Namespace,
-		Name:      ref.Name,
-	}, &resource); err != nil {
-		return nil, fmt.Errorf("failed to fetch util %s: %w", ref.Name, err)
+	var (
+		component *v1alpha1.Component
+		resource  *v1alpha1.Resource
+		artifact  *artifactv1.Artifact
+		err       error
+	)
+
+	switch ref.Kind {
+	case v1alpha1.KindResource:
+		component, resource, artifact, err = GetComponentResourceArtifact(ctx, clnt, strg, ref)
+	case v1alpha1.KindLocalizedResource:
+		component, resource, artifact, err = GetComponentResourceArtifact(ctx, clnt, strg, ref)
+	case v1alpha1.KindConfiguredResource:
+		component, resource, artifact, err = GetComponentResourceArtifact(ctx, clnt, strg, ref)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return NewContentBackedByComponentResourceArtifact(strg, component, resource, artifact), nil
+}
+
+type ObjectWithTargetReference interface {
+	GetTarget() meta.NamespacedObjectKindReference
+}
+
+func GetComponentResourceArtifact(
+	ctx context.Context,
+	clnt client.Reader,
+	strg *storage.Storage,
+	ref meta.NamespacedObjectKindReference,
+) (*v1alpha1.Component, *v1alpha1.Resource, *artifactv1.Artifact, error) {
+	var (
+		resource client.Object
+		err      error
+	)
+
+	switch ref.Kind {
+	case v1alpha1.KindLocalizedResource:
+		resource = &v1alpha1.LocalizedResource{}
+	case v1alpha1.KindConfiguredResource:
+		resource = &v1alpha1.ConfiguredResource{}
+	case v1alpha1.KindResource:
+		resource = &v1alpha1.Resource{}
+	default:
+		return nil, nil, nil, fmt.Errorf("unsupported reference kind: %s", ref.Kind)
+	}
+
+	if err = clnt.Get(ctx, client.ObjectKey{Namespace: ref.Namespace, Name: ref.Name}, resource); err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to fetch resource %s: %w", ref.Name, err)
 	}
 
 	if !resource.GetDeletionTimestamp().IsZero() {
-		return nil, fmt.Errorf("util %s was marked for deletion and cannot be used, waiting for recreation", resource.Name)
+		return nil, nil, nil, fmt.Errorf("resource %s was marked for deletion and cannot be used, waiting for recreation", ref.Name)
 	}
 
-	if !conditions.IsReady(&resource) {
-		return nil, fmt.Errorf("%w: resource %s", ErrNotYetReady, resource.Name)
+	if conditionCheckable, ok := resource.(conditions.Getter); ok {
+		if !conditions.IsReady(conditionCheckable) {
+			return nil, nil, nil, fmt.Errorf("%w: resource %s", ErrNotYetReady, ref.Name)
+		}
 	}
 
-	artifact := artifactv1.Artifact{}
-	if err := clnt.Get(ctx, client.ObjectKey{
-		Namespace: resource.Namespace,
-		Name:      resource.Status.ArtifactRef.Name,
-	}, &artifact); err != nil {
-		return nil, fmt.Errorf("failed to fetch artifact target %s: %w", resource.Status.ArtifactRef.Name, err)
+	if ref.Kind == v1alpha1.KindResource {
+		res := resource.(*v1alpha1.Resource) //nolint:forcetypeassert // we know the type
+		component := &v1alpha1.Component{}
+		if err = clnt.Get(ctx, client.ObjectKey{
+			Namespace: res.GetNamespace(),
+			Name:      res.Spec.ComponentRef.Name,
+		}, component); err != nil {
+			return nil, nil, nil, fmt.Errorf("failed to fetch component %s: %w", res.Spec.ComponentRef.Name, err)
+		}
+
+		art := &artifactv1.Artifact{}
+		if err = clnt.Get(ctx, client.ObjectKey{
+			Namespace: res.GetNamespace(),
+			Name:      res.Status.ArtifactRef.Name,
+		}, art); err != nil {
+			return nil, nil, nil, fmt.Errorf("failed to fetch artifact %s: %w", component.Status.ArtifactRef.Name, err)
+		}
+
+		return component, res, art, nil
 	}
 
-	if !strg.ArtifactExist(&artifact) {
-		return nil, fmt.Errorf("artifact %s specified in component does not exist", artifact.Name)
+	targetable, ok := resource.(ObjectWithTargetReference)
+	if !ok {
+		return nil, nil, nil, fmt.Errorf("unsupported reference type: %T", resource)
 	}
 
-	return NewContentBackedByStorageAndResource(strg, &artifact, &resource), nil
+	return GetComponentResourceArtifact(ctx, clnt, strg, targetable.GetTarget())
 }
 
 // UniqueIDsForArtifactContentCombination returns a set of unique identifiers for the combination of two Content.

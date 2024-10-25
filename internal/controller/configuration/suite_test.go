@@ -11,7 +11,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package localization
+package configuration
 
 import (
 	"context"
@@ -39,7 +39,6 @@ import (
 	metricserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	// +kubebuilder:scaffold:imports
 )
@@ -123,15 +122,6 @@ var _ = BeforeSuite(func() {
 	}
 
 	Expect((&Reconciler{
-		BaseReconciler: &ocm.BaseReconciler{
-			Client:        k8sClient,
-			Scheme:        testEnv.Scheme,
-			EventRecorder: recorder,
-		},
-		Storage: strg,
-	}).SetupWithManager(k8sManager)).To(Succeed())
-
-	Expect((&configuration.Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client:        k8sClient,
 			Scheme:        testEnv.Scheme,

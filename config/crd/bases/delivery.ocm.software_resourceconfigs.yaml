@@ -86,28 +86,38 @@ spec:
                       type: object
                     map:
                       properties:
-                        file:
-                          description: FileTarget is used to identify the file where
-                            the rule will apply its data to
+                        source:
                           properties:
-                            path:
-                              description: The Path is the filepath (relative to the
-                                Resource) to the file inside the resource.
-                              type: string
                             value:
-                              description: The Value is a reference to the content
-                                that should be localized.
+                              description: Value is the value that will be used to
+                                replace the target in the file.
                               type: string
                           required:
-                          - path
+                          - value
                           type: object
-                        value:
-                          description: Value is the value that will be used to replace
-                            the target in the file.
-                          type: string
+                        target:
+                          properties:
+                            file:
+                              description: File is used to identify the file where
+                                the rule will apply its data to
+                              properties:
+                                path:
+                                  description: The Path is the filepath (relative
+                                    to the Resource) to the file inside the resource.
+                                  type: string
+                                value:
+                                  description: The Value is a reference to the content
+                                    that should be localized.
+                                  type: string
+                              required:
+                              - path
+                              type: object
+                          required:
+                          - file
+                          type: object
                       required:
-                      - file
-                      - value
+                      - source
+                      - target
                       type: object
                   type: object
                 type: array

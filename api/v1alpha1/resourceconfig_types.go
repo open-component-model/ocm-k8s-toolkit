@@ -43,10 +43,18 @@ type ConfigurationRule struct {
 }
 
 type ConfigurationRuleMap struct {
+	Source ConfigurationRuleMapSource `json:"source"`
+	Target ConfigurationRuleMapTarget `json:"target"`
+}
+
+type ConfigurationRuleMapSource struct {
 	// Value is the value that will be used to replace the target in the file.
 	Value string `json:"value"`
-	// FileTarget is used to identify the file where the rule will apply its data to
-	FileTarget FileTarget `json:"file"`
+}
+
+type ConfigurationRuleMapTarget struct {
+	// File is used to identify the file where the rule will apply its data to
+	File FileTarget `json:"file"`
 }
 
 type ConfigurationRuleGoTemplate struct {

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"text/template"
@@ -24,7 +23,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	ocmbuilder "ocm.software/ocm/api/helper/builder"
-	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	"ocm.software/ocm/api/utils/tarutils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
@@ -34,6 +32,7 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
 )
 
 const modeReadWriteUser = 0o600
@@ -103,31 +102,39 @@ var _ = Describe("LocalizationRules Controller", func() {
 			Expect(k8sClient.Delete(ctx, component, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
 		})
 
-		targetResource = SetupMockResourceWithData(ctx,
+		var err error
+		targetResource = test.SetupMockResourceWithData(ctx,
 			TargetResourceObj,
 			Namespace,
-			options{
-				basePath: tmp,
-				dataPath: filepath.Join("strategy", "mapped", "testdata", "deployment-instruction-helm"),
-				componentRef: v1alpha1.ObjectKey{
+			&test.Options{
+				BasePath: tmp,
+				DataPath: filepath.Join("strategy", "mapped", "testdata", "deployment-instruction-helm"),
+				ComponentRef: v1alpha1.ObjectKey{
 					Namespace: Namespace,
 					Name:      ComponentObj,
 				},
+				Strg:     strg,
+				Clnt:     k8sClient,
+				Recorder: recorder,
 			},
 		)
+		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(func(ctx SpecContext) {
 			Expect(k8sClient.Delete(ctx, targetResource, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
 		})
-		cfgResource = SetupMockResourceWithData(ctx,
+		cfgResource = test.SetupMockResourceWithData(ctx,
 			CfgResourceObj,
 			Namespace,
-			options{
-				basePath: tmp,
-				data:     bytes.NewReader(configYAML),
-				componentRef: v1alpha1.ObjectKey{
+			&test.Options{
+				BasePath: tmp,
+				Data:     bytes.NewReader(configYAML),
+				ComponentRef: v1alpha1.ObjectKey{
 					Namespace: Namespace,
 					Name:      ComponentObj,
 				},
+				Strg:     strg,
+				Clnt:     k8sClient,
+				Recorder: recorder,
 			},
 		)
 		DeferCleanup(func(ctx SpecContext) {
@@ -144,7 +151,7 @@ var _ = Describe("LocalizationRules Controller", func() {
 			Expect(k8sClient.Delete(ctx, localization, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
 		})
 
-		Eventually(Object(localization), "10s").Should(
+		Eventually(Object(localization), "15s").Should(
 			HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
 
 		art := &artifactv1.Artifact{}
@@ -174,86 +181,6 @@ var _ = Describe("LocalizationRules Controller", func() {
 
 	})
 })
-
-type options struct {
-	basePath string
-
-	// option one to create a resource: directly pass the data
-	data io.Reader
-	// option two to create a resource: pass the path to the data
-	dataPath string
-
-	componentRef v1alpha1.ObjectKey
-}
-
-func SetupMockResourceWithData(ctx context.Context,
-	name, namespace string,
-	options options,
-) *v1alpha1.Resource {
-	res := &v1alpha1.Resource{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-		},
-		Spec: v1alpha1.ResourceSpec{
-			Resource: v1alpha1.ResourceID{
-				ByReference: v1alpha1.ResourceReference{
-					Resource: v1.NewIdentity(name),
-				},
-			},
-			ComponentRef: corev1.LocalObjectReference{
-				Name: options.componentRef.Name,
-			},
-		},
-	}
-	Expect(k8sClient.Create(ctx, res)).To(Succeed())
-
-	patchHelper := patch.NewSerialPatcher(res, k8sClient)
-
-	path := options.basePath
-
-	Expect(strg.ReconcileArtifact(
-		ctx,
-		res,
-		name,
-		path,
-		fmt.Sprintf("%s.tar.gz", name),
-		func(artifact *artifactv1.Artifact, s string) error {
-			// Archive directory to storage
-			if options.data != nil {
-				if err := strg.Copy(artifact, options.data); err != nil {
-					return fmt.Errorf("unable to archive artifact to storage: %w", err)
-				}
-			}
-			if options.dataPath != "" {
-				abs, err := filepath.Abs(options.dataPath)
-				if err != nil {
-					return fmt.Errorf("unable to get absolute path: %w", err)
-				}
-				if err := strg.Archive(artifact, abs, nil); err != nil {
-					return fmt.Errorf("unable to archive artifact to storage: %w", err)
-				}
-			}
-
-			res.Status.ArtifactRef = corev1.LocalObjectReference{
-				Name: artifact.Name,
-			}
-			return nil
-		}),
-	).To(Succeed())
-
-	art := &artifactv1.Artifact{}
-	art.Name = res.Status.ArtifactRef.Name
-	art.Namespace = res.Namespace
-	Eventually(Object(art), "5s").Should(HaveField("Spec.URL", Not(BeEmpty())))
-
-	Eventually(func(ctx context.Context) error {
-		status.MarkReady(recorder, res, "applied mock util")
-		return status.UpdateStatus(ctx, patchHelper, res, recorder, time.Hour, nil)
-	}).WithContext(ctx).Should(Succeed())
-
-	return res
-}
 
 func SetupLocalizedResource(ctx context.Context, data map[string]string) *v1alpha1.LocalizedResource {
 	localizationTemplate, err := template.New("localization").Parse(localizationTemplateKustomizePatch)

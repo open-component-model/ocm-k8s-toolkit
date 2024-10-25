@@ -10,8 +10,8 @@ import (
 	"github.com/opencontainers/go-digest"
 	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	yaml "sigs.k8s.io/yaml/goyaml.v3"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/types"
@@ -32,17 +32,23 @@ type Client interface {
 }
 
 func NewClientWithLocalStorage(r client.Reader, s *storage.Storage, scheme *runtime.Scheme) Client {
+	factory := serializer.NewCodecFactory(scheme)
+	info, _ := runtime.SerializerInfoForMediaType(factory.SupportedMediaTypes(), runtime.ContentTypeYAML)
+	encoder := factory.EncoderForVersion(info.Serializer, v1alpha1.GroupVersion)
+
 	return &localStorageBackedClient{
 		Reader:  r,
 		Storage: s,
 		scheme:  scheme,
+		encoder: encoder,
 	}
 }
 
 type localStorageBackedClient struct {
 	client.Reader
 	*storage.Storage
-	scheme *runtime.Scheme
+	scheme  *runtime.Scheme
+	encoder runtime.Encoder
 }
 
 func (clnt *localStorageBackedClient) Scheme() *runtime.Scheme {
@@ -57,7 +63,7 @@ func (clnt *localStorageBackedClient) GetLocalizationTarget(
 ) (types.LocalizationTarget, error) {
 	switch ref.Kind {
 	case "Resource":
-		return artifactutil.GetContentBackedByStorageAndResource(ctx, clnt.Reader, clnt.Storage, ref.NamespacedObjectKindReference)
+		return artifactutil.GetContentBackedByArtifactFromComponent(ctx, clnt.Reader, clnt.Storage, ref.NamespacedObjectKindReference)
 	default:
 		return nil, fmt.Errorf("unsupported localization target kind: %s", ref.Kind)
 	}
@@ -69,15 +75,15 @@ func (clnt *localStorageBackedClient) GetLocalizationConfig(
 ) (types.LocalizationConfig, error) {
 	switch ref.Kind {
 	case "Resource":
-		return artifactutil.GetContentBackedByStorageAndResource(ctx, clnt.Reader, clnt.Storage, ref.NamespacedObjectKindReference)
+		return artifactutil.GetContentBackedByArtifactFromComponent(ctx, clnt.Reader, clnt.Storage, ref.NamespacedObjectKindReference)
 	case "LocalizationConfig":
-		return GetLocalizationConfigFromKubernetes(ctx, clnt, ref)
+		return GetLocalizationConfigFromKubernetes(ctx, clnt.Reader, clnt.encoder, ref)
 	default:
 		return nil, fmt.Errorf("unsupported localization config kind: %s", ref.Kind)
 	}
 }
 
-func GetLocalizationConfigFromKubernetes(ctx context.Context, clnt client.Reader, reference v1alpha1.ConfigurationReference) (types.LocalizationConfig, error) {
+func GetLocalizationConfigFromKubernetes(ctx context.Context, clnt client.Reader, encoder runtime.Encoder, reference v1alpha1.ConfigurationReference) (types.LocalizationConfig, error) {
 	if reference.APIVersion == "" {
 		reference.APIVersion = v1alpha1.GroupVersion.String()
 	}
@@ -93,12 +99,13 @@ func GetLocalizationConfigFromKubernetes(ctx context.Context, clnt client.Reader
 		return nil, fmt.Errorf("failed to fetch localization config %s: %w", reference.Name, err)
 	}
 
-	return &LocalizationConfig{&cfg}, nil
+	return &LocalizationConfig{&cfg, encoder}, nil
 }
 
 // LocalizationConfig is a wrapper around the v1alpha1.LocalizationConfig that implements the types.LocalizationConfig interface.
 type LocalizationConfig struct {
 	*v1alpha1.LocalizationConfig
+	encoder runtime.Encoder
 }
 
 var _ types.LocalizationConfig = &LocalizationConfig{}
@@ -114,7 +121,8 @@ func (in *LocalizationConfig) Open() (io.ReadCloser, error) {
 
 func (in *LocalizationConfig) AsBuf() (*bytes.Buffer, error) {
 	var buf bytes.Buffer
-	if err := yaml.NewDecoder(&buf).Decode(in); err != nil {
+
+	if err := in.encoder.Encode(in.LocalizationConfig, &buf); err != nil {
 		return nil, err
 	}
 
@@ -140,5 +148,5 @@ func (in *LocalizationConfig) GetDigest() (string, error) {
 }
 
 func (in *LocalizationConfig) GetRevision() string {
-	return fmt.Sprintf("ResourceVersion: %s", in.GetResourceVersion())
+	return fmt.Sprintf("%s/%s in generation %v", in.GetNamespace(), in.GetName(), in.GetGeneration())
 }

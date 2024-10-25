@@ -14,9 +14,9 @@ import (
 )
 
 type MockedLocalizationReference struct {
-	Path     string
-	Data     []byte
-	Resource *v1alpha1.Resource
+	Path      string
+	Data      []byte
+	Component *v1alpha1.Component
 }
 
 var (
@@ -62,6 +62,6 @@ func (r *MockedLocalizationReference) UnpackIntoDirectory(path string) (err erro
 	return fluxtar.Untar(data, path)
 }
 
-func (r *MockedLocalizationReference) GetResource() *v1alpha1.Resource {
-	return r.Resource
+func (r *MockedLocalizationReference) GetComponent() *v1alpha1.Component {
+	return r.Component
 }

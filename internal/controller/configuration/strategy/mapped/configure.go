@@ -115,9 +115,9 @@ func substitutionStepsFromConfig(cfg Config, templateFunctions template.FuncMap)
 		if mapRule := rule.Map; mapRule != nil {
 			if err := substitutions.Add(
 				"util-reference",
-				mapRule.FileTarget.Path,
-				mapRule.FileTarget.Value,
-				mapRule.Value,
+				mapRule.Target.File.Path,
+				mapRule.Target.File.Value,
+				mapRule.Source.Value,
 			); err != nil {
 				return nil, fmt.Errorf("failed to add resolved rule: %w", err)
 			}

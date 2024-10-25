@@ -107,60 +107,45 @@ spec:
                         on the Map type, see the subtypes for Resource, FileTarget
                         and Transformation."
                       properties:
-                        file:
-                          description: |-
-                            FileTarget is used to identify the file where the rule will apply its data to after considering
-                            the transformation.
+                        source:
                           properties:
-                            path:
-                              description: The Path is the filepath (relative to the
-                                Resource) to the file inside the resource.
-                              type: string
-                            value:
-                              description: The Value is a reference to the content
-                                that should be localized.
-                              type: string
-                          required:
-                          - path
-                          type: object
-                        resource:
-                          description: |-
-                            The Resource reference is used to identify the resource that will be used to fill in the target reference.
-                            If one has a ComponentDescriptor with 2 resources, one can use this to reference between them.
-                            For a Component Descriptor with two resources, a "deployment-instruction" (to be localized)
-                            and an "image" (to be localized from), one can use the following source:
-
-                              map:
-                                resource:
-                                  name: image
-
-                            The localization will then look into the corresponding descriptor and resolve its AccessType:
-                              components:
-                               - component:
-                                   # ...
-                                   resources:
-                                     - access:
-                                         imageReference: ghcr.io/stefanprodan/podinfo:6.2.0
-                                         type: ociArtifact
-                                       name: image
-                                       relation: external
-                                       type: ociImage
-                                       version: 6.2.0
-                                   sources: []
-                                   version: 1.0.0
-                                 meta:
-                                   schemaVersion: v2
-
-                            This would then lead to a value of "ghcr.io/stefanprodan/podinfo:6.2.0".
-                          properties:
-                            extraIdentity:
+                            referencePath:
+                              items:
+                                additionalProperties:
+                                  type: string
+                                description: |-
+                                  Identity describes the identity of an object.
+                                  Only ascii characters are allowed
+                                type: object
+                              type: array
+                            resource:
                               additionalProperties:
                                 type: string
+                              description: |-
+                                Identity describes the identity of an object.
+                                Only ascii characters are allowed
                               type: object
-                            name:
-                              type: string
+                          type: object
+                        target:
+                          properties:
+                            file:
+                              description: |-
+                                File is used to identify the file where the rule will apply its data to after considering
+                                the transformation.
+                              properties:
+                                path:
+                                  description: The Path is the filepath (relative
+                                    to the Resource) to the file inside the resource.
+                                  type: string
+                                value:
+                                  description: The Value is a reference to the content
+                                    that should be localized.
+                                  type: string
+                              required:
+                              - path
+                              type: object
                           required:
-                          - name
+                          - file
                           type: object
                         transformation:
                           description: |-
@@ -182,8 +167,8 @@ spec:
                               type: string
                           type: object
                       required:
-                      - file
-                      - resource
+                      - source
+                      - target
                       type: object
                   type: object
                 type: array

@@ -82,47 +82,40 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	if !configuration.GetDeletionTimestamp().IsZero() {
-		return ctrl.Result{}, r.reconcileDeletion(ctx, configuration)
+		// TODO: This is a temporary solution until a artifact-reconciler is written to handle the deletion of artifacts
+		if err := ocm.RemoveArtifactForCollectable(ctx, r.Client, r.Storage, configuration); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to remove artifact: %w", err)
+		}
+
+		if removed := controllerutil.RemoveFinalizer(configuration, v1alpha1.ArtifactFinalizer); removed {
+			if err := r.Update(ctx, configuration); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
+			}
+		}
+
+		return ctrl.Result{}, nil
 	}
 
 	if added := controllerutil.AddFinalizer(configuration, v1alpha1.ArtifactFinalizer); added {
 		return ctrl.Result{Requeue: true}, r.Update(ctx, configuration)
 	}
 
-	patchHelper := patch.NewSerialPatcher(configuration, r.Client)
-
-	// Always attempt to patch the object and status after each reconciliation.
-	defer func() {
-		if statusErr := status.UpdateStatus(ctx, patchHelper, configuration, r.EventRecorder, configuration.Spec.Interval.Duration, err); statusErr != nil {
-			err = errors.Join(err, statusErr)
-		}
-	}()
-
-	return r.reconcileExists(ctx, configuration)
+	return r.reconcileWithStatusUpdate(ctx, configuration)
 }
 
-func (r *Reconciler) reconcileDeletion(ctx context.Context, configuration *v1alpha1.ConfiguredResource) error {
-	artifact, err := ocm.GetAndVerifyArtifactForCollectable(ctx, r, r.Storage, configuration)
-	if client.IgnoreNotFound(err) != nil {
-		return fmt.Errorf("failed to get artifact: %w", err)
-	}
-	if artifact == nil {
-		log.FromContext(ctx).Info("artifact belonging to configuration not found, skipping deletion")
+func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, localization *v1alpha1.ConfiguredResource) (ctrl.Result, error) {
+	patchHelper := patch.NewSerialPatcher(localization, r.Client)
 
-		return nil
-	}
-	if err := r.Storage.Remove(artifact); err != nil {
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("failed to remove artifact: %w", err)
-		}
-	}
-	if removed := controllerutil.RemoveFinalizer(configuration, v1alpha1.ArtifactFinalizer); removed {
-		if err := r.Update(ctx, configuration); err != nil {
-			return fmt.Errorf("failed to remove finalizer: %w", err)
-		}
+	result, err := r.reconcileExists(ctx, localization)
+
+	if err = errors.Join(
+		err,
+		status.UpdateStatus(ctx, patchHelper, localization, r.EventRecorder, localization.Spec.Interval.Duration, err),
+	); err != nil {
+		return ctrl.Result{}, err
 	}
 
-	return nil
+	return result, nil
 }
 
 func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha1.ConfiguredResource) (ctrl.Result, error) {
@@ -138,18 +131,18 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		configuration.Spec.Target.Namespace = configuration.Namespace
 	}
 
-	target, err := cfgclnt.GetConfigurationTarget(ctx, configuration.Spec.Target)
+	target, err := cfgclnt.GetTarget(ctx, configuration.Spec.Target)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, configuration, ReasonTargetFetchFailed, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to fetch target: %w", err)
 	}
 
-	if configuration.Spec.Source.Namespace == "" {
-		configuration.Spec.Source.Namespace = configuration.Namespace
+	if configuration.Spec.Config.Namespace == "" {
+		configuration.Spec.Config.Namespace = configuration.Namespace
 	}
 
-	cfg, err := cfgclnt.GetConfigurationSource(ctx, configuration.Spec.Source)
+	cfg, err := cfgclnt.GetConfiguration(ctx, configuration.Spec.Config)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, configuration, ReasonConfigFetchFailed, err.Error())
 
@@ -163,6 +156,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		return ctrl.Result{}, fmt.Errorf("failed to map digest from config to target: %w", err)
 	}
 
+	logger.V(1).Info("verifying configuration", "digest", digest, "revision", revision)
 	hasValidArtifact, err := ocm.CollectableHasValidArtifactBasedOnFileNameDigest(
 		ctx,
 		r.Client,
@@ -174,8 +168,9 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		return ctrl.Result{}, fmt.Errorf("failed to check if artifact is valid: %w", err)
 	}
 
-	var localized string
+	var configured string
 	if !hasValidArtifact {
+		logger.V(1).Info("configuring", "digest", digest, "revision", revision)
 		basePath, err := os.MkdirTemp("", "configured-")
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to create temporary directory to perform configuration: %w", err)
@@ -186,7 +181,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 			}
 		}()
 
-		if localized, err = mapped.Configure(ctx, cfgclnt, cfg, target, basePath); err != nil {
+		if configured, err = mapped.Configure(ctx, cfgclnt, cfg, target, basePath); err != nil {
 			status.MarkNotReady(r.EventRecorder, configuration, ReasonConfigurationFailed, err.Error())
 			logger.Error(err, "failed to configure, retrying later", "interval", configuration.Spec.Interval.Duration)
 
@@ -200,7 +195,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		ctx,
 		configuration,
 		revision,
-		localized,
+		configured,
 		file,
 		func(artifact *artifactv1.Artifact, dir string) error {
 			if !hasValidArtifact {
@@ -224,7 +219,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 	}
 
 	logger.Info("configuration successful", "artifact", configuration.Status.ArtifactRef)
-	status.MarkReady(r.EventRecorder, configuration, "localized successfully")
+	status.MarkReady(r.EventRecorder, configuration, "configured successfully")
 
 	return ctrl.Result{RequeueAfter: configuration.Spec.Interval.Duration}, nil
 }

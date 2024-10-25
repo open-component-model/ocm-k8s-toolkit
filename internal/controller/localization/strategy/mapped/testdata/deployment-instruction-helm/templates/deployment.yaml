@@ -10,4 +10,4 @@ spec:
         - name: my-container
           image: {{ .Values.deploy.image }}
         - name: my-other-container
-          image: ocm{ OCMResourceReference "image" "Image" }
+          image: blabla

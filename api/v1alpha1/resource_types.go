@@ -24,6 +24,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const KindResource = "Resource"
+
 // ResourceSpec defines the desired state of Resource.
 type ResourceSpec struct {
 	// ComponentRef is a reference to a Component.
@@ -141,7 +143,7 @@ func (in *Resource) GetObjectMeta() *metav1.ObjectMeta {
 }
 
 func (in *Resource) GetKind() string {
-	return "Resource"
+	return KindResource
 }
 
 // GetRequeueAfter returns the duration after which the Resource must be

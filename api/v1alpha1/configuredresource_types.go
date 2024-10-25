@@ -19,8 +19,11 @@ package v1alpha1
 import (
 	"fmt"
 
+	"github.com/fluxcd/pkg/apis/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+const KindConfiguredResource = "ConfiguredResource"
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
@@ -34,10 +37,6 @@ type ConfiguredResourceSpec struct {
 	// Config that is to be used to configure the target
 	// +required
 	Config ConfigurationReference `json:"config,omitempty"`
-
-	// Source of the configuration (where to get values from)
-	// +required
-	Source ConfigurationReference `json:"source,omitempty"`
 
 	// Interval at which to refresh the configuration
 	// +required
@@ -100,6 +99,10 @@ type ConfiguredResource struct {
 
 	Spec   ConfiguredResourceSpec   `json:"spec,omitempty"`
 	Status ConfiguredResourceStatus `json:"status,omitempty"`
+}
+
+func (in *ConfiguredResource) GetTarget() meta.NamespacedObjectKindReference {
+	return in.Spec.Target.NamespacedObjectKindReference
 }
 
 // +kubebuilder:object:root=true

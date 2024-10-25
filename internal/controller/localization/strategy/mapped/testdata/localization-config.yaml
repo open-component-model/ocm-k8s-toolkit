@@ -5,11 +5,13 @@ metadata:
 spec:
   rules:
   - map:
-      resource:
-        name: image
-      file:
-        path: values.yaml
-        value: deploy.image
+      source:
+        resource:
+          name: image
+      target:
+        file:
+          path: values.yaml
+          value: deploy.image
   - goTemplate:
       file:
         path: templates/deployment.yaml

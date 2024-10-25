@@ -10,4 +10,4 @@ spec:
         - name: my-container
           image: {{ .Values.deploy.image }}
         - name: my-other-container
-          image: ghcr.io/stefanprodan/podinfo:6.2.0
+          image: blabla

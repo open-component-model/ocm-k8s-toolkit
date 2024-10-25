@@ -4,31 +4,48 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 
+	"github.com/fluxcd/pkg/apis/meta"
+	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
+	"github.com/google/go-containerregistry/pkg/name"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
+	ocmctx "ocm.software/ocm/api/ocm"
+	"ocm.software/ocm/api/ocm/compdesc"
+	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
+	"ocm.software/ocm/api/ocm/extensions/accessmethods/localblob"
+	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
+	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociblob"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	localizationclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/client"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/strategy/mapped"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/types"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/artifact"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/index"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/util"
 )
 
 const (
+	// TODO move to condition types.
 	ReasonTargetFetchFailed        = "TargetFetchFailed"
 	ReasonConfigFetchFailed        = "ConfigFetchFailed"
 	ReasonLocalizationFailed       = "LocalizationFailed"
-	ReasonUniqueIDGenerationFailed = "UniqueIDGenerationFailed"
+	ReasonConfigGenerationFailed   = "ConfigGenerationFailed"
+	ReasonLocalizationNotYetReady  = "LocalizationNotYetReady"
+	ReasonResourceGenerationFailed = "ResourceGenerationFailed"
 )
 
 // Reconciler reconciles a LocalizationRules object.
@@ -41,7 +58,7 @@ var _ ocm.Reconciler = (*Reconciler)(nil)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
-	targetFieldMatcher, configFieldMatcher, err := indexTargetAndConfig(mgr)
+	targetFieldMatcher, configFieldMatcher, err := index.LocalizedResourceIndexTargetAndConfig(mgr)
 	if err != nil {
 		return err
 	}
@@ -50,12 +67,14 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&v1alpha1.LocalizedResource{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		// Update when the owned artifact containing the localized data changes
 		Owns(&artifactv1.Artifact{}).
+		// Update when the owned ConfiguredResource changes
+		Owns(&v1alpha1.ConfiguredResource{}).
 		// Update when a resource specified as target changes
-		Watches(&v1alpha1.Resource{}, enqueueForFieldMatcher(mgr.GetClient(), targetFieldMatcher)).
+		Watches(&v1alpha1.Resource{}, index.EnqueueForFieldMatcher(mgr.GetClient(), targetFieldMatcher)).
 		// Update when a localization config coming from a resource changes
-		Watches(&v1alpha1.Resource{}, enqueueForFieldMatcher(mgr.GetClient(), configFieldMatcher)).
+		Watches(&v1alpha1.Resource{}, index.EnqueueForFieldMatcher(mgr.GetClient(), configFieldMatcher)).
 		// Update when a localization config coming from the cluster changes
-		Watches(&v1alpha1.LocalizationConfig{}, enqueueForFieldMatcher(mgr.GetClient(), configFieldMatcher)).
+		Watches(&v1alpha1.LocalizationConfig{}, index.EnqueueForFieldMatcher(mgr.GetClient(), configFieldMatcher)).
 		Complete(r)
 }
 
@@ -139,9 +158,9 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		return ctrl.Result{}, fmt.Errorf("failed to fetch target: %w", err)
 	}
 
-	targetBackedByResource, ok := target.(ArtifactContentBackedByResource)
+	targetBackedByComponent, ok := target.(LocalizableArtifactContent)
 	if !ok {
-		err = fmt.Errorf("target is not backed by a resource and cannot be localized")
+		err = fmt.Errorf("target is not backed by a component and cannot be localized")
 		status.MarkNotReady(r.EventRecorder, localization, ReasonTargetFetchFailed, err.Error())
 
 		return ctrl.Result{}, err
@@ -158,87 +177,283 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		return ctrl.Result{}, fmt.Errorf("failed to fetch config: %w", err)
 	}
 
-	digest, revision, file, err := artifact.UniqueIDsForArtifactContentCombination(cfg, target)
+	rules, err := localizeRules(ctx, r.Client, r.Storage, targetBackedByComponent, cfg)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, localization, ReasonUniqueIDGenerationFailed, err.Error())
+		status.MarkNotReady(r.EventRecorder, localization, ReasonLocalizationFailed, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to map digest from config to target: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to localize rules: %w", err)
 	}
 
-	logger.V(1).Info("verifying localization", "digest", digest, "revision", revision)
-	hasValidArtifact, err := ocm.CollectableHasValidArtifactBasedOnFileNameDigest(
-		ctx,
-		r.Client,
-		r.Storage,
-		localization,
-		digest,
-	)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to check if artifact is valid: %w", err)
-	}
-
-	var localized string
-	if !hasValidArtifact {
-		logger.V(1).Info("localizing", "digest", digest, "revision", revision)
-		basePath, err := os.MkdirTemp("", "localized-")
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to create temporary directory to perform localization: %w", err)
-		}
-		defer func() {
-			if err := os.RemoveAll(basePath); err != nil {
-				logger.Error(err, "failed to remove temporary directory after localization completed", "path", basePath)
-			}
-		}()
-		if localized, err = mapped.Localize(ctx, loc, r.Storage, cfg, targetBackedByResource, basePath); err != nil {
-			status.MarkNotReady(r.EventRecorder, localization, ReasonLocalizationFailed, err.Error())
-			logger.Error(err, "failed to localize", "interval", localization.Spec.Interval.Duration)
-
-			return ctrl.Result{}, err
-		}
-	}
-
-	localization.Status.Digest = digest
-
-	if err := r.Storage.ReconcileArtifact(
-		ctx,
-		localization,
-		revision,
-		localized,
-		file,
-		func(artifact *artifactv1.Artifact, dir string) error {
-			if !hasValidArtifact {
-				// Archive directory to storage
-				if err := r.Storage.Archive(artifact, dir, nil); err != nil {
-					return fmt.Errorf("unable to archive artifact to storage: %w", err)
-				}
-			}
-
-			localization.Status.ArtifactRef = &v1alpha1.ObjectKey{
-				Name:      artifact.Name,
-				Namespace: artifact.Namespace,
-			}
-
-			return nil
+	resourceConfig := &v1alpha1.ResourceConfig{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      localization.GetName(),
+			Namespace: localization.GetNamespace(),
 		},
-	); err != nil {
-		status.MarkNotReady(r.EventRecorder, localization, v1alpha1.ReconcileArtifactFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to reconcile artifact: %w", err)
 	}
 
-	logger.Info("localization successful", "artifact", localization.Status.ArtifactRef)
+	resCfgOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, resourceConfig, func() error {
+		if err := controllerutil.SetControllerReference(localization, resourceConfig, r.Scheme); err != nil {
+			return fmt.Errorf("failed to set controller reference on resource config: %w", err)
+		}
+		resourceConfig.Spec = v1alpha1.ResourceConfigSpec{
+			Rules: rules,
+		}
+
+		return nil
+	})
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, localization, ReasonConfigGenerationFailed, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to create or update resource config: %w", err)
+	}
+	logger.V(1).Info(fmt.Sprintf("resource config %s", resCfgOp))
+
+	configuredResource := &v1alpha1.ConfiguredResource{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      localization.GetName(),
+			Namespace: localization.GetNamespace(),
+		},
+	}
+
+	confResOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, configuredResource, func() error {
+		if err := controllerutil.SetControllerReference(localization, configuredResource, r.Scheme); err != nil {
+			return fmt.Errorf("failed to set controller reference on configured resource: %w", err)
+		}
+		gvk, err := apiutil.GVKForObject(resourceConfig, r.Scheme)
+		if err != nil {
+			return fmt.Errorf("failed to get GVK for resource config: %w", err)
+		}
+		apiVersion, kind := gvk.ToAPIVersionAndKind()
+		configuredResource.Spec = v1alpha1.ConfiguredResourceSpec{
+			Target: *localization.Spec.Target.DeepCopy(),
+			Config: v1alpha1.ConfigurationReference{
+				NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+					APIVersion: apiVersion,
+					Kind:       kind,
+					Name:       resourceConfig.GetName(),
+					Namespace:  resourceConfig.GetNamespace(),
+				},
+			},
+			Interval: localization.Spec.Interval,
+		}
+
+		return nil
+	})
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, localization, ReasonResourceGenerationFailed, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to create or update configured resource: %w", err)
+	}
+	logger.V(1).Info(fmt.Sprintf("configured resource %s", confResOp))
+
+	if !conditions.IsReady(configuredResource) {
+		status.MarkNotReady(r.EventRecorder, localization, ReasonLocalizationNotYetReady, "configured resource is not yet ready")
+
+		return ctrl.Result{RequeueAfter: localization.Spec.Interval.Duration}, nil
+	}
+
+	art := &artifactv1.Artifact{}
+	if err := r.Get(ctx, client.ObjectKey{
+		Namespace: configuredResource.GetNamespace(),
+		Name:      configuredResource.Status.ArtifactRef.Name,
+	}, art); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to fetch artifact: %w", err)
+	}
+
+	artOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, art, func() error {
+		if art.GetAnnotations() == nil {
+			art.SetAnnotations(map[string]string{})
+		}
+		a := art.GetAnnotations()
+		a["ocm.software/artifact-purpose"] = "localization"
+		a["ocm.software/localization"] = fmt.Sprintf("%s/%s", localization.GetNamespace(), localization.GetName())
+		art.SetAnnotations(a)
+
+		return nil
+	})
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, localization, ReasonResourceGenerationFailed, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to create or update configured resource: %w", err)
+	}
+	logger.V(1).Info(fmt.Sprintf("artifact %s", artOp))
+
+	localization.Status.ArtifactRef = configuredResource.Status.ArtifactRef
+	localization.Status.Digest = configuredResource.Status.Digest
+	localization.Status.ConfiguredResourceRef = &v1alpha1.ObjectKey{
+		Name:      configuredResource.GetName(),
+		Namespace: configuredResource.GetNamespace(),
+	}
+
 	status.MarkReady(r.EventRecorder, localization, "localized successfully")
 
 	return ctrl.Result{RequeueAfter: localization.Spec.Interval.Duration}, nil
 }
 
-// ArtifactContentBackedByResource is an artifact content that is backed by a resource.
-// TODO This is currently only necessary because we introspect the relationship of the artifact content to the resource.
-// We do this to determine the context of the localization so that we can draw the correct component descriptor
-// from the underlying component version.
-// If we remove this introspection, we can remove this interface but need to find another way to get the introspection
-// working.
-type ArtifactContentBackedByResource interface {
+func localizeRules(
+	ctx context.Context,
+	c client.Client,
+	s *storage.Storage,
+	content LocalizableArtifactContent,
+	cfg types.LocalizationConfig,
+) (
+	[]v1alpha1.ConfigurationRule,
+	error,
+) {
+	original, err := ParseConfig(cfg, c.Scheme())
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse localization config: %w", err)
+	}
+
+	componentSet, componentDescriptor, err := ComponentDescriptorAndSetFromResource(ctx, c, s, content.GetComponent())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get content descriptor and set: %w", err)
+	}
+
+	rules := original.Spec.Rules
+
+	localizedRules := make([]v1alpha1.ConfigurationRule, len(rules))
+	for i, rule := range rules {
+		// TODO Decide what the hell to do with GoTemplates
+		if rule.GoTemplate != nil {
+			localizedRules[i] = v1alpha1.ConfigurationRule{
+				GoTemplate: (*v1alpha1.ConfigurationRuleGoTemplate)(rule.GoTemplate),
+			}
+
+			continue
+		}
+
+		ref := ocmmetav1.ResourceReference{
+			Resource:      rule.Map.Source.Resource,
+			ReferencePath: rule.Map.Source.ReferencePath,
+		}
+		resource, _, err := compdesc.ResolveResourceReference(componentDescriptor, ref, componentSet)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve resource reference in component descriptor of rule at index %v: %w", i, err)
+		}
+
+		var value string
+
+		if value, err = resolve(resource); err != nil {
+			return nil, fmt.Errorf("failed to resolve value from resource reference of rule at index %v: %w", i, err)
+		}
+		if value, err = transform(value, rule.Map.Transformation); err != nil {
+			return nil, fmt.Errorf("failed to apply transformation to resolved value of rule at index %v: %w", i, err)
+		}
+
+		localizedRules[i] = v1alpha1.ConfigurationRule{
+			Map: &v1alpha1.ConfigurationRuleMap{
+				Target: v1alpha1.ConfigurationRuleMapTarget{File: rule.Map.Target.File},
+				Source: v1alpha1.ConfigurationRuleMapSource{Value: value},
+			},
+		}
+	}
+
+	return localizedRules, nil
+}
+
+// LocalizableArtifactContent is an artifact content that is backed by a component and resource, allowing it
+// to be localized (by resolving relative references from the resource & component into absolute values).
+type LocalizableArtifactContent interface {
 	artifact.Content
+	GetComponent() *v1alpha1.Component
 	GetResource() *v1alpha1.Resource
+}
+
+func ComponentDescriptorAndSetFromResource(
+	ctx context.Context,
+	clnt client.Reader,
+	strg *storage.Storage,
+	baseComponent *v1alpha1.Component,
+) (compdesc.ComponentVersionResolver, *compdesc.ComponentDescriptor, error) {
+	art, err := util.GetNamespaced[artifactv1.Artifact](ctx, clnt, baseComponent.Status.ArtifactRef, baseComponent.Namespace)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to Get artifact: %w", err)
+	}
+	componentSet, err := ocm.GetComponentSetForArtifact(strg, art)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to Get component version set: %w", err)
+	}
+	componentDescriptor, err := componentSet.LookupComponentVersion(baseComponent.Spec.Component, baseComponent.Status.Component.Version)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to lookup component version: %w", err)
+	}
+
+	return componentSet, componentDescriptor, nil
+}
+
+func ParseConfig(source types.LocalizationConfig, scheme *runtime.Scheme) (config *v1alpha1.LocalizationConfig, err error) {
+	cfgReader, err := source.Open()
+	defer func() {
+		err = errors.Join(err, cfgReader.Close())
+	}()
+
+	return util.Parse[v1alpha1.LocalizationConfig](cfgReader, serializer.NewCodecFactory(scheme).UniversalDeserializer())
+}
+
+// resolve returns an access value for the resource.
+// This is what actually resolves the name of the util to the actual image reference.
+func resolve(
+	resource *compdesc.Resource,
+) (_ string, retErr error) {
+	accessSpecification := resource.GetAccess()
+
+	var (
+		ref    string
+		refErr error
+	)
+
+	specInCtx, err := ocmctx.DefaultContext().AccessSpecForSpec(accessSpecification)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve access spec: %w", err)
+	}
+
+	// TODO this seems hacky but I copy & pasted, we need to find a better way
+	for ref == "" && refErr == nil {
+		switch x := specInCtx.(type) {
+		case *ociartifact.AccessSpec:
+			ref = x.ImageReference
+		case *ociblob.AccessSpec:
+			ref = fmt.Sprintf("%s@%s", x.Reference, x.Digest)
+		case *localblob.AccessSpec:
+			if x.GlobalAccess == nil {
+				refErr = errors.New("cannot determine image digest")
+			} else {
+				// TODO maybe this needs whole OCM Context resolution?
+				// I dont think we need a localized resolution here but Im not sure
+				specInCtx = x.GlobalAccess.GlobalAccessSpec(ocmctx.DefaultContext())
+			}
+		default:
+			refErr = errors.New("cannot determine access spec type")
+		}
+	}
+	if refErr != nil {
+		return "", fmt.Errorf("failed to parse access reference: %w", refErr)
+	}
+
+	return ref, nil
+}
+
+func transform(value string, transformation v1alpha1.Transformation) (transformed string, err error) {
+	parsed, err := name.ParseReference(value)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse access reference: %w", err)
+	}
+	switch transformation.Type {
+	case v1alpha1.TransformationTypeRegistry:
+		transformed = parsed.Context().Registry.RegistryStr()
+	case v1alpha1.TransformationTypeRepository:
+		transformed = parsed.Context().RepositoryStr()
+	case v1alpha1.TransformationTypeTag:
+		transformed = parsed.Identifier()
+	case v1alpha1.TransformationTypeImageNoTag:
+		transformed = parsed.Context().Name()
+	case v1alpha1.TransformationTypeImage:
+		// By default treat the reference as a full image reference
+		fallthrough
+	default:
+		transformed = parsed.Name()
+	}
+
+	return
 }

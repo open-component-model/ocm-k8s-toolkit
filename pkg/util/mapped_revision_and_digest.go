@@ -74,7 +74,7 @@ func (r MappedRevisionAndDigest) digest() string {
 }
 
 func (r MappedRevisionAndDigest) GetRevision() string {
-	return fmt.Sprintf("%s configured with %s", r.ConfigRevision, r.TargetRevision)
+	return fmt.Sprintf("%s configured with %s", r.TargetRevision, r.ConfigRevision)
 }
 
 func (r MappedRevisionAndDigest) ToArchiveFileName() string {

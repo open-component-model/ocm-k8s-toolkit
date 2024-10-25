@@ -1,4 +1,4 @@
-package localization
+package index
 
 import (
 	"context"
@@ -18,15 +18,20 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
-func indexTargetAndConfig(mgr ctrl.Manager) (
+func LocalizedResourceIndexTargetAndConfig(mgr ctrl.Manager) (
 	func(object client.Object) client.MatchingFields,
 	func(object client.Object) client.MatchingFields,
 	error,
 ) {
-	configFields, configIndex := ConfigIndex()
-	targetFields, targetIndex := TargetIndex()
+	// Index all fields for the target and config, and build up MatchingFieldsFunc.
+	configFields, configIndex := ReferenceIndex("spec.config", func(obj client.Object) *v1alpha1.ConfigurationReference {
+		return &obj.(*v1alpha1.LocalizedResource).Spec.Config //nolint:forcetypeassert // We know it's ok
+	})
+	targetFields, targetIndex := ReferenceIndex("spec.target", func(obj client.Object) *v1alpha1.ConfigurationReference {
+		return &obj.(*v1alpha1.LocalizedResource).Spec.Target //nolint:forcetypeassert // We know it's ok
+	})
 
-	mappings := map[string]func(obj *v1alpha1.LocalizedResource) []string{}
+	mappings := map[string]func(obj client.Object) []string{}
 	maps.Copy(mappings, configIndex)
 	maps.Copy(mappings, targetIndex)
 
@@ -38,13 +43,15 @@ func indexTargetAndConfig(mgr ctrl.Manager) (
 				return nil
 			}
 
+			// Make sure that the target gets indexed / defaulted with the correct GVK in case not all fields were set
 			trgtRef := resource.Spec.Target
-			if err := DefaultGVKFromScheme(&trgtRef.NamespacedObjectKindReference, mgr.GetScheme()); err == nil {
+			if err := DefaultGVKFromScheme(&trgtRef.NamespacedObjectKindReference, mgr.GetScheme(), v1alpha1.GroupVersion); err == nil {
 				trgtRef.DeepCopyInto(&resource.Spec.Target)
 			}
 
+			// Make sure that the config gets indexed / defaulted with the correct GVK in case not all fields were set
 			cfgRef := resource.Spec.Config
-			if err := DefaultGVKFromScheme(&cfgRef.NamespacedObjectKindReference, mgr.GetScheme()); err == nil {
+			if err := DefaultGVKFromScheme(&cfgRef.NamespacedObjectKindReference, mgr.GetScheme(), v1alpha1.GroupVersion); err == nil {
 				cfgRef.DeepCopyInto(&resource.Spec.Config)
 			}
 
@@ -57,9 +64,9 @@ func indexTargetAndConfig(mgr ctrl.Manager) (
 	return targetFields, configFields, nil
 }
 
-func DefaultGVKFromScheme(ref *meta.NamespacedObjectKindReference, scheme *runtime.Scheme) error {
+func DefaultGVKFromScheme(ref *meta.NamespacedObjectKindReference, scheme *runtime.Scheme, defaultGroupVersion schema.GroupVersion) error {
 	if ref.APIVersion == "" {
-		ref.APIVersion = v1alpha1.GroupVersion.String()
+		ref.APIVersion = defaultGroupVersion.String()
 	}
 	obj := v1.PartialObjectMetadata{}
 	obj.SetGroupVersionKind(schema.FromAPIVersionAndKind(ref.APIVersion, ref.Kind))
@@ -74,35 +81,17 @@ func DefaultGVKFromScheme(ref *meta.NamespacedObjectKindReference, scheme *runti
 	return nil
 }
 
-func TargetIndex() (
+func ReferenceIndex(fieldSpec string, refFunc func(obj client.Object) *v1alpha1.ConfigurationReference) (
 	func(object client.Object) client.MatchingFields,
-	map[string]func(obj *v1alpha1.LocalizedResource) []string,
+	map[string]func(obj client.Object) []string,
 ) {
-	// Create index fields for the target (the data that is to be localized)
-	fieldsInTarget := createFields("spec.target")
-
-	targetMappings := createMappings("spec.target", func(obj *v1alpha1.LocalizedResource) *v1alpha1.ConfigurationReference {
-		return &obj.Spec.Target
-	})
-
-	return fieldsInTarget, targetMappings
+	return MatchingFieldsFuncForNamespacedObjectKind(fieldSpec), ConfigurationReferenceMappings(
+		fieldSpec,
+		refFunc,
+	)
 }
 
-func ConfigIndex() (
-	func(object client.Object) client.MatchingFields,
-	map[string]func(obj *v1alpha1.LocalizedResource) []string,
-) {
-	// Create index fields for the configuration (the data that is used to localize the target)
-	fieldsInConfig := createFields("spec.config")
-
-	configMappings := createMappings("spec.config", func(obj *v1alpha1.LocalizedResource) *v1alpha1.ConfigurationReference {
-		return &obj.Spec.Config
-	})
-
-	return fieldsInConfig, configMappings
-}
-
-func createFields(prefix string) func(object client.Object) client.MatchingFields {
+func MatchingFieldsFuncForNamespacedObjectKind(prefix string) func(object client.Object) client.MatchingFields {
 	return func(object client.Object) client.MatchingFields {
 		apiVersion, kind := object.GetObjectKind().GroupVersionKind().ToAPIVersionAndKind()
 
@@ -115,18 +104,21 @@ func createFields(prefix string) func(object client.Object) client.MatchingField
 	}
 }
 
-func createMappings(prefix string, refFunc func(obj *v1alpha1.LocalizedResource) *v1alpha1.ConfigurationReference) map[string]func(obj *v1alpha1.LocalizedResource) []string {
-	return map[string]func(obj *v1alpha1.LocalizedResource) []string{
-		fmt.Sprintf("%s.name", prefix):       func(obj *v1alpha1.LocalizedResource) []string { return []string{refFunc(obj).Name} },
-		fmt.Sprintf("%s.namespace", prefix):  func(obj *v1alpha1.LocalizedResource) []string { return []string{refFunc(obj).Namespace} },
-		fmt.Sprintf("%s.kind", prefix):       func(obj *v1alpha1.LocalizedResource) []string { return []string{refFunc(obj).Kind} },
-		fmt.Sprintf("%s.apiVersion", prefix): func(obj *v1alpha1.LocalizedResource) []string { return []string{refFunc(obj).APIVersion} },
+func ConfigurationReferenceMappings(
+	pathSpec string,
+	refFunc func(obj client.Object) *v1alpha1.ConfigurationReference,
+) map[string]func(obj client.Object) []string {
+	return map[string]func(obj client.Object) []string{
+		fmt.Sprintf("%s.name", pathSpec):       func(obj client.Object) []string { return []string{refFunc(obj).Name} },
+		fmt.Sprintf("%s.namespace", pathSpec):  func(obj client.Object) []string { return []string{refFunc(obj).Namespace} },
+		fmt.Sprintf("%s.kind", pathSpec):       func(obj client.Object) []string { return []string{refFunc(obj).Kind} },
+		fmt.Sprintf("%s.apiVersion", pathSpec): func(obj client.Object) []string { return []string{refFunc(obj).APIVersion} },
 	}
 }
 
-// enqueueForFieldMatcher returns an event handler that enqueues requests for the given object if the fields match.
+// EnqueueForFieldMatcher returns an event handler that enqueues requests for the given object if the fields match.
 // The fields function should return the fields to match on for the given object.
-func enqueueForFieldMatcher(clnt client.Client, fields func(obj client.Object) client.MatchingFields) handler.EventHandler {
+func EnqueueForFieldMatcher(clnt client.Client, fields func(obj client.Object) client.MatchingFields) handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, object client.Object) []reconcile.Request {
 		gvk, err := apiutil.GVKForObject(object, clnt.Scheme())
 		if err != nil {

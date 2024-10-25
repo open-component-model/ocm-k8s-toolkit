@@ -62,14 +62,32 @@ type LocalizationRule struct {
 //
 // For more information on the Map type, see the subtypes for Resource, FileTarget and Transformation.
 type LocalizationRuleMap struct {
+	Source LocalizationRuleMapSource `json:"source"`
+	Target LocalizationRuleMapTarget `json:"target"`
+	// The Transformation is used to tell the rule additional information about how to transform the content.
+	// The transformation can be used to digest the source in a different way or interpret the rule differently.
+	// A simple example of this is the TransformationTypeRepository,
+	// which extracts the registry portion of an image reference:
+	//
+	// Example:
+	//   map:
+	//     transformation:
+	//       type: Repository
+	//
+	// The default TransformationType is TransformationTypeImage, which extracts the full image reference.
+	// For more information on individual TransformationType's, see their respective documentation.
+	Transformation Transformation `json:"transformation,omitempty"`
+}
+
+type LocalizationRuleMapSource struct {
 	// The Resource reference is used to identify the resource that will be used to fill in the target reference.
 	// If one has a ComponentDescriptor with 2 resources, one can use this to reference between them.
 	// For a Component Descriptor with two resources, a "deployment-instruction" (to be localized)
 	// and an "image" (to be localized from), one can use the following source:
 	//
 	//   map:
-	//     resource:
-	//       name: image
+	//     source:
+	//       resource: image
 	//
 	// The localization will then look into the corresponding descriptor and resolve its AccessType:
 	//   components:
@@ -89,23 +107,13 @@ type LocalizationRuleMap struct {
 	//        schemaVersion: v2
 	//
 	// This would then lead to a value of "ghcr.io/stefanprodan/podinfo:6.2.0".
-	Resource ConfigurationResourceReference `json:"resource"`
-	// FileTarget is used to identify the file where the rule will apply its data to after considering
+	ResourceReference `json:",inline"`
+}
+
+type LocalizationRuleMapTarget struct {
+	// File is used to identify the file where the rule will apply its data to after considering
 	// the transformation.
-	FileTarget FileTarget `json:"file"`
-	// The Transformation is used to tell the rule additional information about how to transform the content.
-	// The transformation can be used to digest the source in a different way or interpret the rule differently.
-	// A simple example of this is the TransformationTypeRepository,
-	// which extracts the registry portion of an image reference:
-	//
-	// Example:
-	//   map:
-	//     transformation:
-	//       type: Repository
-	//
-	// The default TransformationType is TransformationTypeImage, which extracts the full image reference.
-	// For more information on individual TransformationType's, see their respective documentation.
-	Transformation Transformation `json:"transformation,omitempty"`
+	File FileTarget `json:"file"`
 }
 
 // LocalizationRuleGoTemplate is a rule that can be used to localize resources based on a goTemplate applied to a file.
@@ -198,9 +206,4 @@ const (
 type GoTemplateDelimiters struct {
 	Left  string `json:"left"`
 	Right string `json:"right"`
-}
-
-type ConfigurationResourceReference struct {
-	Name          string            `json:"name"`
-	ExtraIdentity map[string]string `json:"extraIdentity,omitempty"`
 }
