@@ -538,14 +538,14 @@ func reconcileArtifact(
 // If the file is already compressed as gzip, it will be archived as is.
 // If the file is not compressed or not in gzip format, it will be attempting to recompress to gzip and then archive.
 // This is because some source controllers such as kustomize expect this compression format in their artifacts.
-func autoCompressAndArchiveFile(ctx context.Context, art *artifactv1.Artifact, storage *storage.Storage, path string) (err error) {
+func autoCompressAndArchiveFile(ctx context.Context, art *artifactv1.Artifact, storage *storage.Storage, path string) (retErr error) {
 	logger := log.FromContext(ctx).WithValues("artifact", art.Name, "path", path)
 	file, err := os.OpenFile(path, os.O_RDONLY, 0o400)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer func() {
-		err = errors.Join(err, file.Close())
+		retErr = errors.Join(err, file.Close())
 	}()
 	algo, decompressor, reader, err := compression.DetectCompressionFormat(file)
 	if err != nil {
@@ -555,15 +555,8 @@ func autoCompressAndArchiveFile(ctx context.Context, art *artifactv1.Artifact, s
 	if decompressor == nil || algo.Name() != compression.Gzip.Name() {
 		logger.V(1).Info("archiving file, but detected file is not compressed or not in gzip format, recompressing and archiving")
 		var buf bytes.Buffer
-		compressToBuf, err := compression.CompressStream(&buf, compression.Gzip, nil)
-		if err != nil {
-			return fmt.Errorf("failed to compress stream: %w", err)
-		}
-		defer func() {
-			err = errors.Join(err, compressToBuf.Close())
-		}()
-		if _, err := io.Copy(compressToBuf, reader); err != nil {
-			return fmt.Errorf("failed to copy: %w", err)
+		if err := compressViaBuffer(&buf, reader); err != nil {
+			return err
 		}
 		if err := storage.Copy(art, &buf); err != nil {
 			return fmt.Errorf("failed to copy: %w", err)
@@ -577,6 +570,20 @@ func autoCompressAndArchiveFile(ctx context.Context, art *artifactv1.Artifact, s
 		return fmt.Errorf("failed to copy file: %w", err)
 	}
 
+	return nil
+}
+
+func compressViaBuffer(buf *bytes.Buffer, reader io.Reader) error {
+	compressToBuf, err := compression.CompressStream(buf, compression.Gzip, nil)
+	if err != nil {
+		return fmt.Errorf("failed to compress stream: %w", err)
+	}
+	if _, err := io.Copy(compressToBuf, reader); err != nil {
+		return fmt.Errorf("failed to copy: %w", err)
+	}
+	if err := compressToBuf.Close(); err != nil {
+		return fmt.Errorf("failed to close: %w", err)
+	}
 	return nil
 }
 

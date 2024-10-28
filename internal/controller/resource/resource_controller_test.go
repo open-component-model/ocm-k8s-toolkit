@@ -144,6 +144,9 @@ var _ = Describe("Resource Controller", func() {
 			By("checking that the resource content is correct")
 			reader, decompressed, err := compression.AutoDecompress(r.Body)
 			Expect(decompressed).To(BeTrue())
+			DeferCleanup(func() {
+				Expect(reader.Close()).To(Succeed())
+			})
 			Expect(err).To(BeNil())
 			resourceContent := Must(io.ReadAll(reader))
 
