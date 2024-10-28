@@ -3,15 +3,11 @@ package localization
 import (
 	"bytes"
 	"context"
-	"fmt"
+	_ "embed"
 	"os"
 	"path/filepath"
 	"text/template"
-	"time"
 
-	_ "embed"
-
-	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/vfs/pkg/memoryfs"
 	"github.com/mandelsoft/vfs/pkg/projectionfs"
 	"github.com/mandelsoft/vfs/pkg/vfs"
@@ -31,20 +27,17 @@ import (
 	environment "ocm.software/ocm/api/helper/env"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
 )
 
-const modeReadWriteUser = 0o600
-
 var (
-	//go:embed strategy/mapped/testdata/descriptor-list.yaml
+	//go:embed testdata/descriptor-list.yaml
 	descriptorListYAML []byte
-	//go:embed strategy/mapped/testdata/replaced-values.yaml
+	//go:embed testdata/replaced-values.yaml
 	replacedValuesYAML []byte
-	//go:embed strategy/mapped/testdata/replaced-deployment.yaml
+	//go:embed testdata/replaced-deployment.yaml
 	replacedDeploymentYAML []byte
-	//go:embed strategy/mapped/testdata/localization-config.yaml
+	//go:embed testdata/localization-config.yaml
 	configYAML []byte
 	//go:embed testdata/localized_resource_patch.yaml.tmpl
 	localizationTemplateKustomizePatch string
@@ -59,7 +52,7 @@ const (
 	Localization      = "test-localization"
 )
 
-var _ = Describe("LocalizationRules Controller", func() {
+var _ = Describe("Localization Controller", func() {
 	var (
 		tmp string
 		env *ocmbuilder.Builder
@@ -87,16 +80,22 @@ var _ = Describe("LocalizationRules Controller", func() {
 	})
 
 	It("should localize an artifact from a resource based on a config supplied in a sibling resource", func(ctx SpecContext) {
-		component := SetupComponentWithDescriptorList(ctx,
+		component := test.SetupComponentWithDescriptorList(ctx,
 			ComponentObj,
 			Namespace,
-			v1alpha1.ComponentInfo{
-				Component:      "acme.org/test",
-				Version:        "1.0.0",
-				RepositorySpec: &apiextensionsv1.JSON{Raw: []byte(`{}`)},
-			},
-			tmp,
 			descriptorListYAML,
+			&test.MockComponentOptions{
+				BasePath: tmp,
+				Strg:     strg,
+				Client:   k8sClient,
+				Recorder: recorder,
+				Info: v1alpha1.ComponentInfo{
+					Component:      "acme.org/test",
+					Version:        "1.0.0",
+					RepositorySpec: &apiextensionsv1.JSON{Raw: []byte(`{}`)},
+				},
+				Repository: RepositoryObj,
+			},
 		)
 		DeferCleanup(func(ctx SpecContext) {
 			Expect(k8sClient.Delete(ctx, component, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
@@ -106,9 +105,9 @@ var _ = Describe("LocalizationRules Controller", func() {
 		targetResource = test.SetupMockResourceWithData(ctx,
 			TargetResourceObj,
 			Namespace,
-			&test.Options{
+			&test.MockResourceOptions{
 				BasePath: tmp,
-				DataPath: filepath.Join("strategy", "mapped", "testdata", "deployment-instruction-helm"),
+				DataPath: filepath.Join("testdata", "deployment-instruction-helm"),
 				ComponentRef: v1alpha1.ObjectKey{
 					Namespace: Namespace,
 					Name:      ComponentObj,
@@ -125,7 +124,7 @@ var _ = Describe("LocalizationRules Controller", func() {
 		cfgResource = test.SetupMockResourceWithData(ctx,
 			CfgResourceObj,
 			Namespace,
-			&test.Options{
+			&test.MockResourceOptions{
 				BasePath: tmp,
 				Data:     bytes.NewReader(configYAML),
 				ComponentRef: v1alpha1.ObjectKey{
@@ -164,7 +163,7 @@ var _ = Describe("LocalizationRules Controller", func() {
 		Expect(localized).To(BeAnExistingFile())
 
 		memFs := vfs.New(memoryfs.New())
-		localizedArchiveData, err := os.OpenFile(localized, os.O_RDONLY, modeReadWriteUser)
+		localizedArchiveData, err := os.OpenFile(localized, os.O_RDONLY, 0o600)
 		Expect(err).ToNot(HaveOccurred())
 		DeferCleanup(func() {
 			Expect(localizedArchiveData.Close()).To(Succeed())
@@ -193,74 +192,4 @@ func SetupLocalizedResource(ctx context.Context, data map[string]string) *v1alph
 	Expect(err).To(Not(HaveOccurred()))
 	Expect(k8sClient.Create(ctx, localization)).To(Succeed())
 	return localization
-}
-
-func SetupComponentWithDescriptorList(
-	ctx context.Context,
-	name, namespace string,
-	info v1alpha1.ComponentInfo,
-	basePath string,
-	descriptorListData []byte,
-) *v1alpha1.Component {
-	dir := filepath.Join(basePath, "descriptor")
-	Expect(os.Mkdir(dir, os.ModePerm|os.ModeDir)).To(Succeed())
-	path := filepath.Join(dir, v1alpha1.OCMComponentDescriptorList)
-	descriptorListWriter, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, os.ModePerm)
-	Expect(err).ToNot(HaveOccurred())
-	defer func() {
-		Expect(descriptorListWriter.Close()).To(Succeed())
-	}()
-	_, err = descriptorListWriter.Write(descriptorListData)
-	Expect(err).ToNot(HaveOccurred())
-
-	component := &v1alpha1.Component{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Spec: v1alpha1.ComponentSpec{
-			RepositoryRef: v1alpha1.ObjectKey{Name: RepositoryObj, Namespace: namespace},
-			Component:     info.Component,
-		},
-		Status: v1alpha1.ComponentStatus{
-			ArtifactRef: corev1.LocalObjectReference{
-				Name: name,
-			},
-			Component: info,
-		},
-	}
-	Expect(k8sClient.Create(ctx, component)).To(Succeed())
-
-	patchHelper := patch.NewSerialPatcher(component, k8sClient)
-
-	Expect(strg.ReconcileArtifact(
-		ctx,
-		component,
-		name,
-		basePath,
-		fmt.Sprintf("%s.tar.gz", name),
-		func(artifact *artifactv1.Artifact, s string) error {
-			if err := strg.Archive(artifact, dir, nil); err != nil {
-				return fmt.Errorf("unable to archive artifact to storage: %w", err)
-			}
-
-			component.Status.ArtifactRef = corev1.LocalObjectReference{
-				Name: artifact.Name,
-			}
-			component.Status.Component = info
-			return nil
-		}),
-	).To(Succeed())
-
-	art := &artifactv1.Artifact{}
-	art.Name = component.Status.ArtifactRef.Name
-	art.Namespace = component.Namespace
-	Eventually(Object(art), "5s").Should(HaveField("Spec.URL", Not(BeEmpty())))
-
-	Eventually(func(ctx context.Context) error {
-		status.MarkReady(recorder, component, "applied mock component")
-		return status.UpdateStatus(ctx, patchHelper, component, recorder, time.Hour, nil)
-	}).WithContext(ctx).Should(Succeed())
-
-	return component
 }

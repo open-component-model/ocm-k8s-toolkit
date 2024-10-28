@@ -59,7 +59,7 @@ func (r MappedRevisionAndDigest) String() string {
 func encodeJSONToString[T any](toEncode T) string {
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(toEncode); err != nil {
-		return "invalid mapped revision: " + err.Error()
+		return "invalid yamlsubst revision: " + err.Error()
 	}
 
 	return buf.String()

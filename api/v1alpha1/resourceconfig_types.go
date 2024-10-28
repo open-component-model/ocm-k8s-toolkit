@@ -5,6 +5,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const KindResourceConfig = "ResourceConfig"
+
 // +kubebuilder:object:root=true
 
 // ResourceConfig defines a set of rules that instruct on how to configure a Resource.
@@ -37,24 +39,27 @@ type ResourceConfigSpec struct {
 	Rules []ConfigurationRule `json:"rules"`
 }
 
+// ConfigurationRule defines a rule that can be used to configure resources.
+// +kubebuilder:validation:MinProperties=1
+// +kubebuilder:validation:MaxProperties=1
 type ConfigurationRule struct {
-	Map        *ConfigurationRuleMap        `json:"map,omitempty"`
-	GoTemplate *ConfigurationRuleGoTemplate `json:"goTemplate,omitempty"`
+	YAMLSubstitution *ConfigurationRuleYAMLSubstitution `json:"yamlsubst,omitempty"`
+	GoTemplate       *ConfigurationRuleGoTemplate       `json:"goTemplate,omitempty"`
 }
 
-type ConfigurationRuleMap struct {
-	Source ConfigurationRuleMapSource `json:"source"`
-	Target ConfigurationRuleMapTarget `json:"target"`
+type ConfigurationRuleYAMLSubstitution struct {
+	Source ConfigurationRuleYAMLSubsitutionSource `json:"source"`
+	Target ConfigurationRuleYAMLSubsitutionTarget `json:"target"`
 }
 
-type ConfigurationRuleMapSource struct {
+type ConfigurationRuleYAMLSubsitutionSource struct {
 	// Value is the value that will be used to replace the target in the file.
 	Value string `json:"value"`
 }
 
-type ConfigurationRuleMapTarget struct {
+type ConfigurationRuleYAMLSubsitutionTarget struct {
 	// File is used to identify the file where the rule will apply its data to
-	File FileTarget `json:"file"`
+	File FileTargetWithValue `json:"file"`
 }
 
 type ConfigurationRuleGoTemplate struct {
@@ -79,15 +84,15 @@ type ConfigurationRuleGoTemplate struct {
 // ConfigurationRuleSource describes a source of information where the rule will get its data from.
 // Currently only ValueSource is supported.
 type ConfigurationRuleSource struct {
-	ValueSource ValueSource `json:"value,omitempty"`
+	ValueSource ValueSource `json:"value"`
 }
 
 type ValueSource string
 
 // ConfigurationRuleTarget describes a target where the rule will store its data.
-// Currently only FileTarget is supported.
+// Currently only FileTargetWithValue is supported.
 type ConfigurationRuleTarget struct {
 	// The File target is used to identify the file where the rule will apply its sources to after considering
 	// the transformation.
-	FileTarget FileTarget `json:"file"`
+	FileTarget FileTargetWithValue `json:"file"`
 }

@@ -1,4 +1,4 @@
-package mapped
+package configuration
 
 import (
 	"context"
@@ -112,12 +112,12 @@ func substitutionStepsFromConfig(cfg Config, templateFunctions template.FuncMap)
 	rules := cfg.GetRules()
 	substitutions := make(localize.Substitutions, 0, len(rules))
 	for _, rule := range rules {
-		if mapRule := rule.Map; mapRule != nil {
+		if substitutionRule := rule.YAMLSubstitution; substitutionRule != nil {
 			if err := substitutions.Add(
 				"util-reference",
-				mapRule.Target.File.Path,
-				mapRule.Target.File.Value,
-				mapRule.Source.Value,
+				substitutionRule.Target.File.Path,
+				substitutionRule.Target.File.Value,
+				substitutionRule.Source.Value,
 			); err != nil {
 				return nil, fmt.Errorf("failed to add resolved rule: %w", err)
 			}

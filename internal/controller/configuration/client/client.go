@@ -93,11 +93,11 @@ func GetResourceConfigFromKubernetes(ctx context.Context, clnt client.Reader, en
 	return &ResourceConfig{&cfg, encoder}, nil
 }
 
-// ResourceConfig is a wrapper around the v1alpha1.ResourceConfig that implements the types.ConfigurationSource interface.
+// ResourceConfig is a wrapper around a client.Object that implements the types.ConfigurationSource interface.
 // For serialization it uses the provided runtime.Encoder.
 type ResourceConfig struct {
-	*v1alpha1.ResourceConfig `json:",inline"`
-	encoder                  runtime.Encoder
+	client.Object `json:",inline"`
+	encoder       runtime.Encoder
 }
 
 var _ types.ConfigurationSource = &ResourceConfig{}
@@ -114,7 +114,7 @@ func (in *ResourceConfig) Open() (io.ReadCloser, error) {
 func (in *ResourceConfig) AsBuf() (*bytes.Buffer, error) {
 	var buf bytes.Buffer
 
-	if err := in.encoder.Encode(in.ResourceConfig, &buf); err != nil {
+	if err := in.encoder.Encode(in.Object, &buf); err != nil {
 		return nil, err
 	}
 
@@ -127,7 +127,7 @@ func (in *ResourceConfig) UnpackIntoDirectory(path string) error {
 		return err
 	}
 
-	return os.WriteFile(fmt.Sprintf("%s-%s.yaml", path, in.Name), buf.Bytes(), 0o600)
+	return os.WriteFile(fmt.Sprintf("%s-%s.yaml", path, in.GetName()), buf.Bytes(), 0o600)
 }
 
 func (in *ResourceConfig) GetDigest() (string, error) {

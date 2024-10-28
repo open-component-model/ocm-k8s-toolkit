@@ -39,6 +39,7 @@ import (
 	metricserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	cfgclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/client"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	// +kubebuilder:scaffold:imports
 )
@@ -127,7 +128,8 @@ var _ = BeforeSuite(func() {
 			Scheme:        testEnv.Scheme,
 			EventRecorder: recorder,
 		},
-		Storage: strg,
+		ConfigClient: cfgclient.NewClientWithLocalStorage(k8sClient, strg, scheme.Scheme),
+		Storage:      strg,
 	}).SetupWithManager(k8sManager)).To(Succeed())
 
 	ctx, cancel := context.WithCancel(context.Background())

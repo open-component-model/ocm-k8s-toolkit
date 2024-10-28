@@ -55,7 +55,7 @@ type ResourceID struct {
 }
 
 type ResourceReference struct {
-	Resource      ocmv1.Identity   `json:"resource,omitempty"`
+	Resource      ocmv1.Identity   `json:"resource"`
 	ReferencePath []ocmv1.Identity `json:"referencePath,omitempty"`
 }
 

@@ -33,7 +33,6 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	configurationclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/client"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/strategy/mapped"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/artifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
@@ -58,6 +57,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 type Reconciler struct {
 	*ocm.BaseReconciler
 	*storage.Storage
+	ConfigClient configurationclient.Client
 }
 
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=configuredresources,verbs=get;list;watch;create;update;patch;delete
@@ -125,13 +125,11 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		return ctrl.Result{}, fmt.Errorf("failed to reconcile storage: %w", err)
 	}
 
-	cfgclnt := configurationclient.NewClientWithLocalStorage(r.Client, r.Storage, r.Scheme)
-
 	if configuration.Spec.Target.Namespace == "" {
 		configuration.Spec.Target.Namespace = configuration.Namespace
 	}
 
-	target, err := cfgclnt.GetTarget(ctx, configuration.Spec.Target)
+	target, err := r.ConfigClient.GetTarget(ctx, configuration.Spec.Target)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, configuration, ReasonTargetFetchFailed, err.Error())
 
@@ -142,7 +140,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		configuration.Spec.Config.Namespace = configuration.Namespace
 	}
 
-	cfg, err := cfgclnt.GetConfiguration(ctx, configuration.Spec.Config)
+	cfg, err := r.ConfigClient.GetConfiguration(ctx, configuration.Spec.Config)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, configuration, ReasonConfigFetchFailed, err.Error())
 
@@ -181,7 +179,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 			}
 		}()
 
-		if configured, err = mapped.Configure(ctx, cfgclnt, cfg, target, basePath); err != nil {
+		if configured, err = Configure(ctx, r.ConfigClient, cfg, target, basePath); err != nil {
 			status.MarkNotReady(r.EventRecorder, configuration, ReasonConfigurationFailed, err.Error())
 			logger.Error(err, "failed to configure, retrying later", "interval", configuration.Spec.Interval.Duration)
 
@@ -210,7 +208,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 				Namespace: artifact.Namespace,
 			}
 
-			return os.RemoveAll(dir)
+			return nil
 		},
 	); err != nil {
 		status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.ReconcileArtifactFailedReason, err.Error())

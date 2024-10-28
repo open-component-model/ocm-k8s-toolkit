@@ -42,7 +42,9 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/component"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration"
+	cfgclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/client"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization"
+	locclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/client"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/ocmrepository"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/resource"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
@@ -203,7 +205,8 @@ func main() {
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
-		Storage: storage,
+		Storage:            storage,
+		LocalizationClient: locclient.NewClientWithLocalStorage(mgr.GetClient(), storage, mgr.GetScheme()),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LocalizedResource")
 		os.Exit(1)
@@ -214,7 +217,8 @@ func main() {
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
-		Storage: storage,
+		Storage:      storage,
+		ConfigClient: cfgclient.NewClientWithLocalStorage(mgr.GetClient(), storage, mgr.GetScheme()),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ConfiguredResource")
 		os.Exit(1)

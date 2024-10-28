@@ -43,6 +43,10 @@ spec:
             properties:
               rules:
                 items:
+                  description: ConfigurationRule defines a rule that can be used to
+                    configure resources.
+                  maxProperties: 1
+                  minProperties: 1
                   properties:
                     goTemplate:
                       properties:
@@ -74,17 +78,13 @@ spec:
                               description: The Path is the filepath (relative to the
                                 Resource) to the file inside the resource.
                               type: string
-                            value:
-                              description: The Value is a reference to the content
-                                that should be localized.
-                              type: string
                           required:
                           - path
                           type: object
                       required:
                       - file
                       type: object
-                    map:
+                    yamlsubst:
                       properties:
                         source:
                           properties:
@@ -111,6 +111,7 @@ spec:
                                   type: string
                               required:
                               - path
+                              - value
                               type: object
                           required:
                           - file

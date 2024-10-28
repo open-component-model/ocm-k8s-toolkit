@@ -102,6 +102,8 @@ spec:
                           Identity describes the identity of an object.
                           Only ascii characters are allowed
                         type: object
+                    required:
+                    - resource
                     type: object
                 required:
                 - byReference

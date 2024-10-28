@@ -65,7 +65,13 @@ func (r *ContentBackedByStorageAndComponent) GetDigest() (string, error) {
 }
 
 func (r *ContentBackedByStorageAndComponent) GetRevision() string {
-	return r.Artifact.Spec.Revision
+	return fmt.Sprintf(
+		"artifact %s in revision %s (from resource %s, based on component %s)",
+		r.Artifact.GetName(),
+		r.Artifact.Spec.Revision,
+		r.Resource.GetName(),
+		r.Component.GetName(),
+	)
 }
 
 func (r *ContentBackedByStorageAndComponent) Open() (io.ReadCloser, error) {
@@ -240,7 +246,7 @@ func GetComponentResourceArtifact(
 			Namespace: res.GetNamespace(),
 			Name:      res.Spec.ComponentRef.Name,
 		}, component); err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to fetch component %s: %w", res.Spec.ComponentRef.Name, err)
+			return nil, nil, nil, fmt.Errorf("failed to fetch component %s to which resource %s belongs: %w", res.Spec.ComponentRef.Name, ref.Name, err)
 		}
 
 		art := &artifactv1.Artifact{}
@@ -248,7 +254,7 @@ func GetComponentResourceArtifact(
 			Namespace: res.GetNamespace(),
 			Name:      res.Status.ArtifactRef.Name,
 		}, art); err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to fetch artifact %s: %w", component.Status.ArtifactRef.Name, err)
+			return nil, nil, nil, fmt.Errorf("failed to fetch artifact %s belonging to resource %s: %w", component.Status.ArtifactRef.Name, ref.Name, err)
 		}
 
 		return component, res, art, nil

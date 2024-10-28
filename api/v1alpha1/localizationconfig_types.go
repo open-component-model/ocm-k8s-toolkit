@@ -5,6 +5,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const KindLocalizationConfig = "LocalizationConfig"
+
 // +kubebuilder:object:root=true
 
 // LocalizationConfig defines a description of a localization.
@@ -40,14 +42,14 @@ type LocalizationConfigSpec struct {
 }
 
 // LocalizationRule defines a rule that can be used to localize resources.
-// Each rule contains a source reference, a target reference, and a transformation, with each of these fields
-// being omittable except for target.
+// +kubebuilder:validation:MinProperties=1
+// +kubebuilder:validation:MaxProperties=1
 type LocalizationRule struct {
-	Map        *LocalizationRuleMap        `json:"map,omitempty"`
-	GoTemplate *LocalizationRuleGoTemplate `json:"goTemplate,omitempty"`
+	YAMLSubstitution *LocalizationRuleYAMLSubstitution `json:"yamlsubst,omitempty"`
+	GoTemplate       *LocalizationRuleGoTemplate       `json:"goTemplate,omitempty"`
 }
 
-// LocalizationRuleMap is a rule that can be used to localize resources based on a mapping from resources to paths.
+// LocalizationRuleYAMLSubstitution is a rule that can be used to localize resources based on a mapping from resources to paths.
 //
 // Example:
 //
@@ -60,10 +62,10 @@ type LocalizationRule struct {
 //	  transformation:
 //	    type: Repository
 //
-// For more information on the Map type, see the subtypes for Resource, FileTarget and Transformation.
-type LocalizationRuleMap struct {
-	Source LocalizationRuleMapSource `json:"source"`
-	Target LocalizationRuleMapTarget `json:"target"`
+// For more information on the type, see the subtypes for Resource, FileTargetWithValue and Transformation.
+type LocalizationRuleYAMLSubstitution struct {
+	Source LocalizationRuleYAMLSubstitutionSource `json:"source"`
+	Target LocalizationRuleYAMLSubstitutionTarget `json:"target"`
 	// The Transformation is used to tell the rule additional information about how to transform the content.
 	// The transformation can be used to digest the source in a different way or interpret the rule differently.
 	// A simple example of this is the TransformationTypeRepository,
@@ -79,7 +81,7 @@ type LocalizationRuleMap struct {
 	Transformation Transformation `json:"transformation,omitempty"`
 }
 
-type LocalizationRuleMapSource struct {
+type LocalizationRuleYAMLSubstitutionSource struct {
 	// The Resource reference is used to identify the resource that will be used to fill in the target reference.
 	// If one has a ComponentDescriptor with 2 resources, one can use this to reference between them.
 	// For a Component Descriptor with two resources, a "deployment-instruction" (to be localized)
@@ -110,10 +112,10 @@ type LocalizationRuleMapSource struct {
 	ResourceReference `json:",inline"`
 }
 
-type LocalizationRuleMapTarget struct {
+type LocalizationRuleYAMLSubstitutionTarget struct {
 	// File is used to identify the file where the rule will apply its data to after considering
 	// the transformation.
-	File FileTarget `json:"file"`
+	File FileTargetWithValue `json:"file"`
 }
 
 // LocalizationRuleGoTemplate is a rule that can be used to localize resources based on a goTemplate applied to a file.
@@ -129,7 +131,7 @@ type LocalizationRuleMapTarget struct {
 //	    left: "ocm{{"
 //	    right: "}}ocm"
 //
-// For more information on the Map type, see the subtypes for Resource, FileTarget and Transformation.
+// For more information on the YAMLSubstitution type, see the subtypes for Resource, FileTargetWithValue and Transformation.
 type LocalizationRuleGoTemplate struct {
 	// FileTarget is used to identify the file where the rule will apply its data to (parse the GoTemplate)
 	FileTarget FileTarget `json:"file"`
@@ -150,7 +152,7 @@ type LocalizationRuleGoTemplate struct {
 	Delimiters *GoTemplateDelimiters `json:"delimiters,omitempty"`
 }
 
-// FileTarget describes a file inside the Resource that is currently being localized.
+// FileTargetWithValue describes a value within a file inside a Resource.
 // It can contain a path and a value, where Path is the filepath (relative to the Resource) to the file inside the resource
 // and the value is a reference to the content that should be localized.
 // If one wants to store the image fetched from source into a file called values.yaml inside deploy.image,
@@ -159,16 +161,25 @@ type LocalizationRuleGoTemplate struct {
 //	file:
 //	  value: deploy.image
 //	  path: values.yaml
+type FileTargetWithValue struct {
+	FileTarget `json:",inline"`
+	// The Value is a reference to the content that should be localized.
+	Value string `json:"value"`
+}
+
+// FileTarget is used to identify the file where the rule will apply its data to.
+// If one wants to reference a file called values.yaml inside a resource, one can use the following value:
+//
+//	file:
+//	  path: values.yaml
 type FileTarget struct {
 	// The Path is the filepath (relative to the Resource) to the file inside the resource.
 	Path string `json:"path"`
-	// The Value is a reference to the content that should be localized.
-	Value string `json:"value,omitempty"`
 }
 
 type Transformation struct {
 	//+kubebuilder:default=Image
-	Type TransformationType `json:"type,omitempty"`
+	Type TransformationType `json:"type"`
 }
 
 type TransformationType string

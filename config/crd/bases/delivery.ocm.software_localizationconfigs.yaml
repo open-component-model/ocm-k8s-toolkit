@@ -46,10 +46,10 @@ spec:
             properties:
               rules:
                 items:
-                  description: |-
-                    LocalizationRule defines a rule that can be used to localize resources.
-                    Each rule contains a source reference, a target reference, and a transformation, with each of these fields
-                    being omittable except for target.
+                  description: LocalizationRule defines a rule that can be used to
+                    localize resources.
+                  maxProperties: 1
+                  minProperties: 1
                   properties:
                     goTemplate:
                       description: "LocalizationRuleGoTemplate is a rule that can
@@ -57,8 +57,8 @@ spec:
                         to a file.\n\nExample:\n\n\tgoTemplate:\n\t  file:\n\t    path:
                         values.yaml\n\t  data:\n\t    key: value\n\t  delimiters:\n\t
                         \   left: \"ocm{{\"\n\t    right: \"}}ocm\"\n\nFor more information
-                        on the Map type, see the subtypes for Resource, FileTarget
-                        and Transformation."
+                        on the YAMLSubstitution type, see the subtypes for Resource,
+                        FileTargetWithValue and Transformation."
                       properties:
                         data:
                           description: "GoTemplateData is an arbitrary object that
@@ -88,24 +88,20 @@ spec:
                               description: The Path is the filepath (relative to the
                                 Resource) to the file inside the resource.
                               type: string
-                            value:
-                              description: The Value is a reference to the content
-                                that should be localized.
-                              type: string
                           required:
                           - path
                           type: object
                       required:
                       - file
                       type: object
-                    map:
-                      description: "LocalizationRuleMap is a rule that can be used
-                        to localize resources based on a mapping from resources to
-                        paths.\n\nExample:\n\n\tmap:\n\t  resource:\n\t    name: image\n\t
-                        \ file:\n\t    path: values.yaml\n\t    value: deploy.image\n\t
-                        \ transformation:\n\t    type: Repository\n\nFor more information
-                        on the Map type, see the subtypes for Resource, FileTarget
-                        and Transformation."
+                    yamlsubst:
+                      description: "LocalizationRuleYAMLSubstitution is a rule that
+                        can be used to localize resources based on a mapping from
+                        resources to paths.\n\nExample:\n\n\tmap:\n\t  resource:\n\t
+                        \   name: image\n\t  file:\n\t    path: values.yaml\n\t    value:
+                        deploy.image\n\t  transformation:\n\t    type: Repository\n\nFor
+                        more information on the type, see the subtypes for Resource,
+                        FileTargetWithValue and Transformation."
                       properties:
                         source:
                           properties:
@@ -125,6 +121,8 @@ spec:
                                 Identity describes the identity of an object.
                                 Only ascii characters are allowed
                               type: object
+                          required:
+                          - resource
                           type: object
                         target:
                           properties:
@@ -143,6 +141,7 @@ spec:
                                   type: string
                               required:
                               - path
+                              - value
                               type: object
                           required:
                           - file
@@ -165,6 +164,8 @@ spec:
                             type:
                               default: Image
                               type: string
+                          required:
+                          - type
                           type: object
                       required:
                       - source

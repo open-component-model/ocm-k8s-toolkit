@@ -122,3 +122,36 @@ func init() {
 type ConfigurationReference struct {
 	meta.NamespacedObjectKindReference `json:",inline"`
 }
+
+func ConfiguredResourceToConfigurationReference(r *ConfiguredResource) ConfigurationReference {
+	return ToConfigurationReference(r, KindConfiguredResource)
+}
+
+func ResourceToConfigurationReference(r *Resource) ConfigurationReference {
+	return ToConfigurationReference(r, KindResource)
+}
+
+func LocalizedResourceToConfigurationReference(r *LocalizedResource) ConfigurationReference {
+	return ToConfigurationReference(r, KindLocalizedResource)
+}
+
+func ResourceConfigToConfigurationReference(r *ResourceConfig) ConfigurationReference {
+	return ToConfigurationReference(r, KindResourceConfig)
+}
+
+func LocalizationConfigToConfigurationReference(r *LocalizationConfig) ConfigurationReference {
+	return ToConfigurationReference(r, KindLocalizationConfig)
+}
+
+func ToConfigurationReference(obj metav1.Object, kind string) ConfigurationReference {
+	apiVersion, kind := GroupVersion.WithKind(kind).ToAPIVersionAndKind()
+
+	return ConfigurationReference{
+		NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+			APIVersion: apiVersion,
+			Kind:       kind,
+			Name:       obj.GetName(),
+			Namespace:  obj.GetNamespace(),
+		},
+	}
+}

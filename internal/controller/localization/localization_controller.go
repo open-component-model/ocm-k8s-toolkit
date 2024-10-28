@@ -52,6 +52,7 @@ const (
 type Reconciler struct {
 	*ocm.BaseReconciler
 	*storage.Storage
+	LocalizationClient localizationclient.Client
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -145,13 +146,11 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		return ctrl.Result{}, fmt.Errorf("failed to reconcile storage: %w", err)
 	}
 
-	loc := localizationclient.NewClientWithLocalStorage(r.Client, r.Storage, r.Scheme)
-
 	if localization.Spec.Target.Namespace == "" {
 		localization.Spec.Target.Namespace = localization.Namespace
 	}
 
-	target, err := loc.GetLocalizationTarget(ctx, localization.Spec.Target)
+	target, err := r.LocalizationClient.GetLocalizationTarget(ctx, localization.Spec.Target)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, localization, ReasonTargetFetchFailed, err.Error())
 
@@ -170,7 +169,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		localization.Spec.Config.Namespace = localization.Namespace
 	}
 
-	cfg, err := loc.GetLocalizationConfig(ctx, localization.Spec.Config)
+	cfg, err := r.LocalizationClient.GetLocalizationConfig(ctx, localization.Spec.Config)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, localization, ReasonConfigFetchFailed, err.Error())
 
@@ -324,8 +323,8 @@ func localizeRules(
 		}
 
 		ref := ocmmetav1.ResourceReference{
-			Resource:      rule.Map.Source.Resource,
-			ReferencePath: rule.Map.Source.ReferencePath,
+			Resource:      rule.YAMLSubstitution.Source.Resource,
+			ReferencePath: rule.YAMLSubstitution.Source.ReferencePath,
 		}
 		resource, _, err := compdesc.ResolveResourceReference(componentDescriptor, ref, componentSet)
 		if err != nil {
@@ -337,14 +336,14 @@ func localizeRules(
 		if value, err = resolve(resource); err != nil {
 			return nil, fmt.Errorf("failed to resolve value from resource reference of rule at index %v: %w", i, err)
 		}
-		if value, err = transform(value, rule.Map.Transformation); err != nil {
+		if value, err = transform(value, rule.YAMLSubstitution.Transformation); err != nil {
 			return nil, fmt.Errorf("failed to apply transformation to resolved value of rule at index %v: %w", i, err)
 		}
 
 		localizedRules[i] = v1alpha1.ConfigurationRule{
-			Map: &v1alpha1.ConfigurationRuleMap{
-				Target: v1alpha1.ConfigurationRuleMapTarget{File: rule.Map.Target.File},
-				Source: v1alpha1.ConfigurationRuleMapSource{Value: value},
+			YAMLSubstitution: &v1alpha1.ConfigurationRuleYAMLSubstitution{
+				Target: v1alpha1.ConfigurationRuleYAMLSubsitutionTarget{File: rule.YAMLSubstitution.Target.File},
+				Source: v1alpha1.ConfigurationRuleYAMLSubsitutionSource{Value: value},
 			},
 		}
 	}
