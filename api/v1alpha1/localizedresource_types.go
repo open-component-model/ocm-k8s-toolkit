@@ -80,41 +80,6 @@ type LocalizedResourceSpec struct {
 	Suspend bool `json:"suspend,omitempty"`
 }
 
-type LocalizationStrategyMapped struct{}
-
-type LocalizationSelector struct {
-	// ResId refers to a GVKN/Ns of a resource.
-	LocalizationSelectorReference `json:",inline,omitempty" yaml:",inline,omitempty"`
-
-	// AnnotationSelector is a string that follows the label selection expression
-	// https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#api
-	// It matches with the resource annotations.
-	AnnotationSelector string `json:"annotationSelector,omitempty" yaml:"annotationSelector,omitempty"`
-
-	// LabelSelector is a string that follows the label selection expression
-	// https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#api
-	// It matches with the resource labels.
-	LabelSelector string `json:"labelSelector,omitempty" yaml:"labelSelector,omitempty"`
-}
-
-// LocalizationSelectorReference is an identifier of a k8s resource object.
-type LocalizationSelectorReference struct {
-	// Gvk of the resource.
-	metav1.GroupVersionKind `json:",inline,omitempty" yaml:",inline,omitempty"`
-
-	// Name of the resource.
-	Name string `json:"name,omitempty" yaml:"name,omitempty"`
-
-	// Namespace the resource belongs to, if it can belong to a namespace.
-	Namespace string `json:"namespace,omitempty" yaml:"namespace,omitempty"`
-}
-
-// ConfigurationReference defines a configuration which may be accessed through an object in the cluster
-// +kubebuilder:validation:MinProperties=1
-type ConfigurationReference struct {
-	meta.NamespacedObjectKindReference `json:",inline"`
-}
-
 type LocalizedResourceStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`

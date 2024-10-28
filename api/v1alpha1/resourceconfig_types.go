@@ -34,7 +34,7 @@ func init() {
 }
 
 type ResourceConfigSpec struct {
-	Rules []ConfigurationRule `json:"rules,omitempty"`
+	Rules []ConfigurationRule `json:"rules"`
 }
 
 type ConfigurationRule struct {

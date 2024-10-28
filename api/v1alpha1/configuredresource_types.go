@@ -25,25 +25,18 @@ import (
 
 const KindConfiguredResource = "ConfiguredResource"
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // ConfiguredResourceSpec defines the desired state of ConfiguredResource.
 type ConfiguredResourceSpec struct {
 	// Target that is to be configured.
-	// +required
-	Target ConfigurationReference `json:"target,omitempty"`
+	Target ConfigurationReference `json:"target"`
 
 	// Config that is to be used to configure the target
-	// +required
-	Config ConfigurationReference `json:"config,omitempty"`
+	Config ConfigurationReference `json:"config"`
 
 	// Interval at which to refresh the configuration
-	// +required
 	Interval metav1.Duration `json:"interval"`
 
 	// Suspend all localization behaviors, but keep existing localizations in place
-	// +optional
 	Suspend bool `json:"suspend,omitempty"`
 }
 
@@ -81,11 +74,17 @@ type ConfiguredResourceStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
-	// The component controller generates an artifact which is a list of component descriptors. If the components were
-	// verified, other controllers (e.g. Resource controller) can use this without having to verify the signature again
+
+	// The configuration reconcile loop generates an artifact, which contains the
+	// ConfiguredResourceSpec.Target ConfigurationReference after configuration.
+	// It is filled once the Artifact is created and the configuration completed.
 	// +optional
 	ArtifactRef *ObjectKey `json:"artifactRef,omitempty"`
 
+	// Digest contains a technical identifier for the artifact. This technical identifier
+	// can be used to track changes on the ArtifactRef as it is a combination of the origin
+	// ConfiguredResourceSpec.Config applied to the ConfiguredResourceSpec.Target.
+	// +optional
 	Digest string `json:"digest,omitempty"`
 }
 
@@ -116,4 +115,10 @@ type ConfiguredResourceList struct {
 
 func init() {
 	SchemeBuilder.Register(&ConfiguredResource{}, &ConfiguredResourceList{})
+}
+
+// ConfigurationReference defines a configuration which may be accessed through an object in the cluster
+// +kubebuilder:validation:MinProperties=1
+type ConfigurationReference struct {
+	meta.NamespacedObjectKindReference `json:",inline"`
 }

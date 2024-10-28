@@ -101,8 +101,9 @@ spec:
             properties:
               artifactRef:
                 description: |-
-                  The component controller generates an artifact which is a list of component descriptors. If the components were
-                  verified, other controllers (e.g. Resource controller) can use this without having to verify the signature again
+                  The configuration reconcile loop generates an artifact, which contains the
+                  ConfiguredResourceSpec.Target ConfigurationReference after configuration.
+                  It is filled once the Artifact is created and the configuration completed.
                 properties:
                   name:
                     type: string
@@ -168,6 +169,10 @@ spec:
                   type: object
                 type: array
               digest:
+                description: |-
+                  Digest contains a technical identifier for the artifact. This technical identifier
+                  can be used to track changes on the ArtifactRef as it is a combination of the origin
+                  ConfiguredResourceSpec.Config applied to the ConfiguredResourceSpec.Target.
                 type: string
               observedGeneration:
                 format: int64
