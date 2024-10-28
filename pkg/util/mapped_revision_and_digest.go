@@ -1,8 +1,6 @@
 package util
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -53,16 +51,7 @@ type MappedRevisionAndDigest struct {
 }
 
 func (r MappedRevisionAndDigest) String() string {
-	return encodeJSONToString(r)
-}
-
-func encodeJSONToString[T any](toEncode T) string {
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(toEncode); err != nil {
-		return "invalid yamlsubst revision: " + err.Error()
-	}
-
-	return buf.String()
+	return r.GetRevision()
 }
 
 func (r MappedRevisionAndDigest) GetDigest() (string, error) {

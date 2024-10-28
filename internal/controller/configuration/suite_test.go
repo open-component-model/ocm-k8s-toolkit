@@ -48,7 +48,6 @@ import (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 const (
-	ARTIFACT_PATH   = "ocm-k8s-artifactstore--*"
 	ARTIFACT_SERVER = "localhost:0"
 )
 
@@ -62,7 +61,7 @@ var recorder record.EventRecorder
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecs(t, "LocalizationRules Controller Suite")
+	RunSpecs(t, "Configuration Controller Suite")
 }
 
 var _ = BeforeSuite(func() {

@@ -147,7 +147,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		return ctrl.Result{}, fmt.Errorf("failed to fetch cfg: %w", err)
 	}
 
-	digest, revision, file, err := artifact.UniqueIDsForArtifactContentCombination(cfg, target)
+	digest, revision, filename, err := artifact.UniqueIDsForArtifactContentCombination(cfg, target)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, configuration, ReasonUniqueIDGenerationFailed, err.Error())
 
@@ -155,7 +155,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 	}
 
 	logger.V(1).Info("verifying configuration", "digest", digest, "revision", revision)
-	hasValidArtifact, err := ocm.CollectableHasValidArtifactBasedOnFileNameDigest(
+	hasValidArtifact, err := ocm.ValidateArtifactForCollectable(
 		ctx,
 		r.Client,
 		r.Storage,
@@ -194,7 +194,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		configuration,
 		revision,
 		configured,
-		file,
+		filename,
 		func(artifact *artifactv1.Artifact, dir string) error {
 			if !hasValidArtifact {
 				// Archive directory to storage
