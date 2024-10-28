@@ -545,15 +545,33 @@ func autoCompressAndArchiveFile(ctx context.Context, art *artifactv1.Artifact, s
 		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer func() {
-		retErr = errors.Join(err, file.Close())
+		retErr = errors.Join(retErr, file.Close())
 	}()
+
 	algo, decompressor, reader, err := compression.DetectCompressionFormat(file)
 	if err != nil {
 		return fmt.Errorf("failed to detect compression format: %w", err)
 	}
 
+	// If the file is
+	// 1. not compressed or
+	// 2. compressed but not in gzip format
+	// we will recompress it to gzip and archive it
 	if decompressor == nil || algo.Name() != compression.Gzip.Name() {
+		// If it is compressed in a different format, we first decompress it and then recompress it to gzip
+		if decompressor != nil {
+			decompressed, err := decompressor(reader)
+			if err != nil {
+				return fmt.Errorf("failed to decompress: %w", err)
+			}
+			defer func() {
+				retErr = errors.Join(retErr, decompressed.Close())
+			}()
+			reader = decompressed
+		}
+
 		logger.V(1).Info("archiving file, but detected file is not compressed or not in gzip format, recompressing and archiving")
+		// TODO: this loads the single file into memory which can be expensive, but orchestrating an io.Pipe here is not trivial
 		var buf bytes.Buffer
 		if err := compressViaBuffer(&buf, reader); err != nil {
 			return err
@@ -573,17 +591,18 @@ func autoCompressAndArchiveFile(ctx context.Context, art *artifactv1.Artifact, s
 	return nil
 }
 
-func compressViaBuffer(buf *bytes.Buffer, reader io.Reader) error {
+func compressViaBuffer(buf *bytes.Buffer, reader io.Reader) (retErr error) {
 	compressToBuf, err := compression.CompressStream(buf, compression.Gzip, nil)
 	if err != nil {
 		return fmt.Errorf("failed to compress stream: %w", err)
 	}
+	defer func() {
+		retErr = errors.Join(retErr, compressToBuf.Close())
+	}()
 	if _, err := io.Copy(compressToBuf, reader); err != nil {
 		return fmt.Errorf("failed to copy: %w", err)
 	}
-	if err := compressToBuf.Close(); err != nil {
-		return fmt.Errorf("failed to close: %w", err)
-	}
+
 	return nil
 }
 
