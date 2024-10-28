@@ -68,6 +68,22 @@ func (in *ConfiguredResource) GetVID() map[string]string {
 	return metadata
 }
 
+func (in *ConfiguredResource) GetConfig() *ConfigurationReference {
+	return &in.Spec.Config
+}
+
+func (in *ConfiguredResource) GetTarget() *ConfigurationReference {
+	return &in.Spec.Target
+}
+
+func (in *ConfiguredResource) SetConfig(v *ConfigurationReference) {
+	v.DeepCopyInto(&in.Spec.Config)
+}
+
+func (in *ConfiguredResource) SetTarget(v *ConfigurationReference) {
+	v.DeepCopyInto(&in.Spec.Target)
+}
+
 // ConfiguredResourceStatus defines the observed state of ConfiguredResource.
 type ConfiguredResourceStatus struct {
 	// +optional
@@ -98,10 +114,6 @@ type ConfiguredResource struct {
 
 	Spec   ConfiguredResourceSpec   `json:"spec,omitempty"`
 	Status ConfiguredResourceStatus `json:"status,omitempty"`
-}
-
-func (in *ConfiguredResource) GetTarget() meta.NamespacedObjectKindReference {
-	return in.Spec.Target.NamespacedObjectKindReference
 }
 
 // +kubebuilder:object:root=true

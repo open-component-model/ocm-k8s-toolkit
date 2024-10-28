@@ -25,30 +25,43 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/openfluxcd/controller-manager/storage"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	configurationclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/client"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/artifact"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/index"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
-const (
-	ReasonTargetFetchFailed        = "TargetFetchFailed"
-	ReasonConfigFetchFailed        = "ConfigFetchFailed"
-	ReasonConfigurationFailed      = "ConfigurationFailed"
-	ReasonUniqueIDGenerationFailed = "UniqueIDGenerationFailed"
-)
-
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+	onTargetChange, onConfigChange, err := index.TargetAndConfig[v1alpha1.ConfiguredResource](mgr)
+	if err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.ConfiguredResource{}).
+		For(&v1alpha1.ConfiguredResource{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		// Update when the owned artifact containing the configured data changes
+		Owns(&artifactv1.Artifact{}).
+		// Update when a resource specified as target changes
+		Watches(&v1alpha1.Resource{}, onTargetChange).
+		Watches(&v1alpha1.LocalizedResource{}, onTargetChange).
+		Watches(&v1alpha1.ConfiguredResource{}, onTargetChange).
+		// Update when a config coming from a resource changes
+		Watches(&v1alpha1.Resource{}, onConfigChange).
+		Watches(&v1alpha1.LocalizedResource{}, onConfigChange).
+		Watches(&v1alpha1.ConfiguredResource{}, onConfigChange).
+		// Update when a config coming from the cluster changes
+		Watches(&v1alpha1.ResourceConfig{}, onConfigChange).
 		Named("configuredresource").
 		Complete(r)
 }
@@ -63,7 +76,7 @@ type Reconciler struct {
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=configuredresources,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=configuredresources/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=configuredresources/finalizers,verbs=update
-// +kubebuilder:rbac:groups=delivery.ocm.software,resources=resourceconfigurations,verbs=get;list;watch
+// +kubebuilder:rbac:groups=delivery.ocm.software,resources=resourceconfigs,verbs=get;list;watch
 
 // +kubebuilder:rbac:groups="",resources=secrets;configmaps;serviceaccounts,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=serviceaccounts/token,verbs=create
@@ -131,7 +144,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 
 	target, err := r.ConfigClient.GetTarget(ctx, configuration.Spec.Target)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, configuration, ReasonTargetFetchFailed, err.Error())
+		status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.TargetFetchFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to fetch target: %w", err)
 	}
@@ -142,14 +155,14 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 
 	cfg, err := r.ConfigClient.GetConfiguration(ctx, configuration.Spec.Config)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, configuration, ReasonConfigFetchFailed, err.Error())
+		status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.ConfigFetchFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to fetch cfg: %w", err)
 	}
 
 	digest, revision, filename, err := artifact.UniqueIDsForArtifactContentCombination(cfg, target)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, configuration, ReasonUniqueIDGenerationFailed, err.Error())
+		status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.UniqueIDGenerationFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to map digest from config to target: %w", err)
 	}
@@ -180,10 +193,9 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		}()
 
 		if configured, err = Configure(ctx, r.ConfigClient, cfg, target, basePath); err != nil {
-			status.MarkNotReady(r.EventRecorder, configuration, ReasonConfigurationFailed, err.Error())
-			logger.Error(err, "failed to configure, retrying later", "interval", configuration.Spec.Interval.Duration)
+			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.ConfigurationFailedReason, err.Error())
 
-			return ctrl.Result{RequeueAfter: configuration.Spec.Interval.Duration}, nil
+			return ctrl.Result{}, fmt.Errorf("failed to configure: %w", err)
 		}
 	}
 

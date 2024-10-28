@@ -38,16 +38,6 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/util"
 )
 
-const (
-	// TODO move to condition types.
-	ReasonTargetFetchFailed        = "TargetFetchFailed"
-	ReasonConfigFetchFailed        = "ConfigFetchFailed"
-	ReasonLocalizationFailed       = "LocalizationFailed"
-	ReasonConfigGenerationFailed   = "ConfigGenerationFailed"
-	ReasonLocalizationNotYetReady  = "LocalizationNotYetReady"
-	ReasonResourceGenerationFailed = "ResourceGenerationFailed"
-)
-
 // Reconciler reconciles a LocalizationRules object.
 type Reconciler struct {
 	*ocm.BaseReconciler
@@ -59,23 +49,26 @@ var _ ocm.Reconciler = (*Reconciler)(nil)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
-	targetFieldMatcher, configFieldMatcher, err := index.LocalizedResourceIndexTargetAndConfig(mgr)
+	onTargetChange, onConfigChange, err := index.TargetAndConfig[v1alpha1.LocalizedResource](mgr)
 	if err != nil {
 		return err
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.LocalizedResource{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// Update when the owned artifact containing the localized data changes
-		Owns(&artifactv1.Artifact{}).
 		// Update when the owned ConfiguredResource changes
 		Owns(&v1alpha1.ConfiguredResource{}).
 		// Update when a resource specified as target changes
-		Watches(&v1alpha1.Resource{}, index.EnqueueForFieldMatcher(mgr.GetClient(), targetFieldMatcher)).
+		Watches(&v1alpha1.Resource{}, onTargetChange).
+		Watches(&v1alpha1.LocalizedResource{}, onTargetChange).
+		Watches(&v1alpha1.ConfiguredResource{}, onTargetChange).
 		// Update when a localization config coming from a resource changes
-		Watches(&v1alpha1.Resource{}, index.EnqueueForFieldMatcher(mgr.GetClient(), configFieldMatcher)).
+		Watches(&v1alpha1.Resource{}, onConfigChange).
+		Watches(&v1alpha1.LocalizedResource{}, onConfigChange).
+		Watches(&v1alpha1.ConfiguredResource{}, onConfigChange).
 		// Update when a localization config coming from the cluster changes
-		Watches(&v1alpha1.LocalizationConfig{}, index.EnqueueForFieldMatcher(mgr.GetClient(), configFieldMatcher)).
+		Watches(&v1alpha1.LocalizationConfig{}, onConfigChange).
+		Named("localizedresource").
 		Complete(r)
 }
 
@@ -152,7 +145,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 
 	target, err := r.LocalizationClient.GetLocalizationTarget(ctx, localization.Spec.Target)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, localization, ReasonTargetFetchFailed, err.Error())
+		status.MarkNotReady(r.EventRecorder, localization, v1alpha1.TargetFetchFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to fetch target: %w", err)
 	}
@@ -160,7 +153,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 	targetBackedByComponent, ok := target.(LocalizableArtifactContent)
 	if !ok {
 		err = fmt.Errorf("target is not backed by a component and cannot be localized")
-		status.MarkNotReady(r.EventRecorder, localization, ReasonTargetFetchFailed, err.Error())
+		status.MarkNotReady(r.EventRecorder, localization, v1alpha1.TargetFetchFailedReason, err.Error())
 
 		return ctrl.Result{}, err
 	}
@@ -171,14 +164,14 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 
 	cfg, err := r.LocalizationClient.GetLocalizationConfig(ctx, localization.Spec.Config)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, localization, ReasonConfigFetchFailed, err.Error())
+		status.MarkNotReady(r.EventRecorder, localization, v1alpha1.ConfigFetchFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to fetch config: %w", err)
 	}
 
 	rules, err := localizeRules(ctx, r.Client, r.Storage, targetBackedByComponent, cfg)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, localization, ReasonLocalizationFailed, err.Error())
+		status.MarkNotReady(r.EventRecorder, localization, v1alpha1.LocalizationRuleGenerationFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to localize rules: %w", err)
 	}
@@ -201,7 +194,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		return nil
 	})
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, localization, ReasonConfigGenerationFailed, err.Error())
+		status.MarkNotReady(r.EventRecorder, localization, v1alpha1.ConfigGenerationFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to create or update resource config: %w", err)
 	}
@@ -239,16 +232,21 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		return nil
 	})
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, localization, ReasonResourceGenerationFailed, err.Error())
+		status.MarkNotReady(r.EventRecorder, localization, v1alpha1.ResourceGenerationFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to create or update configured resource: %w", err)
 	}
 	logger.V(1).Info(fmt.Sprintf("configured resource %s", confResOp))
 
 	if !conditions.IsReady(configuredResource) {
-		status.MarkNotReady(r.EventRecorder, localization, ReasonLocalizationNotYetReady, "configured resource is not yet ready")
+		status.MarkNotReady(
+			r.EventRecorder,
+			localization,
+			v1alpha1.LocalizationIsNotReadyReason,
+			"configured resource containing localized content is not yet ready",
+		)
 
-		return ctrl.Result{RequeueAfter: localization.Spec.Interval.Duration}, nil
+		return ctrl.Result{}, fmt.Errorf("configured resource containing localization is not yet ready")
 	}
 
 	art := &artifactv1.Artifact{}
@@ -260,6 +258,10 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 	}
 
 	artOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, art, func() error {
+		if err := controllerutil.SetOwnerReference(localization, art, r.Scheme); err != nil {
+			return fmt.Errorf("failed to set indirect owner reference on artifact: %w", err)
+		}
+
 		if art.GetAnnotations() == nil {
 			art.SetAnnotations(map[string]string{})
 		}
@@ -271,9 +273,9 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		return nil
 	})
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, localization, ReasonResourceGenerationFailed, err.Error())
+		status.MarkNotReady(r.EventRecorder, localization, v1alpha1.ReconcileArtifactFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to create or update configured resource: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to create or update artifact: %w", err)
 	}
 	logger.V(1).Info(fmt.Sprintf("artifact %s", artOp))
 

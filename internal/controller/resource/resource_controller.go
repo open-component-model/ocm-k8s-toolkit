@@ -17,15 +17,18 @@ limitations under the License.
 package resource
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/containers/image/v5/pkg/compression"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
@@ -503,10 +506,8 @@ func reconcileArtifact(
 					return fmt.Errorf("failed to archive: %w", err)
 				}
 			} else {
-				logger.V(1).Info("archiving file from path")
-				// If given path is a file, just copy it.
-				if err := storage.CopyFromPath(art, path); err != nil {
-					return fmt.Errorf("failed to copy file: %w", err)
+				if err := autoCompressAndArchiveFile(ctx, art, storage, path); err != nil {
+					return fmt.Errorf("failed to auto compress and archive file: %w", err)
 				}
 			}
 
@@ -528,6 +529,52 @@ func reconcileArtifact(
 	// Provide artifact in storage
 	if err := storage.ReconcileArtifact(ctx, resource, revision, dirPath, revision, archiveFunc); err != nil {
 		return fmt.Errorf("failed to reconcile resource artifact: %w", err)
+	}
+
+	return nil
+}
+
+// autoCompressAndArchiveFile compresses the file if it is not already compressed and archives it in the storage.
+// If the file is already compressed as gzip, it will be archived as is.
+// If the file is not compressed or not in gzip format, it will be attempting to recompress to gzip and then archive.
+// This is because some source controllers such as kustomize expect this compression format in their artifacts.
+func autoCompressAndArchiveFile(ctx context.Context, art *artifactv1.Artifact, storage *storage.Storage, path string) (err error) {
+	logger := log.FromContext(ctx).WithValues("artifact", art.Name, "path", path)
+	file, err := os.OpenFile(path, os.O_RDONLY, 0o400)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer func() {
+		err = errors.Join(err, file.Close())
+	}()
+	algo, decompressor, reader, err := compression.DetectCompressionFormat(file)
+	if err != nil {
+		return fmt.Errorf("failed to detect compression format: %w", err)
+	}
+
+	if decompressor == nil || algo.Name() != compression.Gzip.Name() {
+		logger.V(1).Info("archiving file, but detected file is not compressed or not in gzip format, recompressing and archiving")
+		var buf bytes.Buffer
+		compressToBuf, err := compression.CompressStream(&buf, compression.Gzip, nil)
+		if err != nil {
+			return fmt.Errorf("failed to compress stream: %w", err)
+		}
+		defer func() {
+			err = errors.Join(err, compressToBuf.Close())
+		}()
+		if _, err := io.Copy(compressToBuf, reader); err != nil {
+			return fmt.Errorf("failed to copy: %w", err)
+		}
+		if err := storage.Copy(art, &buf); err != nil {
+			return fmt.Errorf("failed to copy: %w", err)
+		}
+
+		return nil
+	}
+
+	logger.V(1).Info("archiving already compressed file from path")
+	if err := storage.Copy(art, reader); err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
 	}
 
 	return nil

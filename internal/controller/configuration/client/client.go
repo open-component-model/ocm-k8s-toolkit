@@ -1,13 +1,9 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"os"
 
-	"github.com/opencontainers/go-digest"
 	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -90,55 +86,5 @@ func GetResourceConfigFromKubernetes(ctx context.Context, clnt client.Reader, en
 		return nil, fmt.Errorf("failed to fetch localization config %s: %w", reference.Name, err)
 	}
 
-	return &ResourceConfig{&cfg, encoder}, nil
-}
-
-// ResourceConfig is a wrapper around a client.Object that implements the types.ConfigurationSource interface.
-// For serialization it uses the provided runtime.Encoder.
-type ResourceConfig struct {
-	client.Object `json:",inline"`
-	encoder       runtime.Encoder
-}
-
-var _ types.ConfigurationSource = &ResourceConfig{}
-
-func (in *ResourceConfig) Open() (io.ReadCloser, error) {
-	buf, err := in.AsBuf()
-	if err != nil {
-		return nil, err
-	}
-
-	return io.NopCloser(buf), nil
-}
-
-func (in *ResourceConfig) AsBuf() (*bytes.Buffer, error) {
-	var buf bytes.Buffer
-
-	if err := in.encoder.Encode(in.Object, &buf); err != nil {
-		return nil, err
-	}
-
-	return &buf, nil
-}
-
-func (in *ResourceConfig) UnpackIntoDirectory(path string) error {
-	buf, err := in.AsBuf()
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(fmt.Sprintf("%s-%s.yaml", path, in.GetName()), buf.Bytes(), 0o600)
-}
-
-func (in *ResourceConfig) GetDigest() (string, error) {
-	buf, err := in.AsBuf()
-	if err != nil {
-		return "", err
-	}
-
-	return digest.NewDigestFromBytes(digest.SHA256, buf.Bytes()).String(), err
-}
-
-func (in *ResourceConfig) GetRevision() string {
-	return fmt.Sprintf("%s/%s in generation %v", in.GetNamespace(), in.GetName(), in.GetGeneration())
+	return &artifactutil.ObjectConfig{Object: &cfg, Encoder: encoder}, nil
 }

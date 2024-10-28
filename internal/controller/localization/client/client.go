@@ -1,13 +1,9 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"os"
 
-	"github.com/opencontainers/go-digest"
 	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -99,54 +95,5 @@ func GetLocalizationConfigFromKubernetes(ctx context.Context, clnt client.Reader
 		return nil, fmt.Errorf("failed to fetch localization config %s: %w", reference.Name, err)
 	}
 
-	return &LocalizationConfig{&cfg, encoder}, nil
-}
-
-// LocalizationConfig is a wrapper around the v1alpha1.LocalizationConfig that implements the types.LocalizationConfig interface.
-type LocalizationConfig struct {
-	*v1alpha1.LocalizationConfig
-	encoder runtime.Encoder
-}
-
-var _ types.LocalizationConfig = &LocalizationConfig{}
-
-func (in *LocalizationConfig) Open() (io.ReadCloser, error) {
-	buf, err := in.AsBuf()
-	if err != nil {
-		return nil, err
-	}
-
-	return io.NopCloser(buf), nil
-}
-
-func (in *LocalizationConfig) AsBuf() (*bytes.Buffer, error) {
-	var buf bytes.Buffer
-
-	if err := in.encoder.Encode(in.LocalizationConfig, &buf); err != nil {
-		return nil, err
-	}
-
-	return &buf, nil
-}
-
-func (in *LocalizationConfig) UnpackIntoDirectory(path string) error {
-	buf, err := in.AsBuf()
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(fmt.Sprintf("%s-%s.yaml", path, in.Name), buf.Bytes(), 0o600)
-}
-
-func (in *LocalizationConfig) GetDigest() (string, error) {
-	buf, err := in.AsBuf()
-	if err != nil {
-		return "", err
-	}
-
-	return digest.NewDigestFromBytes(digest.SHA256, buf.Bytes()).String(), err
-}
-
-func (in *LocalizationConfig) GetRevision() string {
-	return fmt.Sprintf("%s/%s in generation %v", in.GetNamespace(), in.GetName(), in.GetGeneration())
+	return &artifactutil.ObjectConfig{Object: &cfg, Encoder: encoder}, nil
 }

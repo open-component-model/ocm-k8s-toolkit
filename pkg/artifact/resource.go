@@ -176,22 +176,7 @@ func GetContentBackedByArtifactFromComponent(
 		return nil, fmt.Errorf("unsupported localization reference type: %s/%s", ref.APIVersion, ref.Kind)
 	}
 
-	var (
-		component *v1alpha1.Component
-		resource  *v1alpha1.Resource
-		artifact  *artifactv1.Artifact
-		err       error
-	)
-
-	switch ref.Kind {
-	case v1alpha1.KindResource:
-		component, resource, artifact, err = GetComponentResourceArtifact(ctx, clnt, strg, ref)
-	case v1alpha1.KindLocalizedResource:
-		component, resource, artifact, err = GetComponentResourceArtifact(ctx, clnt, strg, ref)
-	case v1alpha1.KindConfiguredResource:
-		component, resource, artifact, err = GetComponentResourceArtifact(ctx, clnt, strg, ref)
-	}
-
+	component, resource, artifact, err := GetComponentResourceArtifactFromReference(ctx, clnt, strg, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +188,7 @@ type ObjectWithTargetReference interface {
 	GetTarget() meta.NamespacedObjectKindReference
 }
 
-func GetComponentResourceArtifact(
+func GetComponentResourceArtifactFromReference(
 	ctx context.Context,
 	clnt client.Reader,
 	strg *storage.Storage,
@@ -265,7 +250,7 @@ func GetComponentResourceArtifact(
 		return nil, nil, nil, fmt.Errorf("unsupported reference type: %T", resource)
 	}
 
-	return GetComponentResourceArtifact(ctx, clnt, strg, targetable.GetTarget())
+	return GetComponentResourceArtifactFromReference(ctx, clnt, strg, targetable.GetTarget())
 }
 
 // UniqueIDsForArtifactContentCombination returns a set of unique identifiers for the combination of two Content.

@@ -3,7 +3,6 @@ package v1alpha1
 import (
 	"fmt"
 
-	"github.com/fluxcd/pkg/apis/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -42,10 +41,6 @@ func (in *LocalizedResource) SetObservedGeneration(v int64) {
 	in.Status.ObservedGeneration = v
 }
 
-func (in *LocalizedResource) GetTarget() meta.NamespacedObjectKindReference {
-	return in.Spec.Target.NamespacedObjectKindReference
-}
-
 func (in *LocalizedResource) GetConditions() []metav1.Condition {
 	return in.Status.Conditions
 }
@@ -60,6 +55,22 @@ func (in *LocalizedResource) GetVID() map[string]string {
 	metadata[GroupVersion.Group+"/localization"] = vid
 
 	return metadata
+}
+
+func (in *LocalizedResource) GetConfig() *ConfigurationReference {
+	return &in.Spec.Config
+}
+
+func (in *LocalizedResource) GetTarget() *ConfigurationReference {
+	return &in.Spec.Target
+}
+
+func (in *LocalizedResource) SetConfig(v *ConfigurationReference) {
+	v.DeepCopyInto(&in.Spec.Config)
+}
+
+func (in *LocalizedResource) SetTarget(v *ConfigurationReference) {
+	v.DeepCopyInto(&in.Spec.Target)
 }
 
 type LocalizedResourceSpec struct {

@@ -18,41 +18,63 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
-func LocalizedResourceIndexTargetAndConfig(mgr ctrl.Manager) (
-	func(object client.Object) client.MatchingFields,
-	func(object client.Object) client.MatchingFields,
+// TargetableAndConfigurableObjectPointerTo is a type that is used to define a pointer to a regular client object.
+// However it also contains references to set/get configuration and target of a resource.
+// This is used together with TargetAndConfig to index all fields for the target and config,
+// and to build up handler.EventHandler's that automatically trigger an update on the given object
+// whenever either the configuration or the target changes.
+type TargetableAndConfigurableObjectPointerTo[T any] interface {
+	*T
+	client.Object
+	GetConfig() *v1alpha1.ConfigurationReference
+	SetConfig(ref *v1alpha1.ConfigurationReference)
+	GetTarget() *v1alpha1.ConfigurationReference
+	SetTarget(ref *v1alpha1.ConfigurationReference)
+}
+
+// TargetAndConfig returns two handler.EventHandler that can be used to trigger an update on the given object
+// if the corresponding configuration or target changes.
+// It opinionates on the fields spec because client-side field specs for indexing do not need to be canonical.
+// It uses this specification to generate field matching functions via ReferenceIndex on the v1alpha1.ConfigurationReference.
+// This is then used together with EnqueueForFieldMatcher to generate the handler.EventHandler's.
+// This means that everytime an object that implements TargetableAndConfigurableObjectPointerTo[T] is having either
+// its Config or Target changed, the event handler will be able to pick up this change as long as
+// it is registered in a SetupWithManager call.
+func TargetAndConfig[T any, P TargetableAndConfigurableObjectPointerTo[T]](mgr ctrl.Manager) (
+	handler.EventHandler,
+	handler.EventHandler,
 	error,
 ) {
 	// Index all fields for the target and config, and build up MatchingFieldsFunc.
-	configFields, configIndex := ReferenceIndex("spec.config", func(obj client.Object) *v1alpha1.ConfigurationReference {
-		return &obj.(*v1alpha1.LocalizedResource).Spec.Config //nolint:forcetypeassert // We know it's ok
+	configFields, configIndex := ReferenceIndex("spec.config", func(obj P) *v1alpha1.ConfigurationReference {
+		return obj.GetConfig()
 	})
-	targetFields, targetIndex := ReferenceIndex("spec.target", func(obj client.Object) *v1alpha1.ConfigurationReference {
-		return &obj.(*v1alpha1.LocalizedResource).Spec.Target //nolint:forcetypeassert // We know it's ok
+	targetFields, targetIndex := ReferenceIndex("spec.target", func(obj P) *v1alpha1.ConfigurationReference {
+		return obj.GetTarget()
 	})
 
-	mappings := map[string]func(obj client.Object) []string{}
+	mappings := map[string]func(obj P) []string{}
 	maps.Copy(mappings, configIndex)
 	maps.Copy(mappings, targetIndex)
 
 	// Index all fields accordingly
 	for field, mapping := range mappings {
-		if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.LocalizedResource{}, field, func(obj client.Object) []string {
-			resource, ok := obj.(*v1alpha1.LocalizedResource)
+		if err := mgr.GetFieldIndexer().IndexField(context.Background(), P(new(T)), field, func(obj client.Object) []string {
+			resource, ok := obj.(P)
 			if !ok {
 				return nil
 			}
 
 			// Make sure that the target gets indexed / defaulted with the correct GVK in case not all fields were set
-			trgtRef := resource.Spec.Target
+			trgtRef := resource.GetTarget()
 			if err := DefaultGVKFromScheme(&trgtRef.NamespacedObjectKindReference, mgr.GetScheme(), v1alpha1.GroupVersion); err == nil {
-				trgtRef.DeepCopyInto(&resource.Spec.Target)
+				resource.SetTarget(trgtRef)
 			}
 
 			// Make sure that the config gets indexed / defaulted with the correct GVK in case not all fields were set
-			cfgRef := resource.Spec.Config
+			cfgRef := resource.GetConfig()
 			if err := DefaultGVKFromScheme(&cfgRef.NamespacedObjectKindReference, mgr.GetScheme(), v1alpha1.GroupVersion); err == nil {
-				cfgRef.DeepCopyInto(&resource.Spec.Config)
+				resource.SetConfig(cfgRef)
 			}
 
 			return mapping(resource)
@@ -61,7 +83,7 @@ func LocalizedResourceIndexTargetAndConfig(mgr ctrl.Manager) (
 		}
 	}
 
-	return targetFields, configFields, nil
+	return EnqueueForFieldMatcher(mgr.GetClient(), targetFields), EnqueueForFieldMatcher(mgr.GetClient(), configFields), nil
 }
 
 func DefaultGVKFromScheme(ref *meta.NamespacedObjectKindReference, scheme *runtime.Scheme, defaultGroupVersion schema.GroupVersion) error {
@@ -81,11 +103,11 @@ func DefaultGVKFromScheme(ref *meta.NamespacedObjectKindReference, scheme *runti
 	return nil
 }
 
-func ReferenceIndex(fieldSpec string, refFunc func(obj client.Object) *v1alpha1.ConfigurationReference) (
+func ReferenceIndex[T any](fieldSpec string, refFunc func(obj T) *v1alpha1.ConfigurationReference) (
 	func(object client.Object) client.MatchingFields,
-	map[string]func(obj client.Object) []string,
+	map[string]func(obj T) []string,
 ) {
-	return MatchingFieldsFuncForNamespacedObjectKind(fieldSpec), ConfigurationReferenceMappings(
+	return MatchingFieldsFuncForNamespacedObjectKind(fieldSpec), ConfigurationReferenceMappings[T](
 		fieldSpec,
 		refFunc,
 	)
@@ -104,15 +126,15 @@ func MatchingFieldsFuncForNamespacedObjectKind(prefix string) func(object client
 	}
 }
 
-func ConfigurationReferenceMappings(
+func ConfigurationReferenceMappings[T any](
 	pathSpec string,
-	refFunc func(obj client.Object) *v1alpha1.ConfigurationReference,
-) map[string]func(obj client.Object) []string {
-	return map[string]func(obj client.Object) []string{
-		fmt.Sprintf("%s.name", pathSpec):       func(obj client.Object) []string { return []string{refFunc(obj).Name} },
-		fmt.Sprintf("%s.namespace", pathSpec):  func(obj client.Object) []string { return []string{refFunc(obj).Namespace} },
-		fmt.Sprintf("%s.kind", pathSpec):       func(obj client.Object) []string { return []string{refFunc(obj).Kind} },
-		fmt.Sprintf("%s.apiVersion", pathSpec): func(obj client.Object) []string { return []string{refFunc(obj).APIVersion} },
+	refFunc func(obj T) *v1alpha1.ConfigurationReference,
+) map[string]func(T) []string {
+	return map[string]func(obj T) []string{
+		fmt.Sprintf("%s.name", pathSpec):       func(obj T) []string { return []string{refFunc(obj).Name} },
+		fmt.Sprintf("%s.namespace", pathSpec):  func(obj T) []string { return []string{refFunc(obj).Namespace} },
+		fmt.Sprintf("%s.kind", pathSpec):       func(obj T) []string { return []string{refFunc(obj).Kind} },
+		fmt.Sprintf("%s.apiVersion", pathSpec): func(obj T) []string { return []string{refFunc(obj).APIVersion} },
 	}
 }
 
