@@ -264,9 +264,8 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 
 	// Get resource, respective component descriptor and component version
 	resourceReference := v1.ResourceReference{
-		Resource: resource.Spec.Resource.ByReference.Resource,
-		// TODO: Implement resourceReference path (see https://github.com/open-component-model/ocm-project/issues/296)
-		// ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
+		Resource:      resource.Spec.Resource.ByReference.Resource,
+		ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
 	}
 
 	// Resolve resource resourceReference to get resource and its component descriptor
