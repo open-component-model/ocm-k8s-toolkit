@@ -17,18 +17,15 @@ limitations under the License.
 package resource
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 
-	"github.com/containers/image/v5/pkg/compression"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
@@ -56,6 +53,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
@@ -506,7 +504,7 @@ func reconcileArtifact(
 					return fmt.Errorf("failed to archive: %w", err)
 				}
 			} else {
-				if err := autoCompressAndArchiveFile(ctx, art, storage, path); err != nil {
+				if err := compression.AutoCompressAsGzipAndArchiveFile(ctx, art, storage, path); err != nil {
 					return fmt.Errorf("failed to auto compress and archive file: %w", err)
 				}
 			}
@@ -529,78 +527,6 @@ func reconcileArtifact(
 	// Provide artifact in storage
 	if err := storage.ReconcileArtifact(ctx, resource, revision, dirPath, revision, archiveFunc); err != nil {
 		return fmt.Errorf("failed to reconcile resource artifact: %w", err)
-	}
-
-	return nil
-}
-
-// autoCompressAndArchiveFile compresses the file if it is not already compressed and archives it in the storage.
-// If the file is already compressed as gzip, it will be archived as is.
-// If the file is not compressed or not in gzip format, it will be attempting to recompress to gzip and then archive.
-// This is because some source controllers such as kustomize expect this compression format in their artifacts.
-func autoCompressAndArchiveFile(ctx context.Context, art *artifactv1.Artifact, storage *storage.Storage, path string) (retErr error) {
-	logger := log.FromContext(ctx).WithValues("artifact", art.Name, "path", path)
-	file, err := os.OpenFile(path, os.O_RDONLY, 0o400)
-	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
-	}
-	defer func() {
-		retErr = errors.Join(retErr, file.Close())
-	}()
-
-	algo, decompressor, reader, err := compression.DetectCompressionFormat(file)
-	if err != nil {
-		return fmt.Errorf("failed to detect compression format: %w", err)
-	}
-
-	// If the file is
-	// 1. not compressed or
-	// 2. compressed but not in gzip format
-	// we will recompress it to gzip and archive it
-	if decompressor == nil || algo.Name() != compression.Gzip.Name() {
-		// If it is compressed in a different format, we first decompress it and then recompress it to gzip
-		if decompressor != nil {
-			decompressed, err := decompressor(reader)
-			if err != nil {
-				return fmt.Errorf("failed to decompress: %w", err)
-			}
-			defer func() {
-				retErr = errors.Join(retErr, decompressed.Close())
-			}()
-			reader = decompressed
-		}
-
-		logger.V(1).Info("archiving file, but detected file is not compressed or not in gzip format, recompressing and archiving")
-		// TODO: this loads the single file into memory which can be expensive, but orchestrating an io.Pipe here is not trivial
-		var buf bytes.Buffer
-		if err := compressViaBuffer(&buf, reader); err != nil {
-			return err
-		}
-		if err := storage.Copy(art, &buf); err != nil {
-			return fmt.Errorf("failed to copy: %w", err)
-		}
-
-		return nil
-	}
-
-	logger.V(1).Info("archiving already compressed file from path")
-	if err := storage.Copy(art, reader); err != nil {
-		return fmt.Errorf("failed to copy file: %w", err)
-	}
-
-	return nil
-}
-
-func compressViaBuffer(buf *bytes.Buffer, reader io.Reader) (retErr error) {
-	compressToBuf, err := compression.CompressStream(buf, compression.Gzip, nil)
-	if err != nil {
-		return fmt.Errorf("failed to compress stream: %w", err)
-	}
-	defer func() {
-		retErr = errors.Join(retErr, compressToBuf.Close())
-	}()
-	if _, err := io.Copy(compressToBuf, reader); err != nil {
-		return fmt.Errorf("failed to copy: %w", err)
 	}
 
 	return nil
