@@ -38,7 +38,8 @@ func (in *LocalizationConfig) GetRules() []LocalizationRule {
 // It contains the necessary localization rules that can be used in conjunction with a data source to localize resources.
 // For more information, see the LocalizationRule type.
 type LocalizationConfigSpec struct {
-	Rules []LocalizationRule `json:"rules,omitempty"`
+	// +kubebuilder:validation:MinItems=1
+	Rules []LocalizationRule `json:"rules"`
 }
 
 // LocalizationRule defines a rule that can be used to localize resources.

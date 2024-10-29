@@ -172,7 +172,10 @@ spec:
                       - target
                       type: object
                   type: object
+                minItems: 1
                 type: array
+            required:
+            - rules
             type: object
         required:
         - spec

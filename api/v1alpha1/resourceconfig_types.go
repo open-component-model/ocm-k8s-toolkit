@@ -36,6 +36,7 @@ func init() {
 }
 
 type ResourceConfigSpec struct {
+	// +kubebuilder:validation:MinItems=1
 	Rules []ConfigurationRule `json:"rules"`
 }
 

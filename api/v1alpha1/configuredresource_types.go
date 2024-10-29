@@ -86,21 +86,17 @@ func (in *ConfiguredResource) SetTarget(v *ConfigurationReference) {
 
 // ConfiguredResourceStatus defines the observed state of ConfiguredResource.
 type ConfiguredResourceStatus struct {
-	// +optional
-	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
+	Conditions         []metav1.Condition `json:"conditions,omitempty"`
 
 	// The configuration reconcile loop generates an artifact, which contains the
 	// ConfiguredResourceSpec.Target ConfigurationReference after configuration.
 	// It is filled once the Artifact is created and the configuration completed.
-	// +optional
 	ArtifactRef *ObjectKey `json:"artifactRef,omitempty"`
 
 	// Digest contains a technical identifier for the artifact. This technical identifier
 	// can be used to track changes on the ArtifactRef as it is a combination of the origin
 	// ConfiguredResourceSpec.Config applied to the ConfiguredResourceSpec.Target.
-	// +optional
 	Digest string `json:"digest,omitempty"`
 }
 

@@ -75,30 +75,23 @@ func (in *LocalizedResource) SetTarget(v *ConfigurationReference) {
 
 type LocalizedResourceSpec struct {
 	// Target that is to be localized
-	// +required
-	Target ConfigurationReference `json:"target,omitempty"`
+	Target ConfigurationReference `json:"target"`
 
 	// Config of the localization data to be applied to Target (applied in order of appearance)
-	// +required
-	Config ConfigurationReference `json:"config,omitempty"`
+	Config ConfigurationReference `json:"config"`
 
 	// Interval at which to refresh the localization in case the Component Version is not yet ready
-	// +required
 	Interval metav1.Duration `json:"interval"`
 
 	// Suspend all localization behaviors, but keep existing localizations in place
-	// +optional
 	Suspend bool `json:"suspend,omitempty"`
 }
 
 type LocalizedResourceStatus struct {
-	// +optional
-	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
+	Conditions         []metav1.Condition `json:"conditions,omitempty"`
 
 	// The LocalizedResource reports an ArtifactRef which contains the content of the Resource after Localization
-	// +optional
 	ArtifactRef *ObjectKey `json:"artifactRef,omitempty"`
 
 	// The LocalizedResource reports a ConfiguredResourceRef which contains a reference to the ConfiguredResource
@@ -110,7 +103,6 @@ type LocalizedResourceStatus struct {
 	ConfigRef *ObjectKey `json:"configRef,omitempty"`
 
 	// A unique digest of the combination of the config and target resources applied through a LocalizationStrategy
-	// +optional
 	Digest string `json:"digest,omitempty"`
 }
 
