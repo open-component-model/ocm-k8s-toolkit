@@ -239,7 +239,7 @@ func GetComponentResourceArtifactFromReference(
 			Namespace: res.GetNamespace(),
 			Name:      res.Status.ArtifactRef.Name,
 		}, art); err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to fetch artifact %s belonging to resource %s: %w", component.Status.ArtifactRef.Name, ref.Name, err)
+			return nil, nil, nil, fmt.Errorf("failed to fetch artifact %s belonging to resource %s: %w", res.Status.ArtifactRef.Name, ref.Name, err)
 		}
 
 		return component, res, art, nil

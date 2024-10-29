@@ -39,12 +39,6 @@ func (e *engine) Substitute() error {
 	return nil
 }
 
-func (e *engine) AddStep(rule steps.Step) {
-	e.steps = append(e.steps, rule)
-}
-
 func (e *engine) AddSteps(rules ...steps.Step) {
-	for _, rule := range rules {
-		e.AddStep(rule)
-	}
+	e.steps = append(e.steps, rules...)
 }
