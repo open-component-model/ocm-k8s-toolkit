@@ -17,6 +17,7 @@ limitations under the License.
 package resource
 
 import (
+	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -141,7 +142,11 @@ var _ = Describe("Resource Controller", func() {
 			Expect(r).Should(HaveHTTPStatus(http.StatusOK))
 
 			By("checking that the resource content is correct")
-			resourceContent := Must(io.ReadAll(r.Body))
+			unzipped := Must(gzip.NewReader(r.Body))
+			DeferCleanup(func() {
+				Expect(unzipped.Close()).To(Succeed())
+			})
+			resourceContent := Must(io.ReadAll(unzipped))
 			Expect(string(resourceContent)).To(Equal(ResourceContent))
 		})
 	})
