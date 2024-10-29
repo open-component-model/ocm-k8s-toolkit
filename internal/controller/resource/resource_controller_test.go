@@ -35,6 +35,7 @@ import (
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	. "ocm.software/ocm/api/helper/builder"
 	environment "ocm.software/ocm/api/helper/env"
@@ -65,11 +66,10 @@ const (
 
 var _ = Describe("Resource Controller", func() {
 	var (
-		ctx     context.Context
-		cancel  context.CancelFunc
 		env     *Builder
 		ctfPath string
 	)
+
 	BeforeEach(func() {
 		ctfPath = Must(os.MkdirTemp("", CTFPath))
 		DeferCleanup(func() error {
@@ -78,31 +78,29 @@ var _ = Describe("Resource Controller", func() {
 
 		env = NewBuilder(environment.FileSystem(osfs.OsFs))
 		DeferCleanup(env.Cleanup)
-
-		ctx, cancel = context.WithCancel(context.Background())
-		DeferCleanup(cancel)
 	})
 
 	Context("resource controller", func() {
 		var (
 			componentName string
+			resourceName  string
 			testNumber    int
-			//componentObj  *v1alpha1.Component
 		)
 
-		BeforeEach(func() {
+		BeforeEach(func(ctx SpecContext) {
 			By("mocking the component controller")
 			componentName = fmt.Sprintf("%s-%d", ComponentObj, testNumber)
+			resourceName = fmt.Sprintf("%s-%d", ResourceObj, testNumber)
 			mockComponentReconciler(ctx, env, ctfPath, componentName)
+			testNumber++
 		})
 
-		It("can reconcile a resource", func() {
-
+		FIt("can reconcile a resource", func(ctx SpecContext) {
 			By("creating a resource object")
 			resource := &v1alpha1.Resource{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: Namespace,
-					Name:      ResourceObj,
+					Name:      resourceName,
 				},
 				Spec: v1alpha1.ResourceSpec{
 					ComponentRef: corev1.LocalObjectReference{
@@ -117,26 +115,23 @@ var _ = Describe("Resource Controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
-			DeferCleanup(func(ctx SpecContext) {
-				Expect(k8sClient.Delete(ctx, resource, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
-			})
 
 			By("checking that the resource has been reconciled successfully")
-			Eventually(komega.Object(resource), "5m").Should(
+			Eventually(komega.Object(resource), "15s", "100ms").Should(
 				HaveField("Status.ObservedGeneration", Equal(int64(1))))
 			Expect(resource).To(HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
 			Expect(resource).To(HaveField("Status.Resource.Name", Equal(ResourceObj)))
 			Expect(resource).To(HaveField("Status.Resource.Type", Equal(artifacttypes.PLAIN_TEXT)))
 			Expect(resource).To(HaveField("Status.Resource.Version", Equal(ResourceVersion)))
 
-			By("checking that the artifact has been created successfully")
+			By("checking that the resource artifact was created")
 			artifact := &artifactv1.Artifact{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: resource.Namespace,
 					Name:      resource.Status.ArtifactRef.Name,
 				},
 			}
-			Eventually(komega.Get(artifact)).Should(Succeed())
+			Eventually(komega.Get(artifact), "15s", "100ms").Should(Succeed())
 
 			By("checking that the artifact server provides the resource")
 			r := Must(http.Get(artifact.Spec.URL))
@@ -152,11 +147,59 @@ var _ = Describe("Resource Controller", func() {
 			resourceContent := Must(io.ReadAll(reader))
 
 			Expect(string(resourceContent)).To(Equal(ResourceContent))
+
+			By("checking that the resource is deleted correctly")
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			Eventually(komega.Object(resource), "15s").Should(HaveField("Status.DeletionTimestamp", Not(BeNil())))
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)).To(Succeed())
+
+			// Simulate ownerreference deletion
+			Expect(k8sClient.Delete(ctx, artifact)).To(Succeed())
+
+			Eventually(func(ctx SpecContext) error {
+				return k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)
+			}).WithContext(ctx).Should(Satisfy(errors.IsNotFound))
+		})
+
+		It("stops when requirements are not met: component not found", func(ctx SpecContext) {
+			By("creating a resource object")
+			resource := &v1alpha1.Resource{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: Namespace,
+					Name:      resourceName,
+				},
+				Spec: v1alpha1.ResourceSpec{
+					ComponentRef: corev1.LocalObjectReference{
+						Name: "anotherName",
+					},
+					Resource: v1alpha1.ResourceID{
+						ByReference: v1alpha1.ResourceReference{
+							Resource: v1.NewIdentity(ResourceObj),
+						},
+					},
+					Interval: metav1.Duration{Duration: time.Minute * 5},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			DeferCleanup(func(ctx SpecContext) {
+				Expect(k8sClient.Delete(ctx, resource, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
+			})
+
+			By("checking that the resource was not reconciled successfully")
+			Eventually(komega.Object(resource), "5m").Should(
+				HaveField("Status.ObservedGeneration", Equal(int64(1))))
+			Expect(resource).To(HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+			Expect(resource).To(HaveField("Status.Resource.Name", Equal(ResourceObj)))
+			Expect(resource).To(HaveField("Status.Resource.Type", Equal(artifacttypes.PLAIN_TEXT)))
+			Expect(resource).To(HaveField("Status.Resource.Version", Equal(ResourceVersion)))
+
 		})
 	})
 })
 
 func mockComponentReconciler(ctx context.Context, env *Builder, ctfPath, name string) {
+	GinkgoHelper()
+
 	// Create a ctf storing a component-version with a blob data as content
 	env.OCMCommonTransport(ctfPath, accessio.FormatDirectory, func() {
 		env.Component(Component, func() {

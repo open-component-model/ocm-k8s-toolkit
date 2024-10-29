@@ -123,19 +123,16 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups=openfluxcd.mandelsoft.org,resources=artifacts/finalizers,verbs=update
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log.FromContext(ctx).V(1).Info("starting reconciling resource")
+
 	resource := &v1alpha1.Resource{}
 	if err := r.Get(ctx, req.NamespacedName, resource); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	return r.reconcileWithStatusUpdate(ctx, resource)
-}
-
-func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, resource *v1alpha1.Resource) (ctrl.Result, error) {
 	patchHelper := patch.NewSerialPatcher(resource, r.Client)
 
-	result, err := r.reconcileExists(ctx, resource)
-
+	result, err := r.reconcilePrerequisite(ctx, resource)
 	err = errors.Join(err, status.UpdateStatus(ctx, patchHelper, resource, r.EventRecorder, resource.GetRequeueAfter(), err))
 	if err != nil {
 		return ctrl.Result{}, err
@@ -144,9 +141,9 @@ func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, resource *v1
 	return result, nil
 }
 
-func (r *Reconciler) reconcileExists(ctx context.Context, resource *v1alpha1.Resource) (ctrl.Result, error) {
+func (r *Reconciler) reconcilePrerequisite(ctx context.Context, resource *v1alpha1.Resource) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("preparing reconciling resource")
+	logger.V(1).Info("checking if resource is suspended or deleted")
 
 	if resource.Spec.Suspend {
 		return ctrl.Result{}, nil
@@ -159,6 +156,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, resource *v1alpha1.Res
 		}
 
 		if removed := controllerutil.RemoveFinalizer(resource, v1alpha1.ArtifactFinalizer); removed {
+			logger.V(1).Info("removing finalizer, restarting reconciler")
 			if err := r.Update(ctx, resource); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 			}
@@ -168,19 +166,16 @@ func (r *Reconciler) reconcileExists(ctx context.Context, resource *v1alpha1.Res
 	}
 
 	if added := controllerutil.AddFinalizer(resource, v1alpha1.ArtifactFinalizer); added {
-		err := r.Update(ctx, resource)
-		if err != nil {
+		logger.V(1).Info("adding finalizer, restarting reconciler")
+		if err := r.Update(ctx, resource); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
 
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	return r.reconcile(ctx, resource)
-}
+	logger.V(1).Info("checking if referenced component is ready")
 
-func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
 	// Get component to resolve resource from component descriptor and verify digest
 	component := &v1alpha1.Component{}
 	if err := r.Get(ctx, types.NamespacedName{
@@ -203,13 +198,9 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource)
 		return ctrl.Result{}, errors.New("component is not ready")
 	}
 
-	return r.reconcileOCM(ctx, resource, component)
-}
-
-func (r *Reconciler) reconcileOCM(ctx context.Context, resource *v1alpha1.Resource, component *v1alpha1.Component) (ctrl.Result, error) {
 	octx := ocmctx.New(datacontext.MODE_EXTENDED)
 
-	result, err := r.reconcileResource(ctx, octx, resource, component)
+	result, err := r.reconcile(ctx, octx, resource, component)
 
 	// Always finalize ocm context after reconciliation
 	err = errors.Join(err, octx.Finalize())
@@ -223,7 +214,7 @@ func (r *Reconciler) reconcileOCM(ctx context.Context, resource *v1alpha1.Resour
 	return result, nil
 }
 
-func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context, resource *v1alpha1.Resource, component *v1alpha1.Component) (ctrl.Result, error) {
+func (r *Reconciler) reconcile(ctx context.Context, octx ocmctx.Context, resource *v1alpha1.Resource, component *v1alpha1.Component) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("reconciling resource")
 
