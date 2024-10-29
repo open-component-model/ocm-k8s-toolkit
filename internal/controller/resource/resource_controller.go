@@ -53,6 +53,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
@@ -503,10 +504,8 @@ func reconcileArtifact(
 					return fmt.Errorf("failed to archive: %w", err)
 				}
 			} else {
-				logger.V(1).Info("archiving file from path")
-				// If given path is a file, just copy it.
-				if err := storage.CopyFromPath(art, path); err != nil {
-					return fmt.Errorf("failed to copy file: %w", err)
+				if err := compression.AutoCompressAsGzipAndArchiveFile(ctx, art, storage, path); err != nil {
+					return fmt.Errorf("failed to auto compress and archive file: %w", err)
 				}
 			}
 
@@ -526,7 +525,7 @@ func reconcileArtifact(
 	}
 
 	// Provide artifact in storage
-	if err := storage.ReconcileArtifact(ctx, resource, revision, dirPath, revision+".tar.gz", archiveFunc); err != nil {
+	if err := storage.ReconcileArtifact(ctx, resource, revision, dirPath, revision, archiveFunc); err != nil {
 		return fmt.Errorf("failed to reconcile resource artifact: %w", err)
 	}
 
