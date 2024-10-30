@@ -140,7 +140,7 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 
 	if !conditions.IsReady(repo) {
 		logger.Info("repository is not ready", "name", component.Spec.RepositoryRef.Name)
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositoryIsNotReadyReason, "Repository is not ready yet")
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositoryIsNotReadyReason, "repository is not ready yet")
 
 		return ctrl.Result{Requeue: true}, nil
 	}

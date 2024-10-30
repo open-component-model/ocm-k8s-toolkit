@@ -31,6 +31,8 @@ rules:
   - delivery.ocm.software
   resources:
   - components
+  - configuredresources
+  - localizedresources
   - ocmrepositories
   - resources
   verbs:
@@ -45,6 +47,8 @@ rules:
   - delivery.ocm.software
   resources:
   - components/finalizers
+  - configuredresources/finalizers
+  - localizedresources/finalizers
   - ocmrepositories/finalizers
   - resources/finalizers
   verbs:
@@ -53,12 +57,23 @@ rules:
   - delivery.ocm.software
   resources:
   - components/status
+  - configuredresources/status
+  - localizedresources/status
   - ocmrepositories/status
   - resources/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - delivery.ocm.software
+  resources:
+  - localizationconfigs
+  - resourceconfigs
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - openfluxcd.mandelsoft.org
   resources:

@@ -13,6 +13,8 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the Project itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- configuredresource_editor_role.yaml
+- configuredresource_viewer_role.yaml
 - resource_editor_role.yaml
 - resource_viewer_role.yaml
 - component_editor_role.yaml

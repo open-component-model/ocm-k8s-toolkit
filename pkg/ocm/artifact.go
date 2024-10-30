@@ -13,15 +13,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"ocm.software/ocm/api/ocm/compdesc"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
 // GetComponentSetForArtifact returns the component descriptor set for the given artifact.
-func GetComponentSetForArtifact(ctx context.Context, storage *storage.Storage, artifact *artifactv1.Artifact) (_ *compdesc.ComponentVersionSet, retErr error) {
-	log.FromContext(ctx).V(1).Info("getting component set")
-
+func GetComponentSetForArtifact(storage *storage.Storage, artifact *artifactv1.Artifact) (_ *compdesc.ComponentVersionSet, retErr error) {
 	tmp, err := os.MkdirTemp("", "component-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary directory: %w", err)
@@ -45,7 +42,7 @@ func GetComponentSetForArtifact(ctx context.Context, storage *storage.Storage, a
 	}
 
 	// Read component descriptor list
-	file, err := os.Open(filepath.Join(tmp, v1alpha1.OCMComponentDescriptorList))
+	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open component descriptor: %w", err)
 	}
@@ -82,6 +79,38 @@ func GetAndVerifyArtifactForCollectable(
 	}
 
 	return artifact, nil
+}
+
+// ValidateArtifactForCollectable verifies if the artifact for the given collectable is valid.
+// This means that the artifact must be present in the cluster the reader is connected to and
+// the artifact must be present in the storage.
+// Additionally, the digest of the artifact must be different from the file name of the artifact.
+//
+// This method can be used to determine if an artifact needs an update or not because an artifact that does not
+// fulfill these conditions can be considered out of date (not in the cluster, not in the storage, or mismatching digest).
+//
+// Prerequisite for this method is that the artifact name is based on its original digest.
+func ValidateArtifactForCollectable(
+	ctx context.Context,
+	reader ctrl.Reader,
+	strg *storage.Storage,
+	collectable storage.Collectable,
+	digest string,
+) (bool, error) {
+	artifact, err := GetAndVerifyArtifactForCollectable(ctx, reader, strg, collectable)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if ctrl.IgnoreNotFound(err) != nil {
+		return false, fmt.Errorf("failed to get artifact: %w", err)
+	}
+	if artifact == nil {
+		return false, nil
+	}
+
+	existingFile := filepath.Base(strg.LocalPath(artifact))
+
+	return existingFile != digest, nil
 }
 
 // RemoveArtifactForCollectable removes the artifact for the given collectable from the given storage.

@@ -109,3 +109,6 @@ linters:
     - varnamelen
     - wrapcheck
     - wsl
+    - execinquery
+    - exportloopref
+    - gomnd

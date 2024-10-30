@@ -17,7 +17,6 @@ limitations under the License.
 package resource
 
 import (
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -25,6 +24,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/containers/image/v5/pkg/compression"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/mandelsoft/filepath/pkg/filepath"
 	. "github.com/mandelsoft/goutils/testutils"
@@ -142,11 +142,14 @@ var _ = Describe("Resource Controller", func() {
 			Expect(r).Should(HaveHTTPStatus(http.StatusOK))
 
 			By("checking that the resource content is correct")
-			unzipped := Must(gzip.NewReader(r.Body))
+			reader, decompressed, err := compression.AutoDecompress(r.Body)
+			Expect(decompressed).To(BeTrue())
 			DeferCleanup(func() {
-				Expect(unzipped.Close()).To(Succeed())
+				Expect(reader.Close()).To(Succeed())
 			})
-			resourceContent := Must(io.ReadAll(unzipped))
+			Expect(err).To(BeNil())
+			resourceContent := Must(io.ReadAll(reader))
+
 			Expect(string(resourceContent)).To(Equal(ResourceContent))
 		})
 	})

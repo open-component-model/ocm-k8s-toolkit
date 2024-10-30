@@ -248,7 +248,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	}
 
 	// Get component descriptor set from artifact
-	cdSet, err := ocm.GetComponentSetForArtifact(ctx, r.Storage, artifactComponent)
+	cdSet, err := ocm.GetComponentSetForArtifact(r.Storage, artifactComponent)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentForArtifactFailedReason, err.Error())
 

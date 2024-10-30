@@ -1,0 +1,2 @@
+deploy:
+  image: ghcr.io/stefanprodan/podinfo:6.2.0

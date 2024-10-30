@@ -24,8 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+const KindResource = "Resource"
 
 // ResourceSpec defines the desired state of Resource.
 type ResourceSpec struct {
@@ -144,7 +143,7 @@ func (in *Resource) GetObjectMeta() *metav1.ObjectMeta {
 }
 
 func (in *Resource) GetKind() string {
-	return "Resource"
+	return KindResource
 }
 
 // GetRequeueAfter returns the duration after which the Resource must be
