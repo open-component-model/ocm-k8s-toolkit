@@ -105,6 +105,30 @@ func InstallCertManager() error {
 	return err
 }
 
+func UninstalImageRegistry() {
+	cmd := exec.Command("kubectl", "delete", "-f", "test/e2e/testdata/image-registry.yaml")
+	if _, err := Run(cmd); err != nil {
+		warnError(err)
+	}
+}
+
+func InstallImageRegistry() error {
+	cmd := exec.Command("kubectl", "apply", "-f", "test/e2e/testdata/image-registry.yaml")
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
+	cmd = exec.Command("kubectl", "wait", "deployment.apps/registry",
+		"--for", "condition=Available",
+		"--namespace", "default",
+		"--timeout", "5m",
+	)
+
+	_, err := Run(cmd)
+
+	return err
+}
+
 // LoadImageToKindCluster loads a local docker image to the kind cluster.
 func LoadImageToKindClusterWithName(name string) error {
 	cluster := "kind"

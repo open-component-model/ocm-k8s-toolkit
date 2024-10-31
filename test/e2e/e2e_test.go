@@ -19,9 +19,7 @@ limitations under the License.
 package e2e
 
 import (
-	"fmt"
 	"os/exec"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -42,6 +40,9 @@ var _ = Describe("controller", Ordered, func() {
 		By("creating manager namespace")
 		cmd := exec.Command("kubectl", "create", "ns", namespace)
 		_, _ = utils.Run(cmd)
+
+		By("installing an image registry")
+		Expect(utils.InstallImageRegistry()).To(Succeed())
 	})
 
 	AfterAll(func() {
@@ -50,6 +51,9 @@ var _ = Describe("controller", Ordered, func() {
 
 		By("uninstalling the cert-manager bundle")
 		utils.UninstallCertManager()
+
+		By("uninstalling image registry")
+		utils.UninstalImageRegistry()
 
 		By("removing manager namespace")
 		cmd := exec.Command("kubectl", "delete", "ns", namespace)
@@ -62,7 +66,7 @@ var _ = Describe("controller", Ordered, func() {
 			var err error
 
 			// projectimage stores the name of the image used in the example
-			var projectimage = "example.com/ocm-k8s-toolkit:v0.0.1"
+			var projectimage = "ocm.software/ocm-controller:v0.0.1"
 
 			By("building the manager(Operator) image")
 			cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectimage))
