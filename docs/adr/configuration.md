@@ -392,3 +392,44 @@ And after merging we would perform the templating.
 - the same rigidness as with strategic merge patch, meaning it only works with valid YAML
 - the user needs to be completely aware of how the manifest looks like in order to do a
   valid merge
+
+# Option 4
+
+Localization introduced a hybred approach to templating and configuration. Since
+effective configuration follows the same path as Localization; the only difference being
+that Configuration objects can be applied multiple times, while Localization is a single
+shot entity; we can apply the same principles here too.
+
+Applying the same principle of fetching a config object and then determining the location
+of the value to be changed we could use something like this:
+
+```yaml
+apiVersion: delivery.ocm.software/v1alpha1
+kind: ConfigurationConfig
+metadata:
+  name: deployment-configuration
+spec:
+  rules:
+  - yamlsubst:
+      source:
+        # using a resource
+        resource:
+          name: my-config-values
+        # using a direct value
+          value: 2
+      target:
+        file:
+          path: values.yaml
+          value: global.replica
+```
+
+The value would be used to find the relevant exchange value in the referenced
+configuration object as well. Be that a value file or a ConfigMap it isn't
+relevent.
+
+_Note_: We might be able to even re-name this object to something like
+MutationConfig that would perform either operation based on the referencing
+Object.
+
+Once these values are defined, we would follow the same principles outilned
+in the Localization [## Decision Outcome](localization.md#decision-outcome).
