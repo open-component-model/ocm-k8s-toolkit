@@ -72,6 +72,16 @@ test: manifests generate envtest ## Run tests.
 test-e2e:
 	go test -tags=e2e ./test/e2e/ -v -ginkgo.v
 
+.PHONY: test-e2e-kind
+test-e2e-kind: create-test-cluster-kind create-kind-image-registry test-e2e # Execute with environment variable IMG_REGISTRY=localhost:31000
+
+.PHONY: create-test-cluster-kind
+create-test-cluster-kind:
+	kind get clusters | grep -q ocm-k8s-toolkit || kind create cluster --name ocm-k8s-toolkit --config test/e2e/testdata/kind-config.yaml
+
+create-kind-image-registry:
+	$(KUBECTL) apply -f test/e2e/testdata/image-registry.yaml
+
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
 	$(GOLANGCI_LINT) run

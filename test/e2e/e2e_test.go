@@ -19,7 +19,10 @@ limitations under the License.
 package e2e
 
 import (
+	"fmt"
+	"os"
 	"os/exec"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -28,6 +31,8 @@ import (
 )
 
 const namespace = "ocm-k8s-toolkit-system"
+
+var imageRegistry string
 
 var _ = Describe("controller", Ordered, func() {
 	BeforeAll(func() {
@@ -41,8 +46,9 @@ var _ = Describe("controller", Ordered, func() {
 		cmd := exec.Command("kubectl", "create", "ns", namespace)
 		_, _ = utils.Run(cmd)
 
-		By("installing an image registry")
-		Expect(utils.InstallImageRegistry()).To(Succeed())
+		By("checking for an image registry")
+		imageRegistry = os.Getenv("IMAGE_REGISTRY_URL")
+		Expect(imageRegistry).NotTo(BeEmpty())
 	})
 
 	AfterAll(func() {
@@ -66,15 +72,15 @@ var _ = Describe("controller", Ordered, func() {
 			var err error
 
 			// projectimage stores the name of the image used in the example
-			var projectimage = "ocm.software/ocm-controller:v0.0.1"
+			var projectimage = imageRegistry + "/ocm.software/ocm-controller:v0.0.1"
 
 			By("building the manager(Operator) image")
 			cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectimage))
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
-			By("loading the the manager(Operator) image on Kind")
-			err = utils.LoadImageToKindClusterWithName(projectimage)
+			cmd = exec.Command("make", "docker-push", fmt.Sprintf("IMG=%s", projectimage))
+			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("installing CRDs")
