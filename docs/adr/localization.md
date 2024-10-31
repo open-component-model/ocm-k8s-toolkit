@@ -207,8 +207,20 @@ spec:
     namespace: kubeseal
 ```
 
-It is important to node that these tools can afford this because they rely on _existing_ templating capabilities of Helm or Kustomize.
-Since we can operate on already rendered versions, we are free to template as we wish or introduce simple substitutions.
+It is important to note that these tools can afford this because they rely on _existing_ templating capabilities of Helm or Kustomize.
+Since they can operate on already rendered versions, they are free to template as they wish or introduce simple substitutions.
+
+**Driver 2:** Transparency of Operation
+
+The current localization controllers do not provide a good way to understand what substitutions are being done.
+This is a problem because it is hard to understand what is being done in the localization process and what the actual
+resulting manifest will look like, as well as how to fixup potentially broken localizations.
+
+**Driver 3:** Flexibility and Plugability of own Localization Process
+
+The current localization controllers do not provide a good way to introduce custom localization processes.
+This is a problem because it is hard to introduce custom localization processes in case the default localization
+is inapplicable to us.
 
 ## Considered Options
 
@@ -464,7 +476,7 @@ spec:
 
 In the end we decided to form a hybrid that is mainly based on Option 3, but also allows for templating via Option 1.
 
-An example for a configuration of a Localization performed on a resource may look like this for a simple Helm Chart:
+An example for `LocalizationConfig`  may look like this for a simple Helm Chart:
 
 ```yaml
 apiVersion: delivery.ocm.software/v1alpha1
@@ -473,24 +485,68 @@ metadata:
   name: deployment-localization
 spec:
   rules:
-  - source:
-      resource:
-        name: my-image-with-my-app-inside
-    target:
-      file:
-        path: values.yaml
-        value: deploy.image
+  - yamlsubst:
+      source:
+        resource:
+          name: my-image-with-my-app-inside
+      target:
+        file:
+          path: values.yaml
+          value: deploy.image
 ```
 
 This LocalizationConfig can be applied via 2 ways:
 1. It is added as a Resource together with the Component to allow for a self-contained delivery.
 2. It is referenced in the Cluster where the Controllers are deployed, to allow for easy migration of workloads.
 
-The LocalizationConfig will contain a set of rules that can be applied to the target
+The LocalizationConfig will contain a set of rules that can be applied to the target.
+
+The config is applied through a `LocalizedResource`:
+
+```yaml
+apiVersion: delivery.ocm.software/v1alpha1
+kind: LocalizedResource
+metadata:
+  name: deployment-localization
+spec:
+  source:
+    name: 
+  target:
+    name: my-helm-chart-resource
+    kind: Resource
+    apiVersion: delivery.ocm.software/v1alpha1
+
+```
+
+### Resolution of the LocalizationConfig into the ResourceConfig
+
+To make it transparent to users what exactly has been localized, the actual replacement rules need to be resolved into the target resource.
+This happens through a second step by translating a LocalizationConfig / LocalizedResource into a ResourceConfig and ConfiguredResource.
+
+A sample translated from localization would then look like this:
+
+```yaml
+apiVersion: delivery.ocm.software/v1alpha1
+kind: ResourceConfig
+metadata:
+  name: deployment-localization
+spec:
+  rules:
+  - source:
+      value: ghcr.io/open-component-model/myimage
+    target:
+      file:
+        path: values.yaml
+        value: deploy.image
+```
+
+As one can observe this translation is only affecting the source field.
+This is the only case where the controller has to resolve the actual value of the source by introspecting the
+component descriptor.
 
 ### Examples
 
-#### Minimal Example 1 (Main Use Case):
+#### Example 1 (Main Use Case):
 
 ```yaml
 apiVersion: delivery.ocm.software/v1alpha1
@@ -546,6 +602,54 @@ spec:
       imageReference: ghcr.io/open-component-model/localizationconfig:v1.0.0
 ```
 
+The resource `my-localization-config` would contain the LocalizationConfig:
+
+```yaml
+apiVersion: delivery.ocm.software/v1alpha1
+kind: LocalizationConfig
+metadata:
+  name: my-helm-chart-localization
+spec:
+  rules:
+  - yamlsubst:
+      source:
+        resource:
+          name: my-image-with-my-app-inside
+      target:
+        file:
+          path: values.yaml
+          value: deploy.image
+```
+
+The following result would appear through a ConfiguredResource:
+
+```yaml
+apiVersion: delivery.ocm.software/v1alpha1
+kind: ConfiguredResource
+metadata:
+  name: my-localized-helm-chart
+spec:
+  target:
+    name: my-helm-chart
+  source:
+    name: my-helm-chart-localization
+    kind: ResourceConfig
+    apiVersion: delivery.ocm.software/v1alpha1
+---
+apiVersion: delivery.ocm.software/v1alpha1
+kind: ResourceConfig
+metadata:
+  name: my-helm-chart-localization
+spec:
+  rules:
+  - source:
+      value: ghcr.io/open-component-model/myimage
+    target:
+      file:
+        path: values.yaml
+        value: deploy.image
+```
+
 #### Minimal Example 2 (Cluster Reference):
 
 ```yaml
@@ -596,7 +700,7 @@ metadata:
   name: my-config
 data:
   game.properties: |
-    registry={{ OCMResourceReference "image" }} 
+    registry=ocm{ .Registry }
 ```
 
 We can enable a templating configuration like this:
@@ -608,11 +712,14 @@ metadata:
   name: deployment-localization
 spec:
   rules:
-  - target:
-      file:
-        path: templates/deployment.yaml
-    transformation:
-      type: GoTemplate
+    - goTemplate:
+        file:
+          path: templates/deployment.yaml
+        delimiters:
+          left: "ocm{"
+          right: "}"
+        data:
+          registry: myprivateregistry.com
 ```
 
 
@@ -703,5 +810,4 @@ Disadvantages:
 
 ## Links <!-- optional -->
 
-* [Link type] [Link to ADR] <!-- example: Refined by [ADR-0005](0005-example.md) -->
-* … <!-- numbers of links can vary -->
+* Configuration Process refined through [Configuration ADR](configuration.md)
