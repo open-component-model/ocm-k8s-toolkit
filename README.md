@@ -136,7 +136,7 @@ metadata:
 spec:
   repositoryRef:
     namespace: default
-    name: open-component-model-repo
+    name: ocm-repo
   component: ocm.software/ocmcli
   downgradePolicy: Deny
   semver: ">= 6.1.x-0"
@@ -166,15 +166,15 @@ In general, *ocm components* may specify their
 *downgradability* through a label named
 `ocm.software/ocm-k8s-toolkit/downgradable`. The value of the label has to be a
 [semver constraint](https://github.com/Masterminds/semver#checking-version-constraints).  
-With respect to that, the `enable` value means that the *downgradability* is
+With respect to that, the `Allow` value means that the *downgradability* is
 respected as specified by the *component version* author. Thus, if the label
 is not set, downgrade is not possible. If the label specifies a *semver
 constraint*, the currently applied *component version* is validated against this
 constraint. If this validation succeeds (so, downgrade from the currently
 applied version is possible), the component will be downgraded.  
-The `disable` value means that regardless of the *downgradability* set by the
+The `Deny` value means that regardless of the *downgradability* set by the
 *component version* author, downgrade **is not** possible.  
-The `enforce` value means that regardless of the *downgarability* set by the
+The `Enforce` value means that regardless of the *downgarability* set by the
 *component version* author, downgrade **is** possible. **This setting should be
 used with caution!**
 
@@ -233,9 +233,9 @@ spec:
     name: ocm-comp
   resourceSelector:
     resource:
-      name: oci
+      name: oci-image
     referencePath:
-    - name: ocm-comp-ref
+    - name: oci-component-reference
   secretRefs:
   - name: ocm-secret
   configRefs:

@@ -85,6 +85,10 @@ spec:
                 description: Resource identifies the ocm resource to be fetched.
                 properties:
                   byReference:
+                    description: |-
+                      ResourceReference defines a reference to a resource akin to the OCM Specification.
+                      For more details see dedicated guide in the Specification:
+                      https://github.com/open-component-model/ocm-spec/blob/main/doc/05-guidelines/03-references.md#references
                     properties:
                       referencePath:
                         items:
@@ -102,6 +106,8 @@ spec:
                           Identity describes the identity of an object.
                           Only ascii characters are allowed
                         type: object
+                    required:
+                    - resource
                     type: object
                 required:
                 - byReference
@@ -298,6 +304,8 @@ spec:
                   x-kubernetes-map-type: atomic
                 type: array
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

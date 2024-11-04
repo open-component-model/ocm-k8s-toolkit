@@ -54,8 +54,11 @@ type ResourceID struct {
 	// TODO: Implement BySelector (see https://github.com/open-component-model/ocm-project/issues/296)
 }
 
+// ResourceReference defines a reference to a resource akin to the OCM Specification.
+// For more details see dedicated guide in the Specification:
+// https://github.com/open-component-model/ocm-spec/blob/main/doc/05-guidelines/03-references.md#references
 type ResourceReference struct {
-	Resource      ocmv1.Identity   `json:"resource,omitempty"`
+	Resource      ocmv1.Identity   `json:"resource"`
 	ReferencePath []ocmv1.Identity `json:"referencePath,omitempty"`
 }
 

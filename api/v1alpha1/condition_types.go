@@ -77,4 +77,29 @@ const (
 
 	// StatusSetFailedReason is used when we fail to set the component status.
 	StatusSetFailedReason = "StatusSetFailed"
+
+	// TargetFetchFailedReason is used when a resource requiring a target to apply to cannot fetch this target.
+	TargetFetchFailedReason = "TargetFetchFailed"
+
+	// ConfigurationFailedReason is used when a resource was not able to be configured.
+	ConfigurationFailedReason = "ConfigurationFailed"
+
+	// LocalizationRuleGenerationFailedReason is used when the controller failed to localize an artifact.
+	LocalizationRuleGenerationFailedReason = "LocalizationRuleGenerationFailed"
+
+	// LocalizationIsNotReadyReason is used when a controller is waiting to get the localization result.
+	LocalizationIsNotReadyReason = "LocalizationIsNotReady"
+
+	// UniqueIDGenerationFailedReason is used when the controller failed to generate a unique identifier for a pending artifact.
+	// This can happen if the artifact is based on multiple other sources but these sources could not be used
+	// to determine a unique identifier.
+	UniqueIDGenerationFailedReason = "UniqueIDGenerationFailed"
+
+	// ConfigGenerationFailedReason is used when the controller failed to generate a configuration
+	// it needs to continue its reconciliation process.
+	ConfigGenerationFailedReason = "ConfigGenerationFailed"
+
+	// ResourceGenerationFailedReason is used when the controller failed to generate a resource
+	// based on its specification.
+	ResourceGenerationFailedReason = "ResourceGenerationFailed"
 )

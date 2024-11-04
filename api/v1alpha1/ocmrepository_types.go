@@ -182,7 +182,7 @@ type OCMRepository struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   OCMRepositorySpec   `json:"spec,omitempty"`
+	Spec   OCMRepositorySpec   `json:"spec"`
 	Status OCMRepositoryStatus `json:"status,omitempty"`
 }
 

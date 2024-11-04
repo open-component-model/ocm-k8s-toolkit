@@ -53,6 +53,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
@@ -247,7 +248,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	}
 
 	// Get component descriptor set from artifact
-	cdSet, err := ocm.GetComponentSetForArtifact(ctx, r.Storage, artifactComponent)
+	cdSet, err := ocm.GetComponentSetForArtifact(r.Storage, artifactComponent)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentForArtifactFailedReason, err.Error())
 
@@ -264,9 +265,8 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 
 	// Get resource, respective component descriptor and component version
 	resourceReference := v1.ResourceReference{
-		Resource: resource.Spec.Resource.ByReference.Resource,
-		// TODO: Implement resourceReference path (see https://github.com/open-component-model/ocm-project/issues/296)
-		// ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
+		Resource:      resource.Spec.Resource.ByReference.Resource,
+		ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
 	}
 
 	// Resolve resource resourceReference to get resource and its component descriptor
@@ -504,10 +504,8 @@ func reconcileArtifact(
 					return fmt.Errorf("failed to archive: %w", err)
 				}
 			} else {
-				logger.V(1).Info("archiving file from path")
-				// If given path is a file, just copy it.
-				if err := storage.CopyFromPath(art, path); err != nil {
-					return fmt.Errorf("failed to copy file: %w", err)
+				if err := compression.AutoCompressAsGzipAndArchiveFile(ctx, art, storage, path); err != nil {
+					return fmt.Errorf("failed to auto compress and archive file: %w", err)
 				}
 			}
 
@@ -527,7 +525,7 @@ func reconcileArtifact(
 	}
 
 	// Provide artifact in storage
-	if err := storage.ReconcileArtifact(ctx, resource, revision, dirPath, revision+".tar.gz", archiveFunc); err != nil {
+	if err := storage.ReconcileArtifact(ctx, resource, revision, dirPath, revision, archiveFunc); err != nil {
 		return fmt.Errorf("failed to reconcile resource artifact: %w", err)
 	}
 

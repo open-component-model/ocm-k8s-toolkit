@@ -15,10 +15,11 @@ resources:
 # if you do not want those helpers be installed with your Project.
 - replication_editor_role.yaml
 - replication_viewer_role.yaml
+- configuredresource_editor_role.yaml
+- configuredresource_viewer_role.yaml
 - resource_editor_role.yaml
 - resource_viewer_role.yaml
 - component_editor_role.yaml
 - component_viewer_role.yaml
 - ocmrepository_editor_role.yaml
 - ocmrepository_viewer_role.yaml
-

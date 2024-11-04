@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-deployment
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: my-container
+          image: {{ .Values.deploy.image }}
+        - name: my-other-container
+          image: blabla
