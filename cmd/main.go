@@ -199,6 +199,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Resource")
 		os.Exit(1)
 	}
+
 	if err = (&localization.Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client:        mgr.GetClient(),
@@ -211,6 +212,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "LocalizedResource")
 		os.Exit(1)
 	}
+
 	if err = (&configuration.Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client:        mgr.GetClient(),
@@ -223,7 +225,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "ConfiguredResource")
 		os.Exit(1)
 	}
-  
+
 	if err = (&replication.Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client:        mgr.GetClient(),
@@ -234,7 +236,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Replication")
 		os.Exit(1)
 	}
-  // +kubebuilder:scaffold:builder
+	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
