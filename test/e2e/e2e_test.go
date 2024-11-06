@@ -158,7 +158,7 @@ var _ = Describe("controller", Ordered, func() {
 			})
 			ctfDir := filepath.Join(tmpDir, "ctf-helm")
 			Expect(utils.CreateOCMComponent("test/e2e/testdata/helm-release/component-constructor.yaml", ctfDir)).To(Succeed())
-			Expect(utils.TransferOCMComponent(ctfDir, imageRegistry))
+			Expect(utils.TransferOCMComponent(ctfDir, imageRegistry)).To(Succeed())
 
 			By("creating the custom resource OCM repository")
 			// In some test-scenarios an internal image registry inside the cluster is used to upload the components.
@@ -180,51 +180,20 @@ var _ = Describe("controller", Ordered, func() {
 			var result bytes.Buffer
 			Expect(tmpl.Execute(&result, data)).To(Succeed())
 
-			cmd := exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = bytes.NewReader(result.Bytes())
-			_, err = utils.Run(cmd)
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-			DeferCleanup(func() error {
-				By("deleting the custom resource OCM repository")
-				cmd = exec.Command("kubectl", "delete", "-f", "-")
-				cmd.Stdin = bytes.NewReader(result.Bytes())
-				_, err := utils.Run(cmd)
-				return err
-			})
+			manifestOCMRepository = filepath.Join(tmpDir, "manifestOCMRespository.yaml")
+			Expect(os.WriteFile(manifestOCMRepository, result.Bytes(), 0644)).To(Succeed())
+			Expect(utils.DeployAndWaitForResource(manifestOCMRepository, "condition=Ready")).To(Succeed())
 
 			By("validating that the custom resource OCM repository was processed")
 			Expect(utils.WaitForResource("ocmrepositories/helm-ocmrepository", "default", "condition=ready=true")).To(Succeed())
 
-			By("creating the custom resource OCM component")
+			By("creating and validating the custom resource OCM component")
 			manifestComponent := "test/e2e/testdata/helm-release/helm-component.yaml"
-			cmd = exec.Command("kubectl", "apply", "-f", manifestComponent)
-			_, err = utils.Run(cmd)
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-			DeferCleanup(func() error {
-				By("deleting the custom resource OCM component")
-				cmd = exec.Command("kubectl", "delete", "-f", manifestComponent)
-				_, err := utils.Run(cmd)
-				return err
-			})
+			Expect(utils.DeployAndWaitForResource(manifestComponent, "condition=Ready")).To(Succeed())
 
-			By("validating that the custom resource OCM component was processed")
-			Expect(utils.WaitForResource("components/helm-component", "default", "condition=ready=true")).To(Succeed())
-
+			By("creating and validating the custom resource OCM resource")
 			manifestResource := "test/e2e/testdata/helm-release/helm-resource.yaml"
-
-			By("creating the custom resource OCM resource")
-			cmd = exec.Command("kubectl", "apply", "-f", manifestResource)
-			_, err = utils.Run(cmd)
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-			DeferCleanup(func() error {
-				By("deleting the custom resource OCM resource")
-				cmd = exec.Command("kubectl", "delete", "-f", manifestResource)
-				_, err := utils.Run(cmd)
-				return err
-			})
-
-			By("validating that the custom resource OCM resource was processed")
-			Expect(utils.WaitForResource("resources/helm-resource", "default", "condition=ready=true")).To(Succeed())
+			Expect(utils.DeployAndWaitForResource(manifestResource, "condition=Ready")).To(Succeed())
 
 			// TODO
 			By("creating the custom resource localized resource")
@@ -236,15 +205,7 @@ var _ = Describe("controller", Ordered, func() {
 
 			By("creating the custom resource helm flux resource")
 			manifestHelmRelease := "test/e2e/testdata/helm-release/helm-release.yaml"
-			cmd = exec.Command("kubectl", "apply", "-f", manifestHelmRelease)
-			_, err = utils.Run(cmd)
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-			DeferCleanup(func() error {
-				By("deleting the custom resource helm flux resource")
-				cmd = exec.Command("kubectl", "delete", "-f", manifestHelmRelease)
-				_, err := utils.Run(cmd)
-				return err
-			})
+			Expect(utils.DeployAndWaitForResource(manifestHelmRelease, "condition=Ready")).To(Succeed())
 
 			By("validating that the custom resource helm flux resource was processed")
 			Expect(utils.WaitForResource("helmreleases/helm-flux", "default", "condition=ready=true")).To(Succeed())

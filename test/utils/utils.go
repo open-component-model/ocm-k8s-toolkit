@@ -67,17 +67,6 @@ func Run(cmd *exec.Cmd) ([]byte, error) {
 	return output, nil
 }
 
-func WaitForResource(query, namespace, waitingFor string) error {
-	cmd := exec.Command("kubectl", "wait", query,
-		"--for", waitingFor,
-		"--namespace", namespace,
-		"--timeout", "5m",
-	)
-	_, err := utils.Run(cmd)
-
-	return err
-}
-
 // UninstallPrometheusOperator uninstalls the prometheus.
 func UninstallPrometheusOperator() {
 	url := fmt.Sprintf(prometheusOperatorURL, prometheusOperatorVersion)
@@ -166,6 +155,38 @@ func CreateOCMComponent(filePath, targetPath string) error {
 func TransferOCMComponent(filePath, registry string) error {
 	cmd := exec.Command("ocm", "transfer", "ctf", filePath, registry)
 	_, err := Run(cmd)
+
+	return err
+}
+
+func DeployAndWaitForResource(manifestFilePath, waitingFor string) error {
+	cmd := exec.Command("kubectl", "apply", "-f", manifestFilePath)
+	if _, err := utils.Run(cmd); err != nil {
+		return err
+	}
+	DeferCleanup(func() error {
+		cmd = exec.Command("kubectl", "delete", "-f", manifestFilePath)
+		_, err := utils.Run(cmd)
+
+		return err
+	})
+
+	cmd = exec.Command("kubectl", "wait", "-f", manifestFilePath,
+		"--for", waitingFor,
+		"--timeout", "5m",
+	)
+	_, err := utils.Run(cmd)
+
+	return err
+}
+
+func WaitForResource(query, namespace, waitingFor string) error {
+	cmd := exec.Command("kubectl", "wait", query,
+		"--for", waitingFor,
+		"--namespace", namespace,
+		"--timeout", "5m",
+	)
+	_, err := utils.Run(cmd)
 
 	return err
 }
