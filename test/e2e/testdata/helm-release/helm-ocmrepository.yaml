@@ -1,0 +1,9 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: OCMRepository
+metadata:
+  name: helm-ocmrepository
+spec:
+  repositorySpec:
+    baseUrl: {{ .ImageRegistry }}
+    type: OCIRegistry
+  interval: 10m

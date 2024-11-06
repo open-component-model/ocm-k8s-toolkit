@@ -23,12 +23,12 @@ import (
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive,stylecheck // ginkgo...
+	"github.com/openfluxcd/artifact/test/utils"
 )
 
 const (
 	prometheusOperatorVersion = "v0.72.0"
-	prometheusOperatorURL     = "https://github.com/prometheus-operator/prometheus-operator/" +
-		"releases/download/%s/bundle.yaml"
+	prometheusOperatorURL     = "https://github.com/prometheus-operator/prometheus-operator/releases/download/%s/bundle.yaml"
 
 	certmanagerVersion = "v1.14.4"
 	certmanagerURLTmpl = "https://github.com/jetstack/cert-manager/releases/download/%s/cert-manager.yaml"
@@ -67,6 +67,17 @@ func Run(cmd *exec.Cmd) ([]byte, error) {
 	return output, nil
 }
 
+func WaitForResource(query, namespace, waitingFor string) error {
+	cmd := exec.Command("kubectl", "wait", query,
+		"--for", waitingFor,
+		"--namespace", namespace,
+		"--timeout", "5m",
+	)
+	_, err := utils.Run(cmd)
+
+	return err
+}
+
 // UninstallPrometheusOperator uninstalls the prometheus.
 func UninstallPrometheusOperator() {
 	url := fmt.Sprintf(prometheusOperatorURL, prometheusOperatorVersion)
@@ -97,30 +108,6 @@ func InstallCertManager() error {
 	cmd = exec.Command("kubectl", "wait", "deployment.apps/cert-manager-webhook",
 		"--for", "condition=Available",
 		"--namespace", "cert-manager",
-		"--timeout", "5m",
-	)
-
-	_, err := Run(cmd)
-
-	return err
-}
-
-func UninstalImageRegistry() {
-	cmd := exec.Command("kubectl", "delete", "-f", "test/e2e/testdata/image-registry.yaml")
-	if _, err := Run(cmd); err != nil {
-		warnError(err)
-	}
-}
-
-func InstallImageRegistry() error {
-	cmd := exec.Command("kubectl", "apply", "-f", "test/e2e/testdata/image-registry.yaml")
-	if _, err := Run(cmd); err != nil {
-		return err
-	}
-
-	cmd = exec.Command("kubectl", "wait", "deployment.apps/registry",
-		"--for", "condition=Available",
-		"--namespace", "default",
 		"--timeout", "5m",
 	)
 
@@ -165,4 +152,20 @@ func GetProjectDir() (string, error) {
 	wd = strings.ReplaceAll(wd, "/test/e2e", "")
 
 	return wd, nil
+}
+
+func CreateOCMComponent(filePath, targetPath string) error {
+	cmd := exec.Command("ocm", "add", "componentversions", "--create", "--file", targetPath, filePath)
+	if _, err := Run(cmd); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func TransferOCMComponent(filePath, registry string) error {
+	cmd := exec.Command("ocm", "transfer", "ctf", filePath, registry)
+	_, err := Run(cmd)
+
+	return err
 }

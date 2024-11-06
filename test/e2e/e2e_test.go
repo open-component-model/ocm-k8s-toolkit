@@ -19,9 +19,13 @@ limitations under the License.
 package e2e
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
+	"text/template"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -32,38 +36,47 @@ import (
 
 const namespace = "ocm-k8s-toolkit-system"
 
-var imageRegistry string
+var (
+	imageRegistry         string
+	internalImageRegistry string
+)
 
 var _ = Describe("controller", Ordered, func() {
 	BeforeAll(func() {
 		By("installing prometheus operator")
 		Expect(utils.InstallPrometheusOperator()).To(Succeed())
+		DeferCleanup(func() {
+			By("uninstalling the prometheus operator")
+			utils.UninstallPrometheusOperator()
+		})
 
 		By("installing the cert-manager")
 		Expect(utils.InstallCertManager()).To(Succeed())
+		DeferCleanup(func() {
+			By("uninstalling the cert-manager bundle")
+			utils.UninstallCertManager()
+		})
 
 		By("creating manager namespace")
 		cmd := exec.Command("kubectl", "create", "ns", namespace)
 		_, _ = utils.Run(cmd)
+		DeferCleanup(func() {
+			By("removing manager namespace")
+			cmd := exec.Command("kubectl", "delete", "ns", namespace)
+			_, _ = utils.Run(cmd)
+		})
 
 		By("checking for an image registry")
 		imageRegistry = os.Getenv("IMAGE_REGISTRY_URL")
 		Expect(imageRegistry).NotTo(BeEmpty())
-	})
 
-	AfterAll(func() {
-		By("uninstalling the Prometheus manager bundle")
-		utils.UninstallPrometheusOperator()
-
-		By("uninstalling the cert-manager bundle")
-		utils.UninstallCertManager()
-
-		By("uninstalling image registry")
-		utils.UninstalImageRegistry()
-
-		By("removing manager namespace")
-		cmd := exec.Command("kubectl", "delete", "ns", namespace)
-		_, _ = utils.Run(cmd)
+		By("checking for an internal image registry")
+		// If an internal image registry in the kubernetes-cluster is used, the registry-url for the ocm repository must be adjusted
+		// (see deployment of OCM repository below)
+		internalImageRegistry = os.Getenv("INTERNAL_IMAGE_REGISTRY_URL")
+		if internalImageRegistry == "" {
+			internalImageRegistry = imageRegistry
+		}
 	})
 
 	Context("Operator", func() {
@@ -72,7 +85,9 @@ var _ = Describe("controller", Ordered, func() {
 			var err error
 
 			// projectimage stores the name of the image used in the example
-			var projectimage = imageRegistry + "/ocm.software/ocm-controller:v0.0.1"
+			// Note: If working with insecure registries it is required to use the scheme 'http://' for ocm. However,
+			// docker does not like it. Thus, it is removed if present.
+			var projectimage = strings.TrimLeft(imageRegistry, "http://") + "/ocm.software/ocm-controller:v0.0.1"
 
 			By("building the manager(Operator) image")
 			cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectimage))
@@ -129,6 +144,113 @@ var _ = Describe("controller", Ordered, func() {
 			}
 			EventuallyWithOffset(1, verifyControllerUp, time.Minute, time.Second).Should(Succeed())
 
+		})
+
+		It("should deploy a helm resource", func() {
+			By("checking for the helm controller")
+			Expect(utils.WaitForResource("deployment.apps/helm-controller", "helm-system", "condition=Available")).To(Succeed())
+
+			By("creating ocm component")
+			tmpDir, err := os.MkdirTemp("", "")
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			DeferCleanup(func() error {
+				return os.RemoveAll(tmpDir)
+			})
+			ctfDir := filepath.Join(tmpDir, "ctf-helm")
+			Expect(utils.CreateOCMComponent("test/e2e/testdata/helm-release/component-constructor.yaml", ctfDir)).To(Succeed())
+			Expect(utils.TransferOCMComponent(ctfDir, imageRegistry))
+
+			By("creating the custom resource OCM repository")
+			// In some test-scenarios an internal image registry inside the cluster is used to upload the components.
+			// If this is the case, the OCM repository manifest cannot hold a static registry-url. Therefore,
+			// go-template is used to replace the registry-url.
+			//   If the environment variable INTERNAL_IMAGE_REGISTRY_URL is present, its value will be used.
+			//   If the environment variable is not present, the initial value from IMAGE_REGISTRY_URL will be used.
+			manifestOCMRepository := "test/e2e/testdata/helm-release/helm-ocmrepository.yaml"
+			manifestContent, err := os.ReadFile(manifestOCMRepository)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+
+			tmpl, err := template.New("manifest").Parse(string(manifestContent))
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+
+			data := map[string]string{
+				"ImageRegistry": internalImageRegistry,
+			}
+
+			var result bytes.Buffer
+			Expect(tmpl.Execute(&result, data)).To(Succeed())
+
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = bytes.NewReader(result.Bytes())
+			_, err = utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			DeferCleanup(func() error {
+				By("deleting the custom resource OCM repository")
+				cmd = exec.Command("kubectl", "delete", "-f", "-")
+				cmd.Stdin = bytes.NewReader(result.Bytes())
+				_, err := utils.Run(cmd)
+				return err
+			})
+
+			By("validating that the custom resource OCM repository was processed")
+			Expect(utils.WaitForResource("ocmrepositories/helm-ocmrepository", "default", "condition=ready=true")).To(Succeed())
+
+			By("creating the custom resource OCM component")
+			manifestComponent := "test/e2e/testdata/helm-release/helm-component.yaml"
+			cmd = exec.Command("kubectl", "apply", "-f", manifestComponent)
+			_, err = utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			DeferCleanup(func() error {
+				By("deleting the custom resource OCM component")
+				cmd = exec.Command("kubectl", "delete", "-f", manifestComponent)
+				_, err := utils.Run(cmd)
+				return err
+			})
+
+			By("validating that the custom resource OCM component was processed")
+			Expect(utils.WaitForResource("components/helm-component", "default", "condition=ready=true")).To(Succeed())
+
+			manifestResource := "test/e2e/testdata/helm-release/helm-resource.yaml"
+
+			By("creating the custom resource OCM resource")
+			cmd = exec.Command("kubectl", "apply", "-f", manifestResource)
+			_, err = utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			DeferCleanup(func() error {
+				By("deleting the custom resource OCM resource")
+				cmd = exec.Command("kubectl", "delete", "-f", manifestResource)
+				_, err := utils.Run(cmd)
+				return err
+			})
+
+			By("validating that the custom resource OCM resource was processed")
+			Expect(utils.WaitForResource("resources/helm-resource", "default", "condition=ready=true")).To(Succeed())
+
+			// TODO
+			By("creating the custom resource localized resource")
+			By("validating that the custom resource localized resource was processed")
+
+			// TODO
+			By("creating the custom resource configured resource")
+			By("validating that the custom resource configured resource was processed")
+
+			By("creating the custom resource helm flux resource")
+			manifestHelmRelease := "test/e2e/testdata/helm-release/helm-release.yaml"
+			cmd = exec.Command("kubectl", "apply", "-f", manifestHelmRelease)
+			_, err = utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			DeferCleanup(func() error {
+				By("deleting the custom resource helm flux resource")
+				cmd = exec.Command("kubectl", "delete", "-f", manifestHelmRelease)
+				_, err := utils.Run(cmd)
+				return err
+			})
+
+			By("validating that the custom resource helm flux resource was processed")
+			Expect(utils.WaitForResource("helmreleases/helm-flux", "default", "condition=ready=true")).To(Succeed())
+
+			By("validating that the resource was deployed successfully through the helm-controller")
+			Expect(utils.WaitForResource("deployment.apps/helm-flux-podinfo", "default", "condition=Available")).To(Succeed())
 		})
 	})
 })

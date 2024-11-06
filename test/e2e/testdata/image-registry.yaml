@@ -1,3 +1,6 @@
+# In a simple test scenario using a Kind cluster, an internal image registry is deployed.
+# If this is used, the 'kind-config.yaml' must be used as well to make the external port to the image registry
+# available.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,10 +22,11 @@ spec:
           ports:
             - containerPort: 5000
 ---
+# External port to the image registry. Can be reached with 'localhost:31000'
 apiVersion: v1
 kind: Service
 metadata:
-  name: registry
+  name: registry-external
   namespace: default
 spec:
   type: NodePort
@@ -30,5 +34,19 @@ spec:
     - port: 5000
       targetPort: 5000
       nodePort: 31000
+  selector:
+    app: registry
+---
+# Internal port to the image registry. Can be reached with 'http://registry-internal.default.svc.cluster.local:5000/v2'
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry-internal
+  namespace: default
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5000
+      targetPort: 5000
   selector:
     app: registry

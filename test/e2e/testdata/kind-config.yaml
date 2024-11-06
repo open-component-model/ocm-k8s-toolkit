@@ -1,3 +1,5 @@
+# This config is required, when using an internal image registry inside a Kind cluster (see image-registry.yaml).
+# In this case, the external port to that registry must be available.
 apiVersion: kind.x-k8s.io/v1alpha4
 kind: Cluster
 nodes:
@@ -5,6 +7,4 @@ nodes:
   extraPortMappings:
   - containerPort: 31000
     hostPort: 31000
-    listenAddress: "0.0.0.0" # Optional, defaults to "0.0.0.0"
-    protocol: tcp # Optional, defaults to tcp
 - role: worker
