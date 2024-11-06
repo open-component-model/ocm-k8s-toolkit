@@ -116,12 +116,6 @@ func (r *Reconciler) reconcile(ctx context.Context, replication *v1alpha1.Replic
 		return ctrl.Result{}, fmt.Errorf("failed to get component: %w", err)
 	}
 
-	if comp.DeletionTimestamp != nil {
-		logger.Info("component is being deleted, please do not use it", "name", comp.Name)
-
-		return ctrl.Result{}, nil
-	}
-
 	if !conditions.IsReady(comp) {
 		logger.Info("component is not ready", "name", comp.Name)
 		status.MarkNotReady(r.EventRecorder, replication, v1alpha1.ComponentIsNotReadyReason, "Component is not ready yet")
@@ -239,6 +233,8 @@ func (r *Reconciler) transfer(comp *v1alpha1.Component, targetOCMRepo *v1alpha1.
 			return fmt.Errorf("error checking component version in target repository: %s", string(msgBytes))
 		}
 	}
+
+	// TODO: verify component's signature in target repository (if component is signed)
 
 	return nil
 }
