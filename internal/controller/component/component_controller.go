@@ -257,7 +257,10 @@ func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v
 	session ocmctx.Session, repo ocmctx.Repository, c ocmctx.ComponentAccess,
 ) (string, error) {
 	versions, err := c.ListVersions()
-	if err != nil || len(versions) == 0 {
+	if err != nil {
+		return "", fmt.Errorf("failed to list versions: %w", err)
+	}
+	if len(versions) == 0 {
 		return "", fmt.Errorf("component %s not found in repository", c.GetName())
 	}
 	filter, err := ocm.RegexpFilter(component.Spec.SemverFilter)
