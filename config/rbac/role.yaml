@@ -69,10 +69,20 @@ rules:
   - delivery.ocm.software
   resources:
   - localizationconfigs
-  - resourceconfigs
   verbs:
   - get
   - list
+  - watch
+- apiGroups:
+  - delivery.ocm.software
+  resources:
+  - resourceconfigs
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - openfluxcd.mandelsoft.org

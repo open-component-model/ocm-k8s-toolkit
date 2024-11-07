@@ -76,6 +76,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=localizedresources/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=localizedresources/finalizers,verbs=update
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=localizationconfigs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=delivery.ocm.software,resources=resourceconfigs,verbs=get;list;watch;create;update;patch
 
 // +kubebuilder:rbac:groups="",resources=secrets;configmaps;serviceaccounts,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=serviceaccounts/token,verbs=create
