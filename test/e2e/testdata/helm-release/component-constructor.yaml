@@ -4,9 +4,22 @@ components:
     provider:
       name: test-org
     resources:
-      - name: test-resource
+      - name: helm-resource
         type: helmChart
         version: "6.7.1"
         access:
           type: ociArtifact
           imageReference: ghcr.io/stefanprodan/charts/podinfo:6.7.1
+      - name: helm-localization-config
+        type: ocm.localization
+        input:
+          type: file
+          path: {{ .LocalizationConfigPath }}
+          mediaType: text/plain
+      - name: image
+        type: ociArtifact
+        version: "1.0.0"
+        skipDigestGeneration: true
+        access:
+          type: ociArtifact
+          imageReference: {{ .ImageReference }}

@@ -24,10 +24,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"text/template"
 	"time"
 
+	"github.com/google/go-containerregistry/pkg/crane"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -38,25 +38,14 @@ const namespace = "ocm-k8s-toolkit-system"
 
 var (
 	imageRegistry         string
+	scheme                string
 	internalImageRegistry string
+	internalScheme        string
+	imageRef              string
 )
 
 var _ = Describe("controller", Ordered, func() {
 	BeforeAll(func() {
-		By("installing prometheus operator")
-		Expect(utils.InstallPrometheusOperator()).To(Succeed())
-		DeferCleanup(func() {
-			By("uninstalling the prometheus operator")
-			utils.UninstallPrometheusOperator()
-		})
-
-		By("installing the cert-manager")
-		Expect(utils.InstallCertManager()).To(Succeed())
-		DeferCleanup(func() {
-			By("uninstalling the cert-manager bundle")
-			utils.UninstallCertManager()
-		})
-
 		By("creating manager namespace")
 		cmd := exec.Command("kubectl", "create", "ns", namespace)
 		_, _ = utils.Run(cmd)
@@ -67,16 +56,25 @@ var _ = Describe("controller", Ordered, func() {
 		})
 
 		By("checking for an image registry")
-		imageRegistry = os.Getenv("IMAGE_REGISTRY_URL")
-		Expect(imageRegistry).NotTo(BeEmpty())
+		imageRegistryRaw := os.Getenv("IMAGE_REGISTRY_URL")
+		Expect(imageRegistryRaw).NotTo(BeEmpty())
+
+		scheme, imageRegistry = utils.SanitizeRegistryURL(imageRegistryRaw)
 
 		By("checking for an internal image registry")
 		// If an internal image registry in the kubernetes-cluster is used, the registry-url for the ocm repository must be adjusted
 		// (see deployment of OCM repository below)
-		internalImageRegistry = os.Getenv("INTERNAL_IMAGE_REGISTRY_URL")
-		if internalImageRegistry == "" {
-			internalImageRegistry = imageRegistry
+		internalImageRegistryRaw := os.Getenv("INTERNAL_IMAGE_REGISTRY_URL")
+		if internalImageRegistryRaw == "" {
+			internalImageRegistryRaw = imageRegistry
 		}
+		internalScheme, internalImageRegistry = utils.SanitizeRegistryURL(internalImageRegistryRaw)
+
+		// TODO: This is to specific and depending on the helmchart itself
+		// Provide referenced images to our image registry to test localization
+		By("providing referenced images to the image registry")
+		imageRef = "helm-podinfo:6.7.1"
+		Expect(crane.Copy("ghcr.io/stefanprodan/podinfo:6.7.1", fmt.Sprintf("%s/%s", imageRegistry, imageRef))).To(Succeed())
 	})
 
 	Context("Operator", func() {
@@ -87,7 +85,7 @@ var _ = Describe("controller", Ordered, func() {
 			// projectimage stores the name of the image used in the example
 			// Note: If working with insecure registries it is required to use the scheme 'http://' for ocm. However,
 			// docker does not like it. Thus, it is removed if present.
-			var projectimage = strings.TrimLeft(imageRegistry, "http://") + "/ocm.software/ocm-controller:v0.0.1"
+			var projectimage = imageRegistry + "/ocm.software/ocm-controller:v0.0.1"
 
 			By("building the manager(Operator) image")
 			cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectimage))
@@ -100,6 +98,11 @@ var _ = Describe("controller", Ordered, func() {
 
 			By("installing CRDs")
 			cmd = exec.Command("make", "install")
+			_, err = utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+
+			By("installing external CRDs")
+			cmd = exec.Command("kubectl", "apply", "--server-side", "-k", "https://github.com/openfluxcd/artifact//config/crd?ref=v0.1.1")
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
@@ -156,9 +159,33 @@ var _ = Describe("controller", Ordered, func() {
 			DeferCleanup(func() error {
 				return os.RemoveAll(tmpDir)
 			})
+
+			// The localization should replace the original value of the helm-chart image reference with the new
+			// image reference from our image registry.
+			// In some test-scenarios an internal image registry inside the cluster is used to store the images.
+			// If this is the case, the OCM component-constructor cannot hold a static registry-url. Therefore,
+			// go-template is used to replace the registry-url.
+			//   If the environment variable INTERNAL_IMAGE_REGISTRY_URL is present, its value will be used.
+			//   If the environment variable is not present, the initial value from IMAGE_REGISTRY_URL will be used.
+			wd, err := os.Getwd()
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 			ctfDir := filepath.Join(tmpDir, "ctf-helm")
-			Expect(utils.CreateOCMComponent("test/e2e/testdata/helm-release/component-constructor.yaml", ctfDir)).To(Succeed())
-			Expect(utils.TransferOCMComponent(ctfDir, imageRegistry)).To(Succeed())
+			cmd := exec.Command("ocm",
+				"add",
+				"componentversions",
+				"--create",
+				"--file", ctfDir,
+				"test/e2e/testdata/helm-release/component-constructor.yaml",
+				"--templater", "go",
+				"LocalizationConfigPath="+filepath.Join(wd, "test/e2e/testdata/helm-release/localization-config.yaml"),
+				"ImageReference="+fmt.Sprintf("%s/%s", internalImageRegistry, imageRef),
+			)
+			_, err = utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+
+			cmd = exec.Command("ocm", "transfer", "ctf", "--overwrite", ctfDir, scheme+imageRegistry)
+			_, err = utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("creating the custom resource OCM repository")
 			// In some test-scenarios an internal image registry inside the cluster is used to upload the components.
@@ -170,15 +197,15 @@ var _ = Describe("controller", Ordered, func() {
 			manifestContent, err := os.ReadFile(manifestOCMRepository)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
-			tmpl, err := template.New("manifest").Parse(string(manifestContent))
+			tmplOCMRepository, err := template.New("manifest").Parse(string(manifestContent))
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
-			data := map[string]string{
-				"ImageRegistry": internalImageRegistry,
+			dataOCMRepository := map[string]string{
+				"ImageRegistry": internalScheme + internalImageRegistry,
 			}
 
 			var result bytes.Buffer
-			Expect(tmpl.Execute(&result, data)).To(Succeed())
+			Expect(tmplOCMRepository.Execute(&result, dataOCMRepository)).To(Succeed())
 
 			manifestOCMRepository = filepath.Join(tmpDir, "manifestOCMRespository.yaml")
 			Expect(os.WriteFile(manifestOCMRepository, result.Bytes(), 0644)).To(Succeed())
@@ -195,13 +222,13 @@ var _ = Describe("controller", Ordered, func() {
 			manifestResource := "test/e2e/testdata/helm-release/helm-resource.yaml"
 			Expect(utils.DeployAndWaitForResource(manifestResource, "condition=Ready")).To(Succeed())
 
-			// TODO
-			By("creating the custom resource localized resource")
-			By("validating that the custom resource localized resource was processed")
+			By("creating and validating the custom resource localization resource")
+			manifestLocalizationResource := "test/e2e/testdata/helm-release/localization-resource.yaml"
+			Expect(utils.DeployAndWaitForResource(manifestLocalizationResource, "condition=Ready")).To(Succeed())
 
-			// TODO
-			By("creating the custom resource configured resource")
-			By("validating that the custom resource configured resource was processed")
+			By("creating and validating the custom resource localized resource")
+			manifestLocalizedResource := "test/e2e/testdata/helm-release/helm-localized-resource.yaml"
+			Expect(utils.DeployAndWaitForResource(manifestLocalizedResource, "condition=Ready")).To(Succeed())
 
 			By("creating the custom resource helm flux resource")
 			manifestHelmRelease := "test/e2e/testdata/helm-release/helm-release.yaml"

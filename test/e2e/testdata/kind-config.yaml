@@ -8,3 +8,13 @@ nodes:
   - containerPort: 31000
     hostPort: 31000
 - role: worker
+# TODO: Add more context to this config
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
+        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry-internal.default.svc.cluster.local:5000"]
+          endpoint = ["http://localhost:31000"]
+      [plugins."io.containerd.grpc.v1.cri".registry.configs]
+        [plugins."io.containerd.grpc.v1.cri".registry.configs."registry-internal.default.svc.cluster.local:5000".tls]
+          insecure_skip_verify = true

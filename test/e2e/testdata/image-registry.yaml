@@ -37,7 +37,7 @@ spec:
   selector:
     app: registry
 ---
-# Internal port to the image registry. Can be reached with 'http://registry-internal.default.svc.cluster.local:5000/v2'
+# Internal port to the image registry. Can be reached with 'http://registry-internal.default.svc.cluster.local:5000/'
 apiVersion: v1
 kind: Service
 metadata:

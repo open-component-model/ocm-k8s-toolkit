@@ -8,5 +8,5 @@ spec:
   resource:
     byReference:
       resource:
-        name: test-resource
+        name: helm-resource
   interval: 10m

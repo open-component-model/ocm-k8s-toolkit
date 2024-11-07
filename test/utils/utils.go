@@ -26,27 +26,6 @@ import (
 	"github.com/openfluxcd/artifact/test/utils"
 )
 
-const (
-	prometheusOperatorVersion = "v0.72.0"
-	prometheusOperatorURL     = "https://github.com/prometheus-operator/prometheus-operator/releases/download/%s/bundle.yaml"
-
-	certmanagerVersion = "v1.14.4"
-	certmanagerURLTmpl = "https://github.com/jetstack/cert-manager/releases/download/%s/cert-manager.yaml"
-)
-
-func warnError(err error) {
-	fmt.Fprintf(GinkgoWriter, "warning: %v\n", err)
-}
-
-// InstallPrometheusOperator installs the prometheus Operator to be used to export the enabled metrics.
-func InstallPrometheusOperator() error {
-	url := fmt.Sprintf(prometheusOperatorURL, prometheusOperatorVersion)
-	cmd := exec.Command("kubectl", "create", "-f", url)
-	_, err := Run(cmd)
-
-	return err
-}
-
 // Run executes the provided command within this context.
 func Run(cmd *exec.Cmd) ([]byte, error) {
 	dir, _ := GetProjectDir()
@@ -65,57 +44,6 @@ func Run(cmd *exec.Cmd) ([]byte, error) {
 	}
 
 	return output, nil
-}
-
-// UninstallPrometheusOperator uninstalls the prometheus.
-func UninstallPrometheusOperator() {
-	url := fmt.Sprintf(prometheusOperatorURL, prometheusOperatorVersion)
-	cmd := exec.Command("kubectl", "delete", "-f", url)
-	if _, err := Run(cmd); err != nil {
-		warnError(err)
-	}
-}
-
-// UninstallCertManager uninstalls the cert manager.
-func UninstallCertManager() {
-	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
-	cmd := exec.Command("kubectl", "delete", "-f", url)
-	if _, err := Run(cmd); err != nil {
-		warnError(err)
-	}
-}
-
-// InstallCertManager installs the cert manager bundle.
-func InstallCertManager() error {
-	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
-	cmd := exec.Command("kubectl", "apply", "-f", url)
-	if _, err := Run(cmd); err != nil {
-		return err
-	}
-	// Wait for cert-manager-webhook to be ready, which can take time if cert-manager
-	// was re-installed after uninstalling on a cluster.
-	cmd = exec.Command("kubectl", "wait", "deployment.apps/cert-manager-webhook",
-		"--for", "condition=Available",
-		"--namespace", "cert-manager",
-		"--timeout", "5m",
-	)
-
-	_, err := Run(cmd)
-
-	return err
-}
-
-// LoadImageToKindCluster loads a local docker image to the kind cluster.
-func LoadImageToKindClusterWithName(name string) error {
-	cluster := "kind"
-	if v, ok := os.LookupEnv("KIND_CLUSTER"); ok {
-		cluster = v
-	}
-	kindOptions := []string{"load", "docker-image", name, "--name", cluster}
-	cmd := exec.Command("kind", kindOptions...)
-	_, err := Run(cmd)
-
-	return err
 }
 
 // GetNonEmptyLines converts given command output string into individual objects
@@ -141,22 +69,6 @@ func GetProjectDir() (string, error) {
 	wd = strings.ReplaceAll(wd, "/test/e2e", "")
 
 	return wd, nil
-}
-
-func CreateOCMComponent(filePath, targetPath string) error {
-	cmd := exec.Command("ocm", "add", "componentversions", "--create", "--file", targetPath, filePath)
-	if _, err := Run(cmd); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func TransferOCMComponent(filePath, registry string) error {
-	cmd := exec.Command("ocm", "transfer", "ctf", filePath, registry)
-	_, err := Run(cmd)
-
-	return err
 }
 
 func DeployAndWaitForResource(manifestFilePath, waitingFor string) error {
@@ -189,4 +101,15 @@ func WaitForResource(query, namespace, waitingFor string) error {
 	_, err := utils.Run(cmd)
 
 	return err
+}
+
+// SanitizeRegistryURL returns the scheme and rest of the URL if a scheme was provided.
+func SanitizeRegistryURL(registryURL string) (string, string) {
+	if strings.Contains(registryURL, "://") {
+		subStr := strings.SplitAfter(registryURL, "://")
+
+		return subStr[0], subStr[1]
+	}
+
+	return "", registryURL
 }
