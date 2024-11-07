@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.15.0
-  name: artifacts.openfluxcd.mandelsoft.org
+  name: artifacts.openfluxcd.ocm.software
 spec:
-  group: openfluxcd.mandelsoft.org
+  group: openfluxcd.ocm.software
   names:
     kind: Artifact
     listKind: ArtifactList
