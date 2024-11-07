@@ -144,7 +144,6 @@ func (r *Reconciler) reconcile(ctx context.Context, replication *v1alpha1.Replic
 
 	if conditions.IsReady(replication) &&
 		replication.IsInHistory(comp.Status.Component.Component, comp.Status.Component.Version, string(repo.Spec.RepositorySpec.Raw)) {
-
 		status.MarkReady(r.EventRecorder, replication, "Replicated in previous reconciliations: %s to %s", comp.Name, repo.Name)
 
 		return ctrl.Result{RequeueAfter: replication.GetRequeueAfter()}, nil

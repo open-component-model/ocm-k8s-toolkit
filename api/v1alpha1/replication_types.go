@@ -104,32 +104,53 @@ type TransferRun struct {
 }
 
 // GetConditions returns the conditions of the OCMRepository.
-func (in *Replication) GetConditions() []metav1.Condition {
-	return in.Status.Conditions
+func (repl *Replication) GetConditions() []metav1.Condition {
+	return repl.Status.Conditions
 }
 
 // SetConditions sets the conditions of the OCMRepository.
-func (in *Replication) SetConditions(conditions []metav1.Condition) {
-	in.Status.Conditions = conditions
+func (repl *Replication) SetConditions(conditions []metav1.Condition) {
+	repl.Status.Conditions = conditions
 }
 
 // GetRequeueAfter returns the duration after which the ComponentVersion must be
 // reconciled again.
-func (in Replication) GetRequeueAfter() time.Duration {
-	return in.Spec.Interval.Duration
+func (repl Replication) GetRequeueAfter() time.Duration {
+	return repl.Spec.Interval.Duration
 }
 
 // GetVID unique identifier of the object.
-func (in *Replication) GetVID() map[string]string {
-	vid := fmt.Sprintf("%s:%s", in.Namespace, in.Name)
+func (repl *Replication) GetVID() map[string]string {
+	vid := fmt.Sprintf("%s:%s", repl.Namespace, repl.Name)
 	metadata := make(map[string]string)
 	metadata[GroupVersion.Group+"/replication"] = vid
 
 	return metadata
 }
 
-func (in *Replication) SetObservedGeneration(v int64) {
-	in.Status.ObservedGeneration = v
+func (repl *Replication) SetObservedGeneration(v int64) {
+	repl.Status.ObservedGeneration = v
+}
+
+func (repl *Replication) AddHistoryRecord(rec TransferRun) {
+	if len(repl.Status.History) >= repl.Spec.HistoryCapacity {
+		repl.Status.History = repl.Status.History[1:]
+	}
+	repl.Status.History = append(repl.Status.History, rec)
+}
+
+func (repl *Replication) IsInHistory(component, version, targetSpec string) bool {
+	for _, record := range repl.Status.History {
+		if record.Component == component &&
+			record.Version == version &&
+			record.TargetRepositorySpec == targetSpec &&
+			record.Success {
+
+			return true
+		}
+	}
+
+	return false
 }
 
 // +kubebuilder:object:root=true
@@ -155,26 +176,4 @@ type ReplicationList struct {
 
 func init() {
 	SchemeBuilder.Register(&Replication{}, &ReplicationList{})
-}
-
-func (r *Replication) AddHistoryRecord(rec TransferRun) {
-	if len(r.Status.History) >= r.Spec.HistoryCapacity {
-		r.Status.History = r.Status.History[1:]
-	}
-
-	r.Status.History = append(r.Status.History, rec)
-}
-
-func (r *Replication) IsInHistory(component, version, targetSpec string) bool {
-	for _, record := range r.Status.History {
-		if record.Component == component &&
-			record.Version == version &&
-			record.TargetRepositorySpec == targetSpec &&
-			record.Success {
-
-			return true
-		}
-	}
-
-	return false
 }
