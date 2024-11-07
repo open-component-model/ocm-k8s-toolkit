@@ -27,7 +27,7 @@ SOURCE_VER ?= $(shell go list -m github.com/openfluxcd/artifact | awk '{print $$
 SOURCE_CRD_VER=$(BUILD_DIR)/.src-crd-$(SOURCE_VER)
 
 # Paths to download the CRD dependencies at.
-ARTIFACT_CRD ?= config/crd/bases/openfluxcd.mandelsoft.org_artifact.yaml
+ARTIFACT_CRD ?= config/crd/bases/openfluxcd.ocm.software_artifacts.yaml
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
@@ -186,7 +186,7 @@ $(SOURCE_CRD_VER):
 
 $(ARTIFACT_CRD):
 	@echo "Downloading CRD for artifact based on version $(SOURCE_VER)"
-	curl -s https://raw.githubusercontent.com/openfluxcd/artifact/${SOURCE_VER}/config/crd/bases/openfluxcd.mandelsoft.org_artifacts.yaml -o $(ARTIFACT_CRD)
+	curl -s https://raw.githubusercontent.com/openfluxcd/artifact/${SOURCE_VER}/$(ARTIFACT_CRD) -o $(ARTIFACT_CRD)
 
 # Download the CRDs the controller depends on
 download-crd-deps: $(SOURCE_CRD_VER) $(ARTIFACT_CRD)
