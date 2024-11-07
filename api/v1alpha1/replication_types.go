@@ -145,7 +145,6 @@ func (repl *Replication) IsInHistory(component, version, targetSpec string) bool
 			record.Version == version &&
 			record.TargetRepositorySpec == targetSpec &&
 			record.Success {
-
 			return true
 		}
 	}
