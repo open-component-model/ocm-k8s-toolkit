@@ -207,6 +207,16 @@ var _ = Describe("Replication Controller", func() {
 				return conditions.IsReady(replication)
 			}).WithTimeout(10 * time.Second).Should(BeTrue())
 
+			Expect(replication.Status.History).To(HaveLen(1))
+			Expect(replication.Status.History[0].Component).To(Equal(compOCMName))
+			Expect(replication.Status.History[0].Version).To(Equal(compVersion))
+			Expect(replication.Status.History[0].SourceRepositorySpec).To(Equal(string(sourceSpecData)))
+			Expect(replication.Status.History[0].TargetRepositorySpec).To(Equal(string(targetSpecData)))
+			Expect(replication.Status.History[0].StartTime).NotTo(BeZero())
+			Expect(replication.Status.History[0].EndTime).NotTo(BeZero())
+			Expect(replication.Status.History[0].Error).To(BeEmpty())
+			Expect(replication.Status.History[0].Success).To(BeTrue())
+
 			By("Cleanup the resources")
 			Expect(k8sClient.Delete(ctx, replication)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, targetRepo)).To(Succeed())

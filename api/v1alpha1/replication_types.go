@@ -45,10 +45,19 @@ type ReplicationSpec struct {
 	// Replication.
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
+
+	// HistoryCapacity is the maximum number of last replication runs to keep information about.
+	// +kubebuilder:default:=10
+	// +optional
+	HistoryCapacity int `json:"historyLength,omitempty"`
 }
 
 // ReplicationStatus defines the observed state of Replication.
 type ReplicationStatus struct {
+	// History holds the history of replication runs.
+	// +optional
+	History []TransferRun `json:"history,omitempty"`
+
 	// ObservedGeneration is the last observed generation of the Replication
 	// object.
 	// +optional
@@ -57,6 +66,41 @@ type ReplicationStatus struct {
 	// Conditions holds the conditions for the Replication.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// TransferRun holds the status of a single 'ocm transfer' run.
+type TransferRun struct {
+	// Component is the fully qualified name of the OCM component.
+	// +required
+	Component string `json:"component"`
+
+	// Version is the version of the component which was required to be replicated
+	// +required
+	Version string `json:"version"`
+
+	// SourceRepositorySpec is the specification of the source repository.
+	// +required
+	SourceRepositorySpec string `json:"sourceRepositorySpec"`
+
+	// TargetRepositorySpec is the specification of the target repository.
+	// +required
+	TargetRepositorySpec string `json:"targetRepositorySpec"`
+
+	// StartTime is the time at which the replication run started.
+	// +required
+	StartTime metav1.Time `json:"startTime"`
+
+	// EndTime is the time at which the replication run ended.
+	// +optional
+	EndTime metav1.Time `json:"endTime,omitempty"`
+
+	// Error is the error message if the replication run failed.
+	// +optional
+	Error string `json:"error,omitempty"`
+
+	// Success indicates whether the replication run was successful.
+	// +required
+	Success bool `json:"success"`
 }
 
 // GetConditions returns the conditions of the OCMRepository.
@@ -111,4 +155,26 @@ type ReplicationList struct {
 
 func init() {
 	SchemeBuilder.Register(&Replication{}, &ReplicationList{})
+}
+
+func (r *Replication) AddHistoryRecord(rec TransferRun) {
+	if len(r.Status.History) >= r.Spec.HistoryCapacity {
+		r.Status.History = r.Status.History[1:]
+	}
+
+	r.Status.History = append(r.Status.History, rec)
+}
+
+func (r *Replication) IsInHistory(component, version, targetSpec string) bool {
+	for _, record := range r.Status.History {
+		if record.Component == component &&
+			record.Version == version &&
+			record.TargetRepositorySpec == targetSpec &&
+			record.Success {
+
+			return true
+		}
+	}
+
+	return false
 }

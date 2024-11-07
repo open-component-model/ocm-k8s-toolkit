@@ -49,6 +49,11 @@ spec:
                 required:
                 - name
                 type: object
+              historyLength:
+                default: 10
+                description: HistoryCapacity is the maximum number of last replication
+                  runs to keep information about.
+                type: integer
               interval:
                 description: Interval at which the replication is reconciled.
                 type: string
@@ -131,6 +136,55 @@ spec:
                   - reason
                   - status
                   - type
+                  type: object
+                type: array
+              history:
+                description: History holds the history of replication runs.
+                items:
+                  description: TransferRun holds the status of a single 'ocm transfer'
+                    run.
+                  properties:
+                    component:
+                      description: Component is the fully qualified name of the OCM
+                        component.
+                      type: string
+                    endTime:
+                      description: EndTime is the time at which the replication run
+                        ended.
+                      format: date-time
+                      type: string
+                    error:
+                      description: Error is the error message if the replication run
+                        failed.
+                      type: string
+                    sourceRepositorySpec:
+                      description: SourceRepositorySpec is the specification of the
+                        source repository.
+                      type: string
+                    startTime:
+                      description: StartTime is the time at which the replication
+                        run started.
+                      format: date-time
+                      type: string
+                    success:
+                      description: Success indicates whether the replication run was
+                        successful.
+                      type: boolean
+                    targetRepositorySpec:
+                      description: TargetRepositorySpec is the specification of the
+                        target repository.
+                      type: string
+                    version:
+                      description: Version is the version of the component which was
+                        required to be replicated
+                      type: string
+                  required:
+                  - component
+                  - sourceRepositorySpec
+                  - startTime
+                  - success
+                  - targetRepositorySpec
+                  - version
                   type: object
                 type: array
               observedGeneration:

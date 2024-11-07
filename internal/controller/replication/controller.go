@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
 	ocmctx "ocm.software/ocm/api/ocm"
@@ -93,12 +94,6 @@ func (r *Reconciler) reconcileExists(ctx context.Context, replication *v1alpha1.
 		return ctrl.Result{}, nil
 	}
 
-	if conditions.IsReady(replication) {
-		logger.Info("replication already done, skipping reconciliation")
-
-		return ctrl.Result{}, nil
-	}
-
 	return r.reconcile(ctx, replication)
 }
 
@@ -147,20 +142,33 @@ func (r *Reconciler) reconcile(ctx context.Context, replication *v1alpha1.Replic
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	err := r.transfer(comp, repo)
+	if conditions.IsReady(replication) &&
+		replication.IsInHistory(comp.Status.Component.Component, comp.Status.Component.Version, string(repo.Spec.RepositorySpec.Raw)) {
+
+		status.MarkReady(r.EventRecorder, replication, "Replicated in previous reconciliations: %s to %s", comp.Name, repo.Name)
+
+		return ctrl.Result{RequeueAfter: replication.GetRequeueAfter()}, nil
+	}
+
+	historyRecord, err := r.transfer(comp, repo)
 	if err != nil {
+		historyRecord.Error = err.Error()
+		historyRecord.EndTime = metav1.Now()
+		replication.AddHistoryRecord(historyRecord)
+
 		logger.Info("error transferring component", "component", comp.Name, "targetRepository", repo.Name)
 		status.MarkNotReady(r.EventRecorder, replication, v1alpha1.ReplicationFailedReason, err.Error())
 
 		return ctrl.Result{}, err
 	}
 
-	status.MarkReady(r.EventRecorder, replication, "Successfully replicated %s:%s to %s", comp.Status.Component.Component, comp.Status.Component.Version, repo.Name)
+	replication.AddHistoryRecord(historyRecord)
+	status.MarkReady(r.EventRecorder, replication, "Successfully replicated %s to %s", comp.Name, repo.Name)
 
 	return ctrl.Result{RequeueAfter: replication.GetRequeueAfter()}, nil
 }
 
-func (r *Reconciler) transfer(comp *v1alpha1.Component, targetOCMRepo *v1alpha1.OCMRepository) (retErr error) {
+func (r *Reconciler) transfer(comp *v1alpha1.Component, targetOCMRepo *v1alpha1.OCMRepository) (historyRecord v1alpha1.TransferRun, retErr error) {
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
 	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
 	// instance and not at the global default context variable.
@@ -177,33 +185,41 @@ func (r *Reconciler) transfer(comp *v1alpha1.Component, targetOCMRepo *v1alpha1.
 
 	// TODO: configure OCM context
 
+	historyRecord = v1alpha1.TransferRun{
+		StartTime:            metav1.Now(),
+		Component:            comp.Status.Component.Component,
+		Version:              comp.Status.Component.Version,
+		SourceRepositorySpec: string(comp.Status.Component.RepositorySpec.Raw),
+		TargetRepositorySpec: string(targetOCMRepo.Spec.RepositorySpec.Raw),
+	}
+
 	sourceSpec, err := octx.RepositorySpecForConfig(comp.Status.Component.RepositorySpec.Raw, nil)
 	if err != nil {
-		return fmt.Errorf("cannot create RepositorySpec from raw data: %w", err)
+		return historyRecord, fmt.Errorf("cannot create RepositorySpec from raw data: %w", err)
 	}
 
 	// sourceRepo, err := session.LookupRepository(octx, sourceSpec)
 	sourceRepo, err := octx.RepositoryForSpec(sourceSpec)
 	if err != nil {
-		return fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
+		return historyRecord, fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
 	}
 	defer sourceRepo.Close()
 
 	cv, err := sourceRepo.LookupComponentVersion(comp.Status.Component.Component, comp.Status.Component.Version)
 	if err != nil {
-		return fmt.Errorf("cannot lookup component version in source repository: %w", err)
+		return historyRecord, fmt.Errorf("cannot lookup component version in source repository: %w", err)
 	}
 	defer cv.Close()
 
 	targetSpec, err := octx.RepositorySpecForConfig(targetOCMRepo.Spec.RepositorySpec.Raw, nil)
 	if err != nil {
-		return fmt.Errorf("cannot create RepositorySpec from raw data: %w", err)
+		return historyRecord, fmt.Errorf("cannot create RepositorySpec from raw data: %w", err)
 	}
 
 	// targetRepo, err := session.LookupRepository(octx, targetSpec)
 	targetRepo, err := octx.RepositoryForSpec(targetSpec)
 	if err != nil {
-		return fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
+		return historyRecord, fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
 	}
 	defer targetRepo.Close()
 
@@ -211,13 +227,13 @@ func (r *Reconciler) transfer(comp *v1alpha1.Component, targetOCMRepo *v1alpha1.
 
 	err = transfer.Transfer(cv, targetRepo)
 	if err != nil {
-		return fmt.Errorf("cannot transfer component version to target repository: %w", err)
+		return historyRecord, fmt.Errorf("cannot transfer component version to target repository: %w", err)
 	}
 
 	// check if the component version was transferred successfully
 	tcv, err := targetRepo.LookupComponentVersion(comp.Status.Component.Component, comp.Status.Component.Version)
 	if err != nil {
-		return fmt.Errorf("cannot lookup component version in target repository: %w", err)
+		return historyRecord, fmt.Errorf("cannot lookup component version in target repository: %w", err)
 	}
 	defer tcv.Close()
 
@@ -225,18 +241,21 @@ func (r *Reconciler) transfer(comp *v1alpha1.Component, targetOCMRepo *v1alpha1.
 
 	result, err := check.Check().ForId(targetRepo, ocmutils.NewNameVersion(comp.Status.Component.Component, comp.Status.Component.Version))
 	if err != nil {
-		return fmt.Errorf("error checking component version in target repository: %w", err)
+		return historyRecord, fmt.Errorf("error checking component version in target repository: %w", err)
 	}
 	if result != nil {
 		msgBytes, err := json.Marshal(result)
 		if err != nil {
-			return fmt.Errorf("error checking component version in target repository: %s", string(msgBytes))
+			return historyRecord, fmt.Errorf("error checking component version in target repository: %s", string(msgBytes))
 		}
 	}
 
 	// TODO: verify component's signature in target repository (if component is signed)
 
-	return nil
+	historyRecord.Success = true
+	historyRecord.EndTime = metav1.Now()
+
+	return historyRecord, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
