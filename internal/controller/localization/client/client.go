@@ -63,7 +63,7 @@ func (clnt *localStorageBackedClient) GetLocalizationTarget(
 	case v1alpha1.KindLocalizedResource:
 		fallthrough
 	case v1alpha1.KindResource:
-		return artifactutil.GetContentBackedByArtifactFromComponent(ctx, clnt.Reader, clnt.Storage, ref.NamespacedObjectKindReference)
+		return artifactutil.GetContentBackedByArtifactFromComponent(ctx, clnt.Reader, clnt.Storage, &ref)
 	default:
 		return nil, fmt.Errorf("unsupported localization target kind: %s", ref.Kind)
 	}
@@ -75,7 +75,7 @@ func (clnt *localStorageBackedClient) GetLocalizationConfig(
 ) (types.LocalizationConfig, error) {
 	switch ref.Kind {
 	case v1alpha1.KindResource:
-		return artifactutil.GetContentBackedByArtifactFromComponent(ctx, clnt.Reader, clnt.Storage, ref.NamespacedObjectKindReference)
+		return artifactutil.GetContentBackedByArtifactFromComponent(ctx, clnt.Reader, clnt.Storage, &ref)
 	case v1alpha1.KindLocalizationConfig:
 		return GetLocalizationConfigFromKubernetes(ctx, clnt.Reader, clnt.encoder, ref)
 	default:

@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 
 	"github.com/containers/image/v5/pkg/compression"
-	"github.com/fluxcd/pkg/apis/meta"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	fluxtar "github.com/fluxcd/pkg/tar"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
@@ -167,15 +166,11 @@ func GetContentBackedByArtifactFromComponent(
 	ctx context.Context,
 	clnt client.Reader,
 	strg *storage.Storage,
-	ref meta.NamespacedObjectKindReference,
+	ref *v1alpha1.ConfigurationReference,
 ) (Content, error) {
 	if ref.APIVersion == "" {
 		ref.APIVersion = v1alpha1.GroupVersion.String()
 	}
-	if ref.APIVersion != v1alpha1.GroupVersion.String() || ref.Kind != v1alpha1.KindResource {
-		return nil, fmt.Errorf("unsupported localization reference type: %s/%s", ref.APIVersion, ref.Kind)
-	}
-
 	component, resource, artifact, err := GetComponentResourceArtifactFromReference(ctx, clnt, strg, ref)
 	if err != nil {
 		return nil, err
@@ -185,14 +180,14 @@ func GetContentBackedByArtifactFromComponent(
 }
 
 type ObjectWithTargetReference interface {
-	GetTarget() meta.NamespacedObjectKindReference
+	GetTarget() *v1alpha1.ConfigurationReference
 }
 
 func GetComponentResourceArtifactFromReference(
 	ctx context.Context,
 	clnt client.Reader,
 	strg *storage.Storage,
-	ref meta.NamespacedObjectKindReference,
+	ref *v1alpha1.ConfigurationReference,
 ) (*v1alpha1.Component, *v1alpha1.Resource, *artifactv1.Artifact, error) {
 	var (
 		resource client.Object
