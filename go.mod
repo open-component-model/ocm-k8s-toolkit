@@ -22,7 +22,7 @@ require (
 	github.com/onsi/gomega v1.35.1
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/openfluxcd/artifact v0.1.1
-	github.com/openfluxcd/controller-manager v0.1.2-0.20241028170501-c43fea5c92c4
+	github.com/openfluxcd/controller-manager v0.1.2
 	github.com/stretchr/testify v1.9.0
 	github.com/ulikunitz/xz v0.5.12
 	k8s.io/api v0.31.2
