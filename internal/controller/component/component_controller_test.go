@@ -115,12 +115,6 @@ var _ = Describe("Component Controller", func() {
 			testNumber++
 		})
 
-		AfterEach(func() {
-			// make sure the repo is still ready
-			conditions.MarkTrue(repositoryObj, "Ready", "ready", "message")
-			Expect(k8sClient.Status().Update(ctx, repositoryObj)).To(Succeed())
-		})
-
 		It("reconcileComponent a component", func() {
 			By("creating a component")
 			component := &v1alpha1.Component{

@@ -28,8 +28,12 @@ import (
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/server"
 	"github.com/openfluxcd/controller-manager/storage"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -50,7 +54,7 @@ import (
 
 const (
 	ARTIFACT_PATH   = "ocm-k8s-artifactstore--*"
-	ARTIFACT_SERVER = "localhost:8081"
+	ARTIFACT_SERVER = "localhost:8085"
 )
 
 var cfg *rest.Config
@@ -88,6 +92,8 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 	DeferCleanup(testEnv.Stop)
+
+	createKubeConfig(cfg)
 
 	Expect(v1alpha1.AddToScheme(scheme.Scheme)).Should(Succeed())
 	Expect(artifactv1.AddToScheme(scheme.Scheme)).Should(Succeed())
@@ -127,6 +133,14 @@ var _ = BeforeSuite(func() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	DeferCleanup(cancel)
+
+	namespace := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: Namespace,
+		},
+	}
+	Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+
 	go func() {
 		defer GinkgoRecover()
 		Expect(artifactServer.Start(ctx)).To(Succeed())
@@ -136,3 +150,35 @@ var _ = BeforeSuite(func() {
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
 })
+
+func createKubeConfig(cfg *rest.Config) {
+	// Write the kubeconfig to the temporary file
+	kubeconfig := api.Config{
+		Clusters: map[string]*api.Cluster{
+			"test-cluster": {
+				Server:                   cfg.Host,
+				CertificateAuthorityData: cfg.CAData,
+			},
+		},
+		AuthInfos: map[string]*api.AuthInfo{
+			"test-user": {
+				ClientCertificateData: cfg.CertData,
+				ClientKeyData:         cfg.KeyData,
+			},
+		},
+		Contexts: map[string]*api.Context{
+			"test-context": {
+				Cluster:  "test-cluster",
+				AuthInfo: "test-user",
+			},
+		},
+		CurrentContext: "test-context",
+	}
+
+	kubeconfigFile, err := os.Create(filepath.Join(os.Getenv("HOME"), ".kubeconfig.env"))
+
+	kubeconfigBytes, err := clientcmd.Write(kubeconfig)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = kubeconfigFile.Write(kubeconfigBytes)
+	Expect(err).NotTo(HaveOccurred())
+}

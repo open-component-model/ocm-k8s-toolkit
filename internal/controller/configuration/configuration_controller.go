@@ -85,6 +85,7 @@ type Reconciler struct {
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
+	log.FromContext(ctx).V(1).Info("reconciling")
 	configuration := &v1alpha1.ConfiguredResource{}
 	if err := r.Get(ctx, req.NamespacedName, configuration); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -228,6 +229,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		return ctrl.Result{}, fmt.Errorf("failed to reconcile artifact: %w", err)
 	}
 
+	logger.Info("updating")
 	logger.Info("configuration successful", "artifact", configuration.Status.ArtifactRef)
 	status.MarkReady(r.EventRecorder, configuration, "configured successfully")
 
