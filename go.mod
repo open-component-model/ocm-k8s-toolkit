@@ -9,7 +9,7 @@ replace github.com/opencontainers/go-digest => github.com/opencontainers/go-dige
 require (
 	github.com/Masterminds/semver/v3 v3.3.0
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/containers/image/v5 v5.32.2
+	github.com/containers/image/v5 v5.33.0
 	github.com/fluxcd/pkg/apis/event v0.10.1
 	github.com/fluxcd/pkg/apis/meta v1.6.1
 	github.com/fluxcd/pkg/runtime v0.49.1
@@ -116,7 +116,7 @@ require (
 	github.com/containerd/stargz-snapshotter/estargz v0.15.1 // indirect
 	github.com/containers/libtrust v0.0.0-20230121012942-c1716e8a8d01 // indirect
 	github.com/containers/ocicrypt v1.2.0 // indirect
-	github.com/containers/storage v1.55.0 // indirect
+	github.com/containers/storage v1.56.0 // indirect
 	github.com/coreos/go-oidc/v3 v3.11.0 // indirect
 	github.com/cyberphone/json-canonicalization v0.0.0-20231217050601-ba74d44ecf5f // indirect
 	github.com/cyphar/filepath-securejoin v0.3.4 // indirect
@@ -233,6 +233,7 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/locker v1.0.1 // indirect
+	github.com/moby/sys/capability v0.3.0 // indirect
 	github.com/moby/sys/mountinfo v0.7.2 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/moby/sys/user v0.3.0 // indirect
@@ -284,7 +285,6 @@ require (
 	github.com/spf13/viper v1.19.0 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.4.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d // indirect
 	github.com/texttheater/golang-levenshtein/levenshtein v0.0.0-20200805054039-cae8b0eaed6c // indirect
 	github.com/thales-e-security/pool v0.0.2 // indirect
