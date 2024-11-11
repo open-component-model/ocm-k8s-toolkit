@@ -52,8 +52,12 @@ func (clnt *localStorageBackedClient) Scheme() *runtime.Scheme {
 
 func (clnt *localStorageBackedClient) GetTarget(ctx context.Context, ref v1alpha1.ConfigurationReference) (target types.ConfigurationTarget, err error) {
 	switch ref.Kind {
-	case "Resource":
-		return artifactutil.GetContentBackedByArtifactFromComponent(ctx, clnt.Reader, clnt.Storage, ref.NamespacedObjectKindReference)
+	case v1alpha1.KindConfiguredResource:
+		fallthrough
+	case v1alpha1.KindLocalizedResource:
+		fallthrough
+	case v1alpha1.KindResource:
+		return artifactutil.GetContentBackedByArtifactFromComponent(ctx, clnt.Reader, clnt.Storage, &ref)
 	default:
 		return nil, fmt.Errorf("unsupported configuration target kind: %s", ref.Kind)
 	}
@@ -61,9 +65,9 @@ func (clnt *localStorageBackedClient) GetTarget(ctx context.Context, ref v1alpha
 
 func (clnt *localStorageBackedClient) GetConfiguration(ctx context.Context, ref v1alpha1.ConfigurationReference) (source types.ConfigurationSource, err error) {
 	switch ref.Kind {
-	case "Resource":
-		return artifactutil.GetContentBackedByArtifactFromComponent(ctx, clnt.Reader, clnt.Storage, ref.NamespacedObjectKindReference)
-	case "ResourceConfig":
+	case v1alpha1.KindResource:
+		return artifactutil.GetContentBackedByArtifactFromComponent(ctx, clnt.Reader, clnt.Storage, &ref)
+	case v1alpha1.KindResourceConfig:
 		return GetResourceConfigFromKubernetes(ctx, clnt.Reader, clnt.encoder, ref)
 	default:
 		return nil, fmt.Errorf("unsupported configuration source kind: %s", ref.Kind)

@@ -41,6 +41,7 @@ local_resource(
         "go.sum",
         "api",
         "internal",
+        "pkg",
     ],
 )
 
