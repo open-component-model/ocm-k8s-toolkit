@@ -5,7 +5,7 @@
 
 Technical Story: 
 
-Replication controller integrated into the ocm-k8s-toolkit mimics the `ocm transfer` behaviour into a controller. This allows transferring components from one registry to another  registry. A possible use case would be that the replication controller is running in an MCP cluster. One can subscribe to a certain component CR and each time the component version is updated in the CR, the newer version is automatically replicated to one or several target environments. The target environments are specified by OCMRepository CRs.
+The replication controller integrated into the ocm-k8s-toolkit mimics the `ocm transfer` behaviour into a controller. This allows transferring components from one registry to another  registry. A possible use case would be that the replication controller is running in a Management / Control-Plane cluster. One can subscribe to a certain component CR and each time the component version is updated in the CR, the newer version is automatically replicated to one or several target environments. The target environments are specified by OCMRepository CRs.
 
 See also: ![use case](replication.png)
 
