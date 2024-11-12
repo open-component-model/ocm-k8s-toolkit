@@ -1,7 +1,7 @@
 # Replication
 
 * Status: proposed
-* Deciders: 
+* Deciders: @fabianburth @jakobmoellerdev @frewilhelm @ikhandamirov 
 
 Technical Story: 
 
