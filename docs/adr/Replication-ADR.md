@@ -1,72 +1,54 @@
-# [short title of solved problem and solution]
+# Replication
 
-* Status: [proposed | rejected | accepted | deprecated | … | superseded by [ADR-0005](0005-example.md)] <!-- optional -->
-* Deciders: [list everyone involved in the decision] <!-- optional -->
-* Date: [YYYY-MM-DD when the decision was last updated] <!-- optional -->
+* Status: proposed
+* Deciders: 
 
-Technical Story: [description | ticket/issue URL] <!-- optional -->
+Technical Story: 
 
-## Context and Problem Statement
+Replication controller integrated into the ocm-k8s-toolkit mimics the `ocm transfer` behaviour into a controller. This allows transferring components from one registry to another  registry. A possible use case would be that the replication controller is running in an MCP cluster. One can subscribe to a certain component CR and each time the component version is updated in the CR, the newer version is automatically replicated to one or several target environments. The target environments are specified by OCMRepository CRs.
 
-[Describe the context and problem statement, e.g., in free form using two to three sentences. You may want to articulate the problem in form of a question.]
+See also: ![use case](https://private-user-images.githubusercontent.com/44143442/385005988-c0bfb64c-3576-4ac3-9ab4-8784ebb89ff0.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3MzE0MTMzMDEsIm5iZiI6MTczMTQxMzAwMSwicGF0aCI6Ii80NDE0MzQ0Mi8zODUwMDU5ODgtYzBiZmI2NGMtMzU3Ni00YWMzLTlhYjQtODc4NGViYjg5ZmYwLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNDExMTIlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjQxMTEyVDEyMDMyMVomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTk5MDQ5YzY2OTkwMmQ1N2Y2OWZlMGMzYmU1NWQxNmFlZGFmMmZhNDk0YzQ1YjQzNTNhMmNkMTlmMTBmZDdiYjYmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.eq7Q3iM8srgOiEMf5jEe8uYeHUPvSYXwD_VkJtIxydg)
 
-## Decision Drivers <!-- optional -->
+# Problem Statement and Proposed Solutions
 
-* [driver 1, e.g., a force, facing concern, …]
-* [driver 2, e.g., a force, facing concern, …]
-* … <!-- numbers of drivers can vary -->
+## Problem 1: Will replication always only work on the latest or on all in spec (SemVer of Component status)?
 
-## Considered Options
+Options:
+1. Replicate all component versions fitting to semver specified in the Component CR Spec
+2. Only replicate the latest version mentioned in the Component CR Status
 
-* [option 1]
-* [option 2]
-* [option 3]
-* … <!-- numbers of options can vary -->
+Proposed solution:
+* ..., because... 
 
-## Decision Outcome
+Possible consequences: ...
 
-Chosen option: "[option 1]", because [justification. e.g., only option, which meets k.o. criterion decision driver | which resolves force force | … | comes out best (see below)].
+## Problem 2: Should a successful replication automatically result in creation of a component and resource CRs?
 
-### Positive Consequences <!-- optional -->
+Options:
+1. Yes, always create
+2. Yes, if possible and desirable by the user
+3. No
 
-* [e.g., improvement of quality attribute satisfaction, follow-up decisions required, …]
-* …
+Proposed solution:
+* ..., because... 
 
-### Negative Consequences <!-- optional -->
+Possible consequences: ...
 
-* [e.g., compromising quality attribute, follow-up decisions required, …]
-* …
+## Problem 3: How many replication attempts do you want to keep in replication CR status?
 
-## Pros and Cons of the Options <!-- optional -->
+Options:
+* Unlimited
+* Hardcoded limit
+* CR-specific limit + default, if not specified in the CR
+* Retain all not older then X days
 
-### [option 1]
+Proposed solution:
+* ..., because... 
 
-[example | description | pointer to more information | …] <!-- optional -->
+Possible consequences: ...
 
-* Good, because [argument a]
-* Good, because [argument b]
-* Bad, because [argument c]
-* … <!-- numbers of pros and cons can vary -->
+## Problem 4: Problem 4: How to specify the transfer options?
 
-### [option 2]
-
-[example | description | pointer to more information | …] <!-- optional -->
-
-* Good, because [argument a]
-* Good, because [argument b]
-* Bad, because [argument c]
-* … <!-- numbers of pros and cons can vary -->
-
-### [option 3]
-
-[example | description | pointer to more information | …] <!-- optional -->
-
-* Good, because [argument a]
-* Good, because [argument b]
-* Bad, because [argument c]
-* … <!-- numbers of pros and cons can vary -->
-
-## Links <!-- optional -->
-
-* [Link type] [Link to ADR] <!-- example: Refined by [ADR-0005](0005-example.md) -->
-* … <!-- numbers of links can vary -->
+Options:
+1. As fields of the Replication CR
+2. As ocmconfig of type 'transport.ocm.config.ocm.software'
