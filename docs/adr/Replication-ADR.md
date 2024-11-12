@@ -7,7 +7,7 @@ Technical Story:
 
 Replication controller integrated into the ocm-k8s-toolkit mimics the `ocm transfer` behaviour into a controller. This allows transferring components from one registry to another  registry. A possible use case would be that the replication controller is running in an MCP cluster. One can subscribe to a certain component CR and each time the component version is updated in the CR, the newer version is automatically replicated to one or several target environments. The target environments are specified by OCMRepository CRs.
 
-See also: ![use case](https://private-user-images.githubusercontent.com/44143442/385005988-c0bfb64c-3576-4ac3-9ab4-8784ebb89ff0.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3MzE0MTMzMDEsIm5iZiI6MTczMTQxMzAwMSwicGF0aCI6Ii80NDE0MzQ0Mi8zODUwMDU5ODgtYzBiZmI2NGMtMzU3Ni00YWMzLTlhYjQtODc4NGViYjg5ZmYwLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNDExMTIlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjQxMTEyVDEyMDMyMVomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTk5MDQ5YzY2OTkwMmQ1N2Y2OWZlMGMzYmU1NWQxNmFlZGFmMmZhNDk0YzQ1YjQzNTNhMmNkMTlmMTBmZDdiYjYmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.eq7Q3iM8srgOiEMf5jEe8uYeHUPvSYXwD_VkJtIxydg)
+See also: ![use case](replication.png)
 
 # Problem Statement and Proposed Solutions
 
