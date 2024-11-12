@@ -5,7 +5,7 @@
 
 Technical Story: 
 
-The replication controller integrated into the ocm-k8s-toolkit mimics the `ocm transfer` behaviour into a controller. This allows transferring components from one registry to another  registry. A possible use case would be that the replication controller is running in a Management / Control-Plane cluster. One can subscribe to a certain component CR and each time the component version is updated in the CR, the newer version is automatically replicated to one or several target environments. The target environments are specified by OCMRepository CRs.
+The replication controller integrated into the ocm-k8s-toolkit mimics the `ocm transfer` behaviour into a controller. This allows transferring components from one registry to another  registry. A possible use case would be that the replication controller is running in a Management / Control-Plane cluster. One can subscribe to a certain component CR and each time the component version is updated in the CR, the newer version is automatically replicated to the target environment specified by an OCMRepository CR.
 
 See also: ![use case](replication.png)
 
@@ -30,17 +30,17 @@ Options:
 3. No
 
 Proposed solution:
-* ..., because... 
+* No, in order to keep the scope of the initial controller in check. We can revisit this later if necessary. The assumption is that the component CR for the copy should be created on a different cluster, and that is out of the scope for the replication controller.
 
 Possible consequences: ...
 
 ## Problem 3: How many replication attempts do you want to keep in replication CR status?
 
 Options:
-* Unlimited
-* Hardcoded limit
-* CR-specific limit + default, if not specified in the CR
-* Retain all not older then X days
+1. Unlimited
+2. Hardcoded limit
+3. CR-specific limit + default (if not specified in the CR)
+4. Retain all not older then X days
 
 Proposed solution:
 * ..., because... 
@@ -54,9 +54,11 @@ Options:
 2. As ocmconfig of config type 'transport.ocm.config.ocm.software' stored in a separate k8s object
 
 Note that:
-* config type 'transport.ocm.config.ocm.software' would need to be extended to support more command line options
-* same question applies to uploader configuratio
-* `--lookup` seems to be a special case. A solution could be to introduce a possibility to specify several source OCMRepository objects.
+* config type 'transport.ocm.config.ocm.software' would need to be extended to support more command line options. Though this extension looks logical, as the current differences between the config type and the command line options seem more like a mismatch at first glance.
+* same question applies to uploader configuration
+* `--lookup` seems to be a special case. A theoretical solution could be to introduce an array of source OCMRepository objects in the Replication CR.
+* `--latest` is another special case. Do we need it, if component's status always provides a concrete version?
+* not to forget `--disable-uploads` as there are know use cases for that.
 
 Proposed solution:
 * ..., because... 
@@ -67,7 +69,7 @@ Possible consequences: ...
 
 Options:
 1. No, provide the OCM Lib with source coordinates and let it download the component version from scratch.
-2. ...
+2. Use a custom source provider that allows the OCM Lib to fetch it from the HTTP URL. For this we might need a custom repository mapping that would expose it from a CTF.
 
 Proposed solution:
 * ..., because... 
@@ -80,7 +82,7 @@ Options 1: Check the state of the component in the target registry
 
 Decision driver: How do we know, if the state of the component in the target repository fits the current transfer options?
 
-Option 2: Check the history (status)
+Option 2: Check the history (status) and compare it with the desired state in the Spec.
 
 Option 3: Never check for desired state. Trigger the replication with every call to reconciler. Have no interval or large enough interval?
 
@@ -113,3 +115,8 @@ Options:
 2. Yes, have one Replication CR to control replication to several target repositories.
 
 Decision drivers: should be simple from ops / debugging PoV.
+
+Proposed solution:
+* Option 1, because it is easier to understand and to keep track of. We can always create a "ReplicationSet" later on that can deal with multiple targets. 
+
+Possible consequences: ...
