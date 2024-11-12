@@ -56,6 +56,7 @@ Options:
 Note that:
 * config type 'transport.ocm.config.ocm.software' would need to be extended to support more command line options
 * same question applies to uploader configuratio
+* `--lookup` seems to be a special case. A solution could be to introduce a possibility to specify several source OCMRepository objects.
 
 Proposed solution:
 * ..., because... 
@@ -87,3 +88,28 @@ Proposed solution:
 * ..., because... 
 
 Possible consequences: ...
+
+## Problem 7: Do we need to store ocmconfig with transfer options in a dedicated field in the Spec?
+
+and a dedicated field in the Status with transfer options as clear text.
+
+Options:
+1. No, use generic ConfigRefs
+2. Yes, use a dedicated field with a reference to a ConfigMap
+
+Decision driver: an SRE might need a way to quickly find which transfer options an individual replication run was executed with.
+
+Note: same question applies to uploader configuration.
+
+Proposed solution:
+* ..., because... 
+
+Possible consequences: ...
+
+## Problem 8: Should a Replication CR support several target OCMRepositories?
+
+Options:
+1. No, have one Replication CR per target repository
+2. Yes, have one Replication CR to control replication to several target repositories.
+
+Decision drivers: should be simple from ops / debugging PoV.
