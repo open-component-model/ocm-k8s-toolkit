@@ -47,8 +47,43 @@ Proposed solution:
 
 Possible consequences: ...
 
-## Problem 4: Problem 4: How to specify the transfer options?
+## Problem 4: How to specify the transfer options?
 
 Options:
 1. As fields of the Replication CR
-2. As ocmconfig of type 'transport.ocm.config.ocm.software'
+2. As ocmconfig of config type 'transport.ocm.config.ocm.software' stored in a separate k8s object
+
+Note that:
+* config type 'transport.ocm.config.ocm.software' would need to be extended to support more command line options
+* same question applies to uploader configuratio
+
+Proposed solution:
+* ..., because... 
+
+Possible consequences: ...
+
+## Problem 5: Should the Replication controller take the Artifact CR prepared by the Component Controller into account?
+
+Options:
+1. No, provide the OCM Lib with source coordinates and let it download the component version from scratch.
+2. ...
+
+Proposed solution:
+* ..., because... 
+
+Possible consequences: ...
+
+## Problem 6: How to check the desired state of the Replication?
+
+Options 1: Check the state of the component in the target registry
+
+Decision driver: How do we know, if the state of the component in the target repository fits the current transfer options?
+
+Option 2: Check the history (status)
+
+Option 3: Never check for desired state. Trigger the replication with every call to reconciler. Have no interval or large enough interval?
+
+Proposed solution:
+* ..., because... 
+
+Possible consequences: ...
