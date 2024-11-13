@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -50,13 +51,33 @@ type ReplicationSpec struct {
 	// +kubebuilder:default:=10
 	// +optional
 	HistoryCapacity int `json:"historyLength,omitempty"`
+
+	// Verification of the copied component in the target repository is required.
+	// Verify contains a signature name specifying the component signature to be
+	// verified as well as the trusted public keys (or certificates containing
+	// the public keys) used to verify the signature.
+	// +optional
+	Verify []Verification `json:"verify,omitempty"`
+
+	// +optional
+	SecretRefs []corev1.LocalObjectReference `json:"secretRefs,omitempty"`
+
+	// +optional
+	ConfigRefs []corev1.LocalObjectReference `json:"configRefs,omitempty"`
+
+	// The secrets and configs referred to by SecretRef (or SecretRefs) and Config (or ConfigRefs) may contain ocm
+	// config data. The  ocm config allows to specify sets of configuration data
+	// (s. https://ocm.software/docs/cli-reference/help/configfile/). If the SecretRef (or SecretRefs) and ConfigRef and
+	// ConfigRefs contain ocm config sets, the user may specify which config set he wants to be effective.
+	// +optional
+	ConfigSet *string `json:"configSet"`
 }
 
 // ReplicationStatus defines the observed state of Replication.
 type ReplicationStatus struct {
-	// History holds the history of replication runs.
+	// History holds the history of individual 'ocm transfer' runs.
 	// +optional
-	History []TransferRun `json:"history,omitempty"`
+	History []TransferStatus `json:"history,omitempty"`
 
 	// ObservedGeneration is the last observed generation of the Replication
 	// object.
@@ -66,10 +87,37 @@ type ReplicationStatus struct {
 	// Conditions holds the conditions for the Replication.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// Propagate its effective secrets. Other controllers (e.g. Resource
+	// controller) may use this as default if they do not explicitly refer a
+	// secret.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
+	// +optional
+	SecretRefs []corev1.LocalObjectReference `json:"secretRefs,omitempty"`
+
+	// Propagate its effective configs. Other controllers (e.g. Component or
+	// Resource controller) may use this as default if they do not explicitly
+	// refer a config.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
+	// +optional
+	ConfigRefs []corev1.LocalObjectReference `json:"configRefs,omitempty"`
+
+	// Propagate its effective config set. Other controllers (e.g. Component or
+	// Resource controller) may use this as default if they do not explicitly
+	// specify a config set.
+	// This is required to allow transitive defaulting (thus, e.g. Component
+	// defaults from OCMRepository and Resource defaults from Component) without
+	// having to traverse the entire chain.
+	// +optional
+	ConfigSet string `json:"configSet,omitempty"`
 }
 
-// TransferRun holds the status of a single 'ocm transfer' run.
-type TransferRun struct {
+// TransferStatus holds the status of a single 'ocm transfer' run.
+type TransferStatus struct {
 	// Component is the fully qualified name of the OCM component.
 	// +required
 	Component string `json:"component"`
@@ -132,7 +180,7 @@ func (repl *Replication) SetObservedGeneration(v int64) {
 	repl.Status.ObservedGeneration = v
 }
 
-func (repl *Replication) AddHistoryRecord(rec TransferRun) {
+func (repl *Replication) AddHistoryRecord(rec TransferStatus) {
 	if len(repl.Status.History) >= repl.Spec.HistoryCapacity {
 		repl.Status.History = repl.Status.History[1:]
 	}
@@ -150,6 +198,30 @@ func (repl *Replication) IsInHistory(component, version, targetSpec string) bool
 	}
 
 	return false
+}
+
+func (repl *Replication) GetSecretRefs() []corev1.LocalObjectReference {
+	return repl.Spec.SecretRefs
+}
+
+func (repl *Replication) GetEffectiveSecretRefs() []corev1.LocalObjectReference {
+	return repl.Status.SecretRefs
+}
+
+func (repl *Replication) GetConfigRefs() []corev1.LocalObjectReference {
+	return repl.Spec.ConfigRefs
+}
+
+func (repl *Replication) GetEffectiveConfigRefs() []corev1.LocalObjectReference {
+	return repl.Status.ConfigRefs
+}
+
+func (repl *Replication) GetConfigSet() *string {
+	return repl.Spec.ConfigSet
+}
+
+func (repl *Replication) GetEffectiveConfigSet() string {
+	return repl.Status.ConfigSet
 }
 
 // +kubebuilder:object:root=true

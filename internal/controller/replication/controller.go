@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -149,7 +150,7 @@ func (r *Reconciler) reconcile(ctx context.Context, replication *v1alpha1.Replic
 		return ctrl.Result{RequeueAfter: replication.GetRequeueAfter()}, nil
 	}
 
-	historyRecord, err := r.transfer(comp, repo)
+	historyRecord, err := r.transfer(ctx, replication, comp, repo)
 	if err != nil {
 		historyRecord.Error = err.Error()
 		historyRecord.EndTime = metav1.Now()
@@ -161,13 +162,16 @@ func (r *Reconciler) reconcile(ctx context.Context, replication *v1alpha1.Replic
 		return ctrl.Result{}, err
 	}
 
-	replication.AddHistoryRecord(historyRecord)
+	// Update status
+	r.setReplicationStatus(replication, historyRecord)
 	status.MarkReady(r.EventRecorder, replication, "Successfully replicated %s to %s", comp.Name, repo.Name)
 
 	return ctrl.Result{RequeueAfter: replication.GetRequeueAfter()}, nil
 }
 
-func (r *Reconciler) transfer(comp *v1alpha1.Component, targetOCMRepo *v1alpha1.OCMRepository) (historyRecord v1alpha1.TransferRun, retErr error) {
+func (r *Reconciler) transfer(ctx context.Context,
+	replication *v1alpha1.Replication, comp *v1alpha1.Component, targetOCMRepo *v1alpha1.OCMRepository,
+) (historyRecord v1alpha1.TransferStatus, retErr error) {
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
 	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
 	// instance and not at the global default context variable.
@@ -182,14 +186,19 @@ func (r *Reconciler) transfer(comp *v1alpha1.Component, targetOCMRepo *v1alpha1.
 	// automatically close the session when the ocm context is closed in the above defer
 	// octx.Finalizer().Close(session)
 
-	// TODO: configure OCM context
-
-	historyRecord = v1alpha1.TransferRun{
+	historyRecord = v1alpha1.TransferStatus{
 		StartTime:            metav1.Now(),
 		Component:            comp.Status.Component.Component,
 		Version:              comp.Status.Component.Version,
 		SourceRepositorySpec: string(comp.Status.Component.RepositorySpec.Raw),
 		TargetRepositorySpec: string(targetOCMRepo.Spec.RepositorySpec.Raw),
+	}
+
+	err := r.ConfigureOCMContext(ctx, octx, replication, comp, targetOCMRepo)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, replication, v1alpha1.ConfigureContextFailedReason, "Configuring OCM context failed")
+
+		return historyRecord, err
 	}
 
 	sourceSpec, err := octx.RepositorySpecForConfig(comp.Status.Component.RepositorySpec.Raw, nil)
@@ -255,6 +264,46 @@ func (r *Reconciler) transfer(comp *v1alpha1.Component, targetOCMRepo *v1alpha1.
 	historyRecord.EndTime = metav1.Now()
 
 	return historyRecord, nil
+}
+
+func (r *Reconciler) ConfigureOCMContext(ctx context.Context, octx ocmctx.Context,
+	replication *v1alpha1.Replication, comp *v1alpha1.Component, targetOCMRepo *v1alpha1.OCMRepository,
+) error {
+	sourceOCMRepo := &v1alpha1.OCMRepository{}
+	if err := r.Get(ctx, types.NamespacedName{
+		Namespace: comp.Spec.RepositoryRef.Namespace,
+		Name:      comp.Spec.RepositoryRef.Name,
+	}, sourceOCMRepo); err != nil {
+		return fmt.Errorf("failed to configure ocmcontext: %w", err)
+	}
+
+	err := ocm.ConfigureOCMContext(ctx, r, octx, comp, sourceOCMRepo)
+	if err != nil {
+		return fmt.Errorf("failed to configure ocmcontext: %w", err)
+	}
+
+	err = ocm.ConfigureOCMContext(ctx, r, octx, targetOCMRepo, targetOCMRepo)
+	if err != nil {
+		return fmt.Errorf("failed to configure ocmcontext: %w", err)
+	}
+
+	err = ocm.ConfigureOCMContext(ctx, r, octx, replication, replication)
+	if err != nil {
+		return fmt.Errorf("failed to configure ocmcontext: %w", err)
+	}
+
+	return nil
+}
+
+func (r *Reconciler) setReplicationStatus(replication *v1alpha1.Replication, historyRecord v1alpha1.TransferStatus) {
+	replication.AddHistoryRecord(historyRecord)
+
+	replication.Status.ConfigRefs = slices.Clone(replication.Spec.ConfigRefs)
+	replication.Status.SecretRefs = slices.Clone(replication.Spec.SecretRefs)
+
+	if replication.Spec.ConfigSet != nil {
+		replication.Status.ConfigSet = *replication.Spec.ConfigSet
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
