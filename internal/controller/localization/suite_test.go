@@ -16,6 +16,8 @@ package localization
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -27,6 +29,7 @@ import (
 	"github.com/openfluxcd/controller-manager/server"
 	"github.com/openfluxcd/controller-manager/storage"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
@@ -72,7 +75,17 @@ var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
 	By("bootstrapping test environment")
-	artifactCRD, err := test.GetCRDFromURL(ARTIFACT_CRD)
+	artifactCRD, err := test.ParseCRD(serializer.NewCodecFactory(scheme.Scheme).UniversalDeserializer(), func() ([]byte, error) {
+		resp, err := http.Get(ARTIFACT_CRD)
+		if err != nil {
+			return []byte{}, fmt.Errorf("failed to download CRD: %w", err)
+		}
+		DeferCleanup(func() error {
+			return resp.Body.Close()
+		})
+
+		return io.ReadAll(resp.Body)
+	})
 	Expect(err).NotTo(HaveOccurred())
 
 	testEnv = &envtest.Environment{
