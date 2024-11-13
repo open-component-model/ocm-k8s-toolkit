@@ -26,6 +26,7 @@ import (
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/server"
 	"github.com/openfluxcd/controller-manager/storage"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
@@ -40,6 +41,7 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	cfgclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/client"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -48,6 +50,7 @@ import (
 
 const (
 	ARTIFACT_SERVER = "localhost:0"
+	ARTIFACT_CRD    = "https://raw.githubusercontent.com/openfluxcd/artifact/refs/heads/main/config/crd/bases/openfluxcd.ocm.software_artifacts.yaml"
 )
 
 var cfg *rest.Config
@@ -67,9 +70,14 @@ var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
 	By("bootstrapping test environment")
+	artifactCRD, err := test.GetCRDFromURL(ARTIFACT_CRD)
+	Expect(err).NotTo(HaveOccurred())
+
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
+
+		CRDs: []*apiextensionsv1.CustomResourceDefinition{artifactCRD},
 
 		// The BinaryAssetsDirectory is only required if you want to run the tests directly
 		// without call the makefile target test. If not informed it will look for the
@@ -80,7 +88,6 @@ var _ = BeforeSuite(func() {
 			fmt.Sprintf("1.30.0-%s-%s", runtime.GOOS, runtime.GOARCH)),
 	}
 
-	var err error
 	// cfg is defined in this file globally.
 	cfg, err = testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())

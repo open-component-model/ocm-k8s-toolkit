@@ -4,12 +4,16 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/mandelsoft/vfs/pkg/memoryfs"
 	"github.com/mandelsoft/vfs/pkg/vfs"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/tools/record"
 	"ocm.software/ocm/api/utils/tarutils"
 
@@ -230,4 +234,41 @@ func CreateTGZ(tgzPackageDir string, data map[string][]byte) {
 		_, err = writer.Write(data)
 		Expect(err).ToNot(HaveOccurred())
 	}
+}
+
+func GetCRDFromURL(url string) (*apiextensionsv1.CustomResourceDefinition, error) {
+	// Make an HTTP GET request to download the CRD file.
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download CRD: %w", err)
+	}
+	DeferCleanup(func() error {
+		return resp.Body.Close()
+	})
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	// Read the response body.
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Create a Kubernetes scheme and add the apiextensions API group.
+	scheme := runtime.NewScheme()
+	if err := apiextensionsv1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("failed to add CRD scheme: %w", err)
+	}
+
+	// Decode the YAML or JSON CRD file.
+	codecs := serializer.NewCodecFactory(scheme)
+	decoder := codecs.UniversalDeserializer()
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	if _, _, err := decoder.Decode(body, nil, crd); err != nil {
+		return nil, fmt.Errorf("failed to decode CRD: %w", err)
+	}
+
+	return crd, nil
 }
