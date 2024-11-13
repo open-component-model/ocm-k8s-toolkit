@@ -18,9 +18,11 @@ Options:
 2. Only replicate the latest version mentioned in the Component CR Status
 
 Proposed solution:
-* ..., because... 
+* Option 2, i.e. replicate the version mentioned in the status of the component CR. 
 
-Possible consequences: ...
+Possible consequences:
+* A possibility to replicate all versions or a range of versions can be added later, if required. Btw., OCM library currently does not provide this out of the box.
+* Potential problem: it can happen that some in-between versions have not been replicated for some reason. How to get them replicated, if component CR is already on a greater version?
 
 ## Problem 2: Should a successful replication automatically result in creation of a component and resource CRs?
 
@@ -104,7 +106,7 @@ Decision driver: an SRE might need a way to quickly find which transfer options 
 Note: same question applies to uploader configuration.
 
 Proposed solution:
-* ..., because... 
+* Use option 1 (generic ConfigRefs), because this is a common pattern across ocm-k8s-toolkit controllers.
 
 Possible consequences: ...
 
