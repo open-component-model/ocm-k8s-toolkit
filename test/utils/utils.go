@@ -17,10 +17,13 @@ limitations under the License.
 package utils
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"text/template"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive,stylecheck // ginkgo...
 	"github.com/openfluxcd/artifact/test/utils"
@@ -112,4 +115,130 @@ func SanitizeRegistryURL(registryURL string) (string, string) {
 	}
 
 	return "", registryURL
+}
+
+// TODO: The parameters seem to be a bit arbitrary. Maybe find some good words to clarify it or find a better idea.
+func ConfigureAndDeployResources(manifestPath, imageReference, imageRegistryTransport, imageRegistryOCMRepository string) error {
+	By("creating ocm component")
+	tmpDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		return fmt.Errorf("could not create temporary directory: %w", err)
+	}
+	DeferCleanup(func() error {
+		return os.RemoveAll(tmpDir)
+	})
+
+	// The localization should replace the original value of the resource image reference with the new
+	// image reference from our image registry.
+	// In some test-scenarios an internal image registry inside the cluster is used to store the images.
+	// If this is the case, the OCM component-constructor cannot hold a static registry-url. Therefore,
+	// go-template is used to replace the registry-url.
+	//   If the environment variable INTERNAL_IMAGE_REGISTRY_URL is present, its value will be used.
+	//   If the environment variable is not present, the initial value from IMAGE_REGISTRY_URL will be used.
+	ctfDir := filepath.Join(tmpDir, "ctf")
+	cmd := exec.Command("ocm",
+		"add",
+		"componentversions",
+		"--create",
+		"--file", ctfDir,
+		filepath.Join(manifestPath, "component-constructor.yaml"),
+		"--templater", "go",
+		"LocalizationConfigPath="+filepath.Join(manifestPath, "localization-config.yaml"),
+		"ImageReference="+imageReference,
+	)
+	_, err = utils.Run(cmd)
+	if err != nil {
+		return fmt.Errorf("could not create ocm component: %w", err)
+	}
+
+	cmd = exec.Command("ocm", "transfer", "ctf", "--overwrite", ctfDir, imageRegistryTransport)
+	_, err = utils.Run(cmd)
+	if err != nil {
+		return fmt.Errorf("could not transfer ocm component: %w", err)
+	}
+
+	By("creating and validating the custom resource OCM repository")
+	// In some test-scenarios an internal image registry inside the cluster is used to upload the components.
+	// If this is the case, the OCM repository manifest cannot hold a static registry-url. Therefore,
+	// go-template is used to replace the registry-url.
+	//   If the environment variable INTERNAL_IMAGE_REGISTRY_URL is present, its value will be used.
+	//   If the environment variable is not present, the initial value from IMAGE_REGISTRY_URL will be used.
+	manifestOCMRepository := filepath.Join(manifestPath, "ocmrepository.yaml")
+	manifestContent, err := os.ReadFile(manifestOCMRepository)
+	if err != nil {
+		return fmt.Errorf("could not read ocm repository manifest: %w", err)
+	}
+
+	tmplOCMRepository, err := template.New("manifest").Parse(string(manifestContent))
+	if err != nil {
+		return fmt.Errorf("could not parse ocm repository manifest: %w", err)
+	}
+
+	dataOCMRepository := map[string]string{
+		"ImageRegistry": imageRegistryOCMRepository,
+	}
+
+	var result bytes.Buffer
+	if err := tmplOCMRepository.Execute(&result, dataOCMRepository); err != nil {
+		return fmt.Errorf("could not execute ocm repository manifest: %w", err)
+	}
+
+	const perm = 0o644
+	manifestOCMRepository = filepath.Join(tmpDir, "manifestOCMRespository.yaml")
+	if err := os.WriteFile(manifestOCMRepository, result.Bytes(), perm); err != nil {
+		return fmt.Errorf("could not write ocm repository manifest: %w", err)
+	}
+	if err := DeployAndWaitForResource(manifestOCMRepository, "condition=Ready"); err != nil {
+		return fmt.Errorf("could not deploy ocm component: %w", err)
+	}
+
+	By("creating and validating the custom resource OCM component")
+	manifestComponent := filepath.Join(manifestPath, "component.yaml")
+	if err := DeployAndWaitForResource(manifestComponent, "condition=Ready"); err != nil {
+		return fmt.Errorf("could not deploy ocm component: %w", err)
+	}
+
+	By("creating and validating the custom resource OCM resource")
+	manifestResource := filepath.Join(manifestPath, "resource.yaml")
+	if err := DeployAndWaitForResource(manifestResource, "condition=Ready"); err != nil {
+		return fmt.Errorf("could not deploy ocm resource: %w", err)
+	}
+
+	By("creating and validating the custom resource localization resource")
+	manifestLocalizationResource := filepath.Join(manifestPath, "localization-resource.yaml")
+	if err := DeployAndWaitForResource(manifestLocalizationResource, "condition=Ready"); err != nil {
+		return fmt.Errorf("could not deploy ocm localization resource: %w", err)
+	}
+
+	By("creating and validating the custom resource localized resource")
+	manifestLocalizedResource := filepath.Join(manifestPath, "localized-resource.yaml")
+	if err := DeployAndWaitForResource(manifestLocalizedResource, "condition=Ready"); err != nil {
+		return fmt.Errorf("could not deploy ocm localized resource: %w", err)
+	}
+
+	By("creating and validating the custom resource for the release")
+	manifestRelease := filepath.Join(manifestPath, "release.yaml")
+	if err := DeployAndWaitForResource(manifestRelease, "condition=Ready"); err != nil {
+		return fmt.Errorf("could not deploy release: %w", err)
+	}
+
+	return nil
+}
+
+func GetVerifyPodFieldFunc(labelSelector, fieldQuery, expect string) error {
+	return func() error {
+		cmd := exec.Command("kubectl", "get", "pod", "-l", labelSelector, "-o", fieldQuery)
+		output, err := utils.Run(cmd)
+		if err != nil {
+			return fmt.Errorf("failed to get podinfo: %w", err)
+		}
+
+		podField := strings.ReplaceAll(string(output), "\"", "")
+
+		if podField != expect {
+			return fmt.Errorf("expected pod field: %s, got: %s", expect, podField)
+		}
+
+		return nil
+	}()
 }
