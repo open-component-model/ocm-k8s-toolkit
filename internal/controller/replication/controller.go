@@ -154,7 +154,7 @@ func (r *Reconciler) reconcile(ctx context.Context, replication *v1alpha1.Replic
 	if err != nil {
 		historyRecord.Error = err.Error()
 		historyRecord.EndTime = metav1.Now()
-		replication.AddHistoryRecord(historyRecord)
+		r.setReplicationStatus(replication, historyRecord)
 
 		logger.Info("error transferring component", "component", comp.Name, "targetRepository", repo.Name)
 		status.MarkNotReady(r.EventRecorder, replication, v1alpha1.ReplicationFailedReason, err.Error())

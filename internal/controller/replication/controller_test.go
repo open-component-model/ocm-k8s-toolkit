@@ -107,20 +107,7 @@ var _ = Describe("Replication Controller", func() {
 			})
 
 			By("Create source repository resource")
-			sourceSpec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, sourcePath))
-			sourceSpecData := Must(sourceSpec.MarshalJSON())
-			sourceRepo := &v1alpha1.OCMRepository{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: testNamespace,
-					Name:      sourceRepoResourceName,
-				},
-				Spec: v1alpha1.OCMRepositorySpec{
-					RepositorySpec: &apiextensionsv1.JSON{
-						Raw: sourceSpecData,
-					},
-					Interval: metav1.Duration{Duration: time.Minute * 10},
-				},
-			}
+			sourceRepo, sourceSpecData := newCFTRepository(testNamespace, sourceRepoResourceName, sourcePath)
 			Expect(k8sClient.Create(ctx, sourceRepo)).To(Succeed())
 
 			By("Simulate ocmrepository controller for source repository")
@@ -128,29 +115,11 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, sourceRepo)).To(Succeed())
 
 			By("Create source component resource")
-			component := &v1alpha1.Component{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: testNamespace,
-					Name:      compResourceName,
-				},
-				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: testNamespace,
-						Name:      sourceRepoResourceName,
-					},
-					Component: compOCMName,
-					Semver:    compVersion,
-					Interval:  metav1.Duration{Duration: time.Minute * 10},
-				},
-			}
+			component := newComponent(testNamespace, compResourceName, sourceRepoResourceName, compOCMName, compVersion)
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("Simulate component controller")
-			component.Status.Component = v1alpha1.ComponentInfo{
-				RepositorySpec: &apiextensionsv1.JSON{Raw: sourceSpecData},
-				Component:      compOCMName,
-				Version:        compVersion,
-			}
+			component.Status.Component = *newComponentInfo(compOCMName, compVersion, sourceSpecData)
 			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
@@ -162,60 +131,64 @@ var _ = Describe("Replication Controller", func() {
 			})
 
 			By("Create target repository resource")
-			targetSpec := Must(ctf.NewRepositorySpec(ctf.ACC_CREATE, targetPath))
-			targetSpecData := Must(targetSpec.MarshalJSON())
-			targetRepo := &v1alpha1.OCMRepository{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: testNamespace,
-					Name:      targetRepoResourceName,
-				},
-				Spec: v1alpha1.OCMRepositorySpec{
-					RepositorySpec: &apiextensionsv1.JSON{
-						Raw: targetSpecData,
-					},
-					Interval: metav1.Duration{Duration: time.Minute * 10},
-				},
-			}
+			targetRepo, targetSpecData := newCFTRepository(testNamespace, targetRepoResourceName, targetPath)
 			Expect(k8sClient.Create(ctx, targetRepo)).To(Succeed())
 
 			By("Simulate ocmrepository controller for target repository")
-			targetRepo.Spec.RepositorySpec.Raw = targetSpecData
+			targetRepo.Spec.RepositorySpec.Raw = *targetSpecData
 			conditions.MarkTrue(targetRepo, meta.ReadyCondition, "ready", "")
 			Expect(k8sClient.Status().Update(ctx, targetRepo)).To(Succeed())
 
 			By("Create and reconcile Replication resource")
-			replication := &v1alpha1.Replication{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      replResourceName,
-					Namespace: testNamespace,
-				},
-				Spec: v1alpha1.ReplicationSpec{
-					ComponentRef: v1alpha1.ObjectKey{
-						Name:      compResourceName,
-						Namespace: testNamespace,
-					},
-					TargetRepositoryRef: v1alpha1.ObjectKey{
-						Name:      targetRepoResourceName,
-						Namespace: testNamespace,
-					},
-				},
-			}
+			replication := newReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
 			Expect(k8sClient.Create(ctx, replication)).To(Succeed())
 
+			replication = &v1alpha1.Replication{}
+			maxDuration := 10 * time.Second
 			Eventually(func() bool {
 				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
-				return conditions.IsReady(replication)
-			}).WithTimeout(10 * time.Second).Should(BeTrue())
+				// TODO: with IsReady only the test flickers. Why is it not sufficient???
+				return conditions.IsReady(replication) && replication.Status.ObservedGeneration > 0
+			}).WithTimeout(maxDuration).Should(BeTrue())
 
 			Expect(replication.Status.History).To(HaveLen(1))
 			Expect(replication.Status.History[0].Component).To(Equal(compOCMName))
 			Expect(replication.Status.History[0].Version).To(Equal(compVersion))
-			Expect(replication.Status.History[0].SourceRepositorySpec).To(Equal(string(sourceSpecData)))
-			Expect(replication.Status.History[0].TargetRepositorySpec).To(Equal(string(targetSpecData)))
+			Expect(replication.Status.History[0].SourceRepositorySpec).To(Equal(string(*sourceSpecData)))
+			Expect(replication.Status.History[0].TargetRepositorySpec).To(Equal(string(*targetSpecData)))
 			Expect(replication.Status.History[0].StartTime).NotTo(BeZero())
 			Expect(replication.Status.History[0].EndTime).NotTo(BeZero())
 			Expect(replication.Status.History[0].Error).To(BeEmpty())
 			Expect(replication.Status.History[0].Success).To(BeTrue())
+
+			By("Create a newer component version")
+			compNewVersion := "0.2.0"
+			env.OCMCommonTransport(sourcePath, accessio.FormatDirectory, func() {
+				env.Component(compOCMName, func() {
+					env.Version(compNewVersion, func() {
+						env.Resource("image", "1.0.0", resourcetypes.OCI_IMAGE, ocmmetav1.ExternalRelation, func() {
+							env.Access(
+								ociartifact.New("gcr.io/google_containers/echoserver:1.10"),
+							)
+						})
+					})
+				})
+			})
+
+			By("Simulate component controller discovering the newer version")
+			component.Status.Component = *newComponentInfo(compOCMName, compNewVersion, sourceSpecData)
+			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
+			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
+
+			By("Expect Replication controller to transfer the new version withing the interval")
+			waitingTime := replication.GetRequeueAfter() + maxDuration
+			replication = &v1alpha1.Replication{}
+			Eventually(func() bool {
+				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
+				return conditions.IsReady(replication) && len(replication.Status.History) == 2
+			}).WithTimeout(waitingTime).Should(BeTrue())
+
+			Expect(replication.Status.History[1].Version).To(Equal(compNewVersion))
 
 			By("Cleanup the resources")
 			Expect(k8sClient.Delete(ctx, replication)).To(Succeed())
@@ -225,3 +198,66 @@ var _ = Describe("Replication Controller", func() {
 		})
 	})
 })
+
+func newCFTRepository(namespace, name, path string) (*v1alpha1.OCMRepository, *[]byte) {
+	spec := Must(ctf.NewRepositorySpec(ctf.ACC_CREATE, path))
+	specData := Must(spec.MarshalJSON())
+	return &v1alpha1.OCMRepository{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      name,
+		},
+		Spec: v1alpha1.OCMRepositorySpec{
+			RepositorySpec: &apiextensionsv1.JSON{
+				Raw: specData,
+			},
+			Interval: metav1.Duration{Duration: time.Minute * 10},
+		},
+	}, &specData
+}
+
+func newComponent(namespace, name, repoName, ocmName, ocmVersion string) *v1alpha1.Component {
+	return &v1alpha1.Component{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      name,
+		},
+		Spec: v1alpha1.ComponentSpec{
+			RepositoryRef: v1alpha1.ObjectKey{
+				Namespace: namespace,
+				Name:      repoName,
+			},
+			Component: ocmName,
+			Semver:    ocmVersion,
+			Interval:  metav1.Duration{Duration: time.Minute * 10},
+		},
+	}
+}
+
+func newReplication(namespace, name, compName, targetRepoName string) *v1alpha1.Replication {
+	return &v1alpha1.Replication{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: v1alpha1.ReplicationSpec{
+			ComponentRef: v1alpha1.ObjectKey{
+				Name:      compName,
+				Namespace: namespace,
+			},
+			TargetRepositoryRef: v1alpha1.ObjectKey{
+				Name:      targetRepoName,
+				Namespace: namespace,
+			},
+			Interval: metav1.Duration{Duration: time.Second * 20},
+		},
+	}
+}
+
+func newComponentInfo(ocmName, ocmVersion string, rawRepoSpec *[]byte) *v1alpha1.ComponentInfo {
+	return &v1alpha1.ComponentInfo{
+		RepositorySpec: &apiextensionsv1.JSON{Raw: *rawRepoSpec},
+		Component:      ocmName,
+		Version:        ocmVersion,
+	}
+}

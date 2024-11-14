@@ -181,6 +181,14 @@ func (repl *Replication) SetObservedGeneration(v int64) {
 }
 
 func (repl *Replication) AddHistoryRecord(rec TransferStatus) {
+	if repl.Spec.HistoryCapacity == 0 {
+		return
+	}
+
+	if repl.Status.History == nil {
+		repl.Status.History = make([]TransferStatus, 0)
+	}
+
 	if len(repl.Status.History) >= repl.Spec.HistoryCapacity {
 		repl.Status.History = repl.Status.History[1:]
 	}
