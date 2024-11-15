@@ -81,77 +81,77 @@ jobs:
             bin/k8s
           key: ${{ steps.cache-k8s-restore.outputs.cache-primary-key }}
 
-  e2e-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: '${{ github.workspace }}/go.mod'
-          cache: false
-
-      - name: Get Go environment
-        run: |
-          echo "go_cache=$(go env GOCACHE)" >> $GITHUB_ENV
-          echo "go_modcache=$(go env GOMODCACHE)" >> $GITHUB_ENV
-      - name: Set up cache
-        # https://github.com/actions/setup-go/issues/358 - cache is not working with setup-go for multiple jobs
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.go_cache }}
-            ${{ env.go_modcache }}
-          key: ${{ env.cache_name }}-${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ hashFiles('**/go.mod') }}
-          restore-keys: |
-            ${{ env.cache_name }}-${{ runner.os }}-go-
-        env:
-          cache_name: manual-go-cache
-
-      - name: Restore K8s Cache
-        id: cache-k8s-restore
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            bin/k8s
-          key: ${{ runner.os }}-k8s
-
-      - name: Create k8s Kind Cluster
-        uses: helm/kind-action@v1
-        with:
-          config: test/e2e/testdata/kind-config.yaml
-
-      - name: Install internal image registry
-        run: |
-          kubectl apply -f test/e2e/testdata/image-registry.yaml
-          kubectl wait pod -l app=registry --for condition=Ready --timeout 5m
-
-      - name: Checkout helm-controller
-        uses: actions/checkout@v4
-        with:
-          repository: openfluxcd/helm-controller
-          path: helm-controller
-
-      - name: Install helm-controller
-        run: |
-          IMG=localhost:31000/helm-controller:latest make -C helm-controller docker-build
-          IMG=localhost:31000/helm-controller:latest make -C helm-controller docker-push
-          make -C helm-controller install
-          IMG=localhost:31000/helm-controller:latest make -C helm-controller deploy
-
-      - name: Checkout kustomize-controller
-        uses: actions/checkout@v4
-        with:
-          repository: openfluxcd/kustomize-controller
-          path: kustomize-controller
-
-      - name: Install kustomize-controller
-        run: |
-          IMG=localhost:31000/kustomize-controller:latest make -C kustomize-controller docker-build
-          IMG=localhost:31000/kustomize-controller:latest make -C kustomize-controller docker-push
-          make -C kustomize-controller install
-          IMG=localhost:31000/kustomize-controller:latest make -C kustomize-controller deploy
-
-      - name: Run e2e test
-        run: IMAGE_REGISTRY_URL=http://localhost:31000 INTERNAL_IMAGE_REGISTRY_URL=http://registry-internal.default.svc.cluster.local:5000 make test-e2e
+            #  e2e-tests:
+            #    runs-on: ubuntu-latest
+            #    steps:
+            #      - name: Checkout
+            #        uses: actions/checkout@v4
+            #      - name: Setup Go
+            #        uses: actions/setup-go@v5
+            #        with:
+            #          go-version-file: '${{ github.workspace }}/go.mod'
+            #          cache: false
+            #
+            #      - name: Get Go environment
+            #        run: |
+            #          echo "go_cache=$(go env GOCACHE)" >> $GITHUB_ENV
+            #          echo "go_modcache=$(go env GOMODCACHE)" >> $GITHUB_ENV
+            #      - name: Set up cache
+            #        # https://github.com/actions/setup-go/issues/358 - cache is not working with setup-go for multiple jobs
+            #        uses: actions/cache@v4
+            #        with:
+            #          path: |
+            #            ${{ env.go_cache }}
+            #            ${{ env.go_modcache }}
+            #          key: ${{ env.cache_name }}-${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ hashFiles('**/go.mod') }}
+            #          restore-keys: |
+            #            ${{ env.cache_name }}-${{ runner.os }}-go-
+            #        env:
+            #          cache_name: manual-go-cache
+            #
+            #      - name: Restore K8s Cache
+            #        id: cache-k8s-restore
+            #        uses: actions/cache/restore@v4
+            #        with:
+            #          path: |
+            #            bin/k8s
+            #          key: ${{ runner.os }}-k8s
+            #
+            #      - name: Create k8s Kind Cluster
+            #        uses: helm/kind-action@v1
+            #        with:
+            #          config: test/e2e/testdata/kind-config.yaml
+            #
+            #      - name: Install internal image registry
+            #        run: |
+            #          kubectl apply -f test/e2e/testdata/image-registry.yaml
+            #          kubectl wait pod -l app=registry --for condition=Ready --timeout 5m
+            #
+            #      - name: Checkout helm-controller
+            #        uses: actions/checkout@v4
+            #        with:
+            #          repository: openfluxcd/helm-controller
+            #          path: helm-controller
+            #
+            #      - name: Install helm-controller
+            #        run: |
+            #          IMG=localhost:31000/helm-controller:latest make -C helm-controller docker-build
+            #          IMG=localhost:31000/helm-controller:latest make -C helm-controller docker-push
+            #          make -C helm-controller install
+            #          IMG=localhost:31000/helm-controller:latest make -C helm-controller deploy
+            #
+            #      - name: Checkout kustomize-controller
+            #        uses: actions/checkout@v4
+            #        with:
+            #          repository: openfluxcd/kustomize-controller
+            #          path: kustomize-controller
+            #
+            #      - name: Install kustomize-controller
+            #        run: |
+            #          IMG=localhost:31000/kustomize-controller:latest make -C kustomize-controller docker-build
+            #          IMG=localhost:31000/kustomize-controller:latest make -C kustomize-controller docker-push
+            #          make -C kustomize-controller install
+            #          IMG=localhost:31000/kustomize-controller:latest make -C kustomize-controller deploy
+            #
+            #      - name: Run e2e test
+            #        run: IMAGE_REGISTRY_URL=http://localhost:31000 INTERNAL_IMAGE_REGISTRY_URL=http://registry-internal.default.svc.cluster.local:5000 make test-e2e

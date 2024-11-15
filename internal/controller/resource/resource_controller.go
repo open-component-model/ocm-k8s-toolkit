@@ -391,12 +391,12 @@ func getBlobAccess(ctx context.Context, access ocmctx.ResourceAccess) (blobacces
 func verifyResource(ctx context.Context, access ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAccess, cd *compdesc.ComponentDescriptor) error {
 	log.FromContext(ctx).V(1).Info("verify resource")
 
-	// TODO: Add controller flag to force user to actively set the flag
+	// TODO: https://github.com/open-component-model/ocm-k8s-toolkit/issues/71
 	index := cd.GetResourceIndex(access.Meta())
-	raw := &cd.Resources[index]
 	if index < 0 {
 		return errors2.ErrNotFound("resource")
 	}
+	raw := &cd.Resources[index]
 	if raw.Digest == nil {
 		log.FromContext(ctx).V(1).Info("no resource-digest in descriptor found. Skipping verification")
 
