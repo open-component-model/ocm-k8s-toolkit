@@ -29,6 +29,8 @@ import (
 	ocmctx "ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/ocmutils/check"
 	"ocm.software/ocm/api/ocm/tools/transfer"
+	"ocm.software/ocm/api/ocm/tools/transfer/transferhandler"
+	"ocm.software/ocm/api/ocm/tools/transfer/transferhandler/standard"
 	ocmutils "ocm.software/ocm/api/utils/misc"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -231,9 +233,13 @@ func (r *Reconciler) transfer(ctx context.Context,
 	}
 	defer targetRepo.Close()
 
-	// TODO: configure TransferOption list
+	opts := &standard.Options{}
+	err = transferhandler.From(octx, opts)
+	if err != nil {
+		return historyRecord, fmt.Errorf("cannot retrieve transfer options from OCM context: %w", err)
+	}
 
-	err = transfer.Transfer(cv, targetRepo)
+	err = transfer.Transfer(cv, targetRepo, opts)
 	if err != nil {
 		return historyRecord, fmt.Errorf("cannot transfer component version to target repository: %w", err)
 	}
@@ -245,7 +251,7 @@ func (r *Reconciler) transfer(ctx context.Context,
 	}
 	defer tcv.Close()
 
-	// TODO: configure TransferOption list
+	// TODO: configure Check Option list
 
 	result, err := check.Check().ForId(targetRepo, ocmutils.NewNameVersion(comp.Status.Component.Component, comp.Status.Component.Version))
 	if err != nil {
