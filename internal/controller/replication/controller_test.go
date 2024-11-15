@@ -19,6 +19,7 @@ package replication
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/fluxcd/pkg/apis/meta"
@@ -87,7 +88,7 @@ var _ = Describe("Replication Controller", func() {
 		AfterEach(func() {
 		})
 
-		It("Default transfer operation from one CTF to another: no explicit transfer options, no credentials.", func() {
+		It("Transfer CTFs", func() {
 			By("Create source CTF")
 			sourcePattern := "ocm-k8s-replication-source--*"
 			sourcePath := Must(os.MkdirTemp("", sourcePattern))
@@ -178,6 +179,8 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
 
 			By("Assign transfer options to the Replication")
+			replication = &v1alpha1.Replication{}
+			Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
 			replication.Spec.ConfigRefs = []corev1.LocalObjectReference{
 				{Name: optResourceName},
 			}
@@ -216,6 +219,10 @@ var _ = Describe("Replication Controller", func() {
 
 			// Expect see the third component version in the history
 			Expect(replication.Status.History[2].Version).To(Equal(compNewVersion))
+
+			// The docker image downloaded due to 'resourcesByValue: true' in the transfer options
+			imageArtifact := filepath.Join(targetPath, "blobs/sha256.4b93359cc643b5d8575d4f96c2d107b4512675dcfee1fa035d0c44a00b9c027c")
+			Expect(imageArtifact).To(BeAnExistingFile())
 
 			By("Cleanup the resources")
 			Expect(k8sClient.Delete(ctx, configMap)).To(Succeed())

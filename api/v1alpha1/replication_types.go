@@ -197,6 +197,7 @@ func (repl *Replication) AddHistoryRecord(rec TransferStatus) {
 
 func (repl *Replication) IsInHistory(component, version, targetSpec string) bool {
 	for _, record := range repl.Status.History {
+		// TODO: consider taking transfer options into account
 		if record.Component == component &&
 			record.Version == version &&
 			record.TargetRepositorySpec == targetSpec &&

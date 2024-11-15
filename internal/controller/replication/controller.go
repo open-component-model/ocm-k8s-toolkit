@@ -233,6 +233,7 @@ func (r *Reconciler) transfer(ctx context.Context,
 	}
 	defer targetRepo.Close()
 
+	// Extract transfer options from OCM Context
 	opts := &standard.Options{}
 	err = transferhandler.From(octx, opts)
 	if err != nil {
