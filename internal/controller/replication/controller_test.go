@@ -20,6 +20,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/fluxcd/pkg/apis/meta"
@@ -45,15 +46,9 @@ import (
 var _ = Describe("Replication Controller", func() {
 	Context("When reconciling a Replication", func() {
 		const (
-			replResourceName       = "test-replication"
-			compResourceName       = "test-component"
-			optResourceName        = "test-transfer-options"
-			sourceRepoResourceName = "test-source-repository"
-			targetRepoResourceName = "test-target-repository"
-			testNamespace          = "ns-test-replication-controller"
-
-			compOCMName = "ocm.software/component-for-replication"
-			compVersion = "0.1.0"
+			testNamespace = "ns-test-replication-controller"
+			compOCMName   = "ocm.software/component-for-replication"
+			compVersion   = "0.1.0"
 		)
 
 		var (
@@ -63,10 +58,20 @@ var _ = Describe("Replication Controller", func() {
 			env       *Builder
 		)
 
-		replNamespacedName := types.NamespacedName{
-			Name:      replResourceName,
-			Namespace: testNamespace,
-		}
+		var (
+			replResourceName       string
+			compResourceName       string
+			optResourceName        string
+			sourceRepoResourceName string
+			targetRepoResourceName string
+			sourcePattern          string
+			targetPattern          string
+		)
+
+		var replNamespacedName types.NamespacedName
+
+		var iteration = 0
+		var maxTimeToReconcile = 2 * time.Minute
 
 		BeforeEach(func() {
 			env = NewBuilder(environment.FileSystem(osfs.OsFs))
@@ -83,14 +88,27 @@ var _ = Describe("Replication Controller", func() {
 				}
 				Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 			}
+
+			i := strconv.Itoa(iteration)
+			replResourceName = "test-replication" + i
+			compResourceName = "test-component" + i
+			optResourceName = "test-transfer-options" + i
+			sourceRepoResourceName = "test-source-repository" + i
+			targetRepoResourceName = "test-target-repository" + i
+			sourcePattern = "ocm-k8s-replication-source" + i + "--*"
+			targetPattern = "ocm-k8s-replication-target" + i + "--*"
+
+			replNamespacedName = types.NamespacedName{
+				Name:      replResourceName,
+				Namespace: testNamespace,
+			}
 		})
 
 		AfterEach(func() {
 		})
 
-		It("Transfer CTFs", func() {
+		It("Test history status update with CTFs", func() {
 			By("Create source CTF")
-			sourcePattern := "ocm-k8s-replication-source--*"
 			sourcePath := Must(os.MkdirTemp("", sourcePattern))
 			DeferCleanup(func() error {
 				return os.RemoveAll(sourcePath)
@@ -116,7 +134,6 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
 			By("Create target CTF")
-			targetPattern := "ocm-k8s-replication-target--*"
 			targetPath := Must(os.MkdirTemp("", targetPattern))
 			DeferCleanup(func() error {
 				return os.RemoveAll(targetPath)
@@ -136,12 +153,11 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Create(ctx, replication)).To(Succeed())
 
 			replication = &v1alpha1.Replication{}
-			maxDuration := 2 * time.Minute
 			Eventually(func() bool {
 				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
 				// TODO: with IsReady only the test flickers. Why is it not sufficient???
 				return conditions.IsReady(replication) && replication.Status.ObservedGeneration > 0
-			}).WithTimeout(maxDuration).Should(BeTrue())
+			}).WithTimeout(maxTimeToReconcile).Should(BeTrue())
 
 			Expect(replication.Status.History).To(HaveLen(1))
 			Expect(replication.Status.History[0].Component).To(Equal(compOCMName))
@@ -163,7 +179,7 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
 			By("Expect Replication controller to transfer the new version withing the interval")
-			waitingTime := replication.GetRequeueAfter() + maxDuration
+			waitingTime := replication.GetRequeueAfter() + maxTimeToReconcile
 			replication = &v1alpha1.Replication{}
 			Eventually(func() bool {
 				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
@@ -174,51 +190,75 @@ var _ = Describe("Replication Controller", func() {
 			// Expect see the new component version in the history
 			Expect(replication.Status.History[1].Version).To(Equal(compNewVersion))
 
+			By("Cleanup the resources")
+			Expect(k8sClient.Delete(ctx, replication)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, targetRepo)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, sourceRepo)).To(Succeed())
+		})
+
+		It("Test transfer options with CTFs", func() {
+
+			By("Create source CTF")
+			sourcePath := Must(os.MkdirTemp("", sourcePattern))
+			DeferCleanup(func() error {
+				return os.RemoveAll(sourcePath)
+			})
+
+			newTestComponentVersionInCTFDir(env, compOCMName, compVersion, sourcePath)
+
+			By("Create source repository resource")
+			sourceRepo, sourceSpecData := newCFTRepositoryObj(testNamespace, sourceRepoResourceName, sourcePath)
+			Expect(k8sClient.Create(ctx, sourceRepo)).To(Succeed())
+
+			By("Simulate ocmrepository controller for source repository")
+			conditions.MarkTrue(sourceRepo, meta.ReadyCondition, "ready", "")
+			Expect(k8sClient.Status().Update(ctx, sourceRepo)).To(Succeed())
+
+			By("Create source component resource")
+			component := newComponent(testNamespace, compResourceName, sourceRepoResourceName, compOCMName, compVersion)
+			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+
+			By("Simulate component controller")
+			component.Status.Component = *newComponentInfo(compOCMName, compVersion, sourceSpecData)
+			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
+			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
+
+			By("Create target CTF")
+			targetPath := Must(os.MkdirTemp("", targetPattern))
+			DeferCleanup(func() error {
+				return os.RemoveAll(targetPath)
+			})
+
+			By("Create target repository resource")
+			targetRepo, targetSpecData := newCFTRepositoryObj(testNamespace, targetRepoResourceName, targetPath)
+			Expect(k8sClient.Create(ctx, targetRepo)).To(Succeed())
+
+			By("Simulate ocmrepository controller for target repository")
+			targetRepo.Spec.RepositorySpec.Raw = *targetSpecData
+			conditions.MarkTrue(targetRepo, meta.ReadyCondition, "ready", "")
+			Expect(k8sClient.Status().Update(ctx, targetRepo)).To(Succeed())
+
 			By("Create ConfigMap with transfer options")
 			configMap := newConfigMapForData(testNamespace, optResourceName, ocmconfigTransferOptions)
 			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
 
-			By("Assign transfer options to the Replication")
-			replication = &v1alpha1.Replication{}
-			Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
+			By("Create and reconcile Replication resource")
+			replication := newReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
 			replication.Spec.ConfigRefs = []corev1.LocalObjectReference{
 				{Name: optResourceName},
 			}
-			// Save this value for comparison in the next step
-			gen := conditions.GetObservedGeneration(replication, meta.ReadyCondition)
-			Expect(k8sClient.Update(ctx, replication)).To(Succeed())
+			Expect(k8sClient.Create(ctx, replication)).To(Succeed())
 
 			By("Wait for reconciliation to run")
 			replication = &v1alpha1.Replication{}
 			Eventually(func() bool {
 				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
-				// Wait for the observed generation to change
-				return conditions.IsReady(replication) && conditions.GetObservedGeneration(replication, meta.ReadyCondition) != gen
-			}).WithTimeout(maxDuration).Should(BeTrue())
+				return conditions.IsReady(replication) && len(replication.Status.History) == 1
+			}).WithTimeout(maxTimeToReconcile).Should(BeTrue())
 
-			// There should still be only two entries in the history, as no transfer was expected after ConfigRefs update
-			Expect(replication.Status.History).To(HaveLen(2))
-
-			// Create the third version of the component and expect that it is transferred with specified transfer options
-			By("Create third component version")
-			compNewVersion = "0.3.0"
-			newTestComponentVersionInCTFDir(env, compOCMName, compNewVersion, sourcePath)
-
-			By("Simulate component controller discovering the third version")
-			component.Status.Component = *newComponentInfo(compOCMName, compNewVersion, sourceSpecData)
-			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
-			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
-
-			By("Expect Replication controller to transfer the third version")
-			replication = &v1alpha1.Replication{}
-			Eventually(func() bool {
-				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
-				// Wait for the third entry in the history
-				return conditions.IsReady(replication) && len(replication.Status.History) == 3
-			}).WithTimeout(waitingTime).Should(BeTrue())
-
-			// Expect see the third component version in the history
-			Expect(replication.Status.History[2].Version).To(Equal(compNewVersion))
+			// Expect to see the transfered component version in the history
+			Expect(replication.Status.History[0].Version).To(Equal(compVersion))
 
 			// The docker image downloaded due to 'resourcesByValue: true' in the transfer options
 			imageArtifact := filepath.Join(targetPath, "blobs/sha256.4b93359cc643b5d8575d4f96c2d107b4512675dcfee1fa035d0c44a00b9c027c")
