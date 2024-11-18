@@ -22,7 +22,7 @@ spec:
           ports:
             - containerPort: 5000
 ---
-# External port to the image registry. Can be reached with 'localhost:31000'
+# External port to the image registry. Can be reached from the host with 'localhost:31000'
 apiVersion: v1
 kind: Service
 metadata:
@@ -37,7 +37,7 @@ spec:
   selector:
     app: registry
 ---
-# Internal port to the image registry. Can be reached with 'http://registry-internal.default.svc.cluster.local:5000/'
+# Internal port to the image registry. Can be reached from inside the cluster with 'http://registry-internal.default.svc.cluster.local:5000/'
 apiVersion: v1
 kind: Service
 metadata:
