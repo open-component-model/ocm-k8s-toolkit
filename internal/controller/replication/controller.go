@@ -255,7 +255,7 @@ func (r *Reconciler) transfer(ctx context.Context,
 	// This command checks, whether the copied component version is completely contained in the target OCM repository
 	// with all its dependent component references.
 	// https://github.com/open-component-model/ocm/blob/main/docs/reference/ocm_check_componentversions.md
-	// TODO: configure '--local-resources' and '--local-resources', if respective transfer options are set
+	// TODO: configure '--local-resources' and '--local-sources', if respective transfer options are set
 	result, err := check.Check().ForId(targetRepo, ocmutils.NewNameVersion(comp.Status.Component.Component, comp.Status.Component.Version))
 	if err != nil {
 		return historyRecord, fmt.Errorf("error checking component version in target repository: %w", err)
