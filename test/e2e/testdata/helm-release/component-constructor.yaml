@@ -6,10 +6,10 @@ components:
     resources:
       - name: helm-resource
         type: helmChart
-        version: "6.7.1"
+        version: "1.0.0"
         access:
           type: ociArtifact
-          imageReference: ghcr.io/stefanprodan/charts/podinfo:6.7.1
+          imageReference: {{ .HelmChart }}
       - name: helm-localization-config
         type: ocm.localization
         input:

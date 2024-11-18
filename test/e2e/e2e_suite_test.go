@@ -40,12 +40,27 @@ func TestE2E(t *testing.T) {
 	BeforeSuite(func(ctx SpecContext) {
 		By("Creating manager namespace", func() {
 			cmd := exec.Command("kubectl", "create", "ns", namespace)
-			_, _ = utils.Run(cmd)
+			_, err := utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 			DeferCleanup(func() {
 				By("Deleting manager namespace")
 				cmd := exec.Command("kubectl", "delete", "ns", namespace)
 				_, _ = utils.Run(cmd)
 			})
+		})
+
+		By("Checking for template values", func() {
+			helmChart = os.Getenv("HELM_CHART")
+			Expect(helmChart).NotTo(BeEmpty())
+
+			helmImageReference = os.Getenv("HELM_IMAGE_REFERENCE")
+			Expect(helmImageReference).NotTo(BeEmpty())
+
+			kustomizationPath = os.Getenv("KUSTOMIZE_PATH")
+			Expect(kustomizationPath).NotTo(BeEmpty())
+
+			kustomizeImageReference = os.Getenv("KUSTOMIZE_IMAGE_REFERENCE")
+			Expect(kustomizeImageReference).NotTo(BeEmpty())
 		})
 
 		By("Checking for an image registry", func() {
@@ -68,8 +83,7 @@ func TestE2E(t *testing.T) {
 		// TODO: Replace image with demo-CV image (see https://github.com/open-component-model/ocm-project/issues/317)
 		By("Providing referenced images to the image registry", func() {
 			// Provide referenced images to our image registry to test localization
-			imageRef = "podinfo:6.7.1"
-			Expect(crane.Copy("ghcr.io/stefanprodan/podinfo:6.7.1", fmt.Sprintf("%s/%s", imageRegistry, imageRef))).To(Succeed())
+			Expect(crane.Copy(helmChart, fmt.Sprintf("%s/%s", imageRegistry, helmImageReference))).To(Succeed())
 		})
 
 		By("Starting the operator", func() {

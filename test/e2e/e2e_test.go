@@ -26,12 +26,17 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/test/utils"
 )
 
+const ()
+
 var (
-	imageRegistry         string
-	scheme                string
-	internalImageRegistry string
-	internalScheme        string
-	imageRef              string
+	helmChart               string
+	helmImageReference      string
+	kustomizationPath       string
+	kustomizeImageReference string
+	imageRegistry           string
+	scheme                  string
+	internalImageRegistry   string
+	internalScheme          string
 )
 
 var _ = Describe("controller", func() {
@@ -49,8 +54,9 @@ var _ = Describe("controller", func() {
 			Expect(utils.PrepareOCMComponent(
 				filepath.Join(testData, "component-constructor.yaml"),
 				scheme+imageRegistry,
+				"HelmChart="+helmChart,
 				"LocalizationConfigPath="+filepath.Join(testData, "localization-config.yaml"),
-				"ImageReference="+internalImageRegistry+"/"+imageRef,
+				"ImageReference="+internalImageRegistry+"/"+helmImageReference,
 			)).To(Succeed())
 
 			Expect(utils.DeployOCMComponents(testData, internalScheme+internalImageRegistry)).To(Succeed())
@@ -59,7 +65,7 @@ var _ = Describe("controller", func() {
 			Expect(utils.WaitForResource("deployment.apps/helm-flux-podinfo", "default", "condition=Available")).To(Succeed())
 
 			By("validating that the localization was successful")
-			verifyFunc := utils.GetVerifyPodFieldFunc("app.kubernetes.io/name=helm-flux-podinfo", "jsonpath=\"{.items[0].spec.containers[?(@.name=='podinfo')].image}\"", filepath.Join(internalImageRegistry, imageRef))
+			verifyFunc := utils.GetVerifyPodFieldFunc("app.kubernetes.io/name=helm-flux-podinfo", "jsonpath=\"{.items[0].spec.containers[?(@.name=='podinfo')].image}\"", filepath.Join(internalImageRegistry, helmImageReference))
 			EventuallyWithOffset(1, verifyFunc, time.Minute, time.Second).Should(Succeed())
 		})
 
@@ -76,8 +82,9 @@ var _ = Describe("controller", func() {
 			Expect(utils.PrepareOCMComponent(
 				filepath.Join(testData, "component-constructor.yaml"),
 				scheme+imageRegistry,
+				"KustomizationPath="+kustomizationPath,
 				"LocalizationConfigPath="+filepath.Join(testData, "localization-config.yaml"),
-				"ImageReference="+internalImageRegistry+"/"+imageRef,
+				"ImageReference="+internalImageRegistry+"/"+kustomizeImageReference,
 			)).To(Succeed())
 
 			Expect(utils.DeployOCMComponents(testData, internalScheme+internalImageRegistry)).To(Succeed())
@@ -86,7 +93,7 @@ var _ = Describe("controller", func() {
 			Expect(utils.WaitForResource("deployment.apps/kustomize-podinfo", "default", "condition=Available")).To(Succeed())
 
 			By("validating that the localization was successful")
-			verifyFunc := utils.GetVerifyPodFieldFunc("app=kustomize-podinfo", "jsonpath=\"{.items[0].spec.containers[?(@.name=='app')].image}\"", filepath.Join(internalImageRegistry, imageRef))
+			verifyFunc := utils.GetVerifyPodFieldFunc("app=kustomize-podinfo", "jsonpath=\"{.items[0].spec.containers[?(@.name=='app')].image}\"", filepath.Join(internalImageRegistry, kustomizeImageReference))
 			EventuallyWithOffset(1, verifyFunc, time.Minute, time.Second).Should(Succeed())
 		})
 	})

@@ -6,10 +6,10 @@ components:
     resources:
       - name: kustomize-resource
         type: kustomization
-        version: "6.7.1"
+        version: "1.0.0"
         input:
           type: dir
-          path: ./kustomization
+          path: {{ .KustomizationPath }}
       - name: kustomize-localization-config
         type: ocm.localization
         input:
