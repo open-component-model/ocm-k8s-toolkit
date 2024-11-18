@@ -119,8 +119,10 @@ func SanitizeRegistryURL(registryURL string) (string, string) {
 	return "", registryURL
 }
 
-// TODO: The parameters seem to be a bit arbitrary. Maybe find some good words to clarify it or find a better idea.
-func ConfigureAndDeployResources(manifestPath, imageReference, imageRegistryTransport, imageRegistryOCMRepository string) error {
+// PrepareOCMComponent creates an OCM component from a component-constructor file. The component-constructor file can
+// contain go-template-logic and the respective key-value pairs can be by templateValues.
+// After creating the OCM component, the component is transferred to imageRegistry.
+func PrepareOCMComponent(ccPath, imageRegistry string, templateValues ...string) error {
 	By("creating ocm component")
 	tmpDir, err := os.MkdirTemp("", "")
 	if err != nil {
@@ -138,27 +140,39 @@ func ConfigureAndDeployResources(manifestPath, imageReference, imageRegistryTran
 	//   If the environment variable INTERNAL_IMAGE_REGISTRY_URL is present, its value will be used.
 	//   If the environment variable is not present, the initial value from IMAGE_REGISTRY_URL will be used.
 	ctfDir := filepath.Join(tmpDir, "ctf")
-	cmd := exec.Command("ocm",
+	cmdArgs := []string{
 		"add",
 		"componentversions",
 		"--create",
 		"--file", ctfDir,
-		filepath.Join(manifestPath, "component-constructor.yaml"),
-		"--templater", "go",
-		"LocalizationConfigPath="+filepath.Join(manifestPath, "localization-config.yaml"),
-		"ImageReference="+imageReference,
-	)
+		ccPath,
+	}
+
+	if len(templateValues) > 0 {
+		// We could support more template-functionalities (see ocmcli), but it is not required yet.
+		cmdArgs = append(cmdArgs, "--templater", "go")
+		cmdArgs = append(cmdArgs, templateValues...)
+	}
+
+	cmd := exec.Command("ocm", cmdArgs...)
 	_, err = utils.Run(cmd)
 	if err != nil {
 		return fmt.Errorf("could not create ocm component: %w", err)
 	}
 
-	cmd = exec.Command("ocm", "transfer", "ctf", "--overwrite", ctfDir, imageRegistryTransport)
+	cmd = exec.Command("ocm", "transfer", "ctf", "--overwrite", ctfDir, imageRegistry)
 	_, err = utils.Run(cmd)
 	if err != nil {
 		return fmt.Errorf("could not transfer ocm component: %w", err)
 	}
 
+	return nil
+}
+
+// DeployOCMComponents is a helper function that deploys all relevant OCM component parts as well as the respective
+// source-controller resource. It expects all manifests in the passed path. The image registry is required as the
+// corresponding value must be templated.
+func DeployOCMComponents(manifestPath, imageRegistry string) error {
 	By("creating and validating the custom resource OCM repository")
 	// In some test-scenarios an internal image registry inside the cluster is used to upload the components.
 	// If this is the case, the OCM repository manifest cannot hold a static registry-url. Therefore,
@@ -177,13 +191,21 @@ func ConfigureAndDeployResources(manifestPath, imageReference, imageRegistryTran
 	}
 
 	dataOCMRepository := map[string]string{
-		"ImageRegistry": imageRegistryOCMRepository,
+		"ImageRegistry": imageRegistry,
 	}
 
 	var result bytes.Buffer
 	if err := tmplOCMRepository.Execute(&result, dataOCMRepository); err != nil {
 		return fmt.Errorf("could not execute ocm repository manifest: %w", err)
 	}
+
+	tmpDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		return fmt.Errorf("could not create temporary directory: %w", err)
+	}
+	DeferCleanup(func() error {
+		return os.RemoveAll(tmpDir)
+	})
 
 	const perm = 0o644
 	manifestOCMRepository = filepath.Join(tmpDir, "manifestOCMRespository.yaml")

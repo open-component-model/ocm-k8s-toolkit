@@ -44,12 +44,16 @@ var _ = Describe("controller", func() {
 			pd, err := utils.GetProjectDir()
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
-			Expect(utils.ConfigureAndDeployResources(
-				filepath.Join(pd, "test/e2e/testdata/helm-release"),
-				filepath.Join(internalImageRegistry, imageRef),
+			testData := filepath.Join(pd, "test/e2e/testdata/helm-release")
+
+			Expect(utils.PrepareOCMComponent(
+				filepath.Join(testData, "component-constructor.yaml"),
 				scheme+imageRegistry,
-				internalScheme+internalImageRegistry),
-			).To(Succeed())
+				"LocalizationConfigPath="+filepath.Join(testData, "localization-config.yaml"),
+				"ImageReference="+internalImageRegistry+"/"+imageRef,
+			)).To(Succeed())
+
+			Expect(utils.DeployOCMComponents(testData, internalScheme+internalImageRegistry)).To(Succeed())
 
 			By("validating that the resource was deployed successfully through the helm-controller")
 			Expect(utils.WaitForResource("deployment.apps/helm-flux-podinfo", "default", "condition=Available")).To(Succeed())
@@ -67,12 +71,16 @@ var _ = Describe("controller", func() {
 			pd, err := utils.GetProjectDir()
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
-			Expect(utils.ConfigureAndDeployResources(
-				filepath.Join(pd, "test/e2e/testdata/kustomize-release"),
-				filepath.Join(internalImageRegistry, imageRef),
+			testData := filepath.Join(pd, "test/e2e/testdata/kustomize-release")
+
+			Expect(utils.PrepareOCMComponent(
+				filepath.Join(testData, "component-constructor.yaml"),
 				scheme+imageRegistry,
-				internalScheme+internalImageRegistry),
-			).To(Succeed())
+				"LocalizationConfigPath="+filepath.Join(testData, "localization-config.yaml"),
+				"ImageReference="+internalImageRegistry+"/"+imageRef,
+			)).To(Succeed())
+
+			Expect(utils.DeployOCMComponents(testData, internalScheme+internalImageRegistry)).To(Succeed())
 
 			By("validating that the resource was deployed successfully through the kustomize-controller")
 			Expect(utils.WaitForResource("deployment.apps/kustomize-podinfo", "default", "condition=Available")).To(Succeed())
