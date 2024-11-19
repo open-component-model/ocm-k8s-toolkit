@@ -28,7 +28,6 @@ import (
 
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
-	errors2 "github.com/mandelsoft/goutils/errors"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	corev1 "k8s.io/api/core/v1"
@@ -389,16 +388,17 @@ func getBlobAccess(ctx context.Context, access ocmctx.ResourceAccess) (blobacces
 
 // verifyResource verifies the resource digest with the digest from the component version access and component descriptor.
 func verifyResource(ctx context.Context, access ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAccess, cd *compdesc.ComponentDescriptor) error {
-	log.FromContext(ctx).V(1).Info("verify resource")
+	logger := log.FromContext(ctx)
+	logger.V(1).Info("verify resource")
 
 	// TODO: https://github.com/open-component-model/ocm-k8s-toolkit/issues/71
 	index := cd.GetResourceIndex(access.Meta())
 	if index < 0 {
-		return errors2.ErrNotFound("resource")
+		return errors.New("resource not found in access spec")
 	}
 	raw := &cd.Resources[index]
 	if raw.Digest == nil {
-		log.FromContext(ctx).V(1).Info("no resource-digest in descriptor found. Skipping verification")
+		logger.V(1).Info("no resource-digest in descriptor found. Skipping verification")
 
 		return nil
 	}

@@ -25,6 +25,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/go-git/go-git/v5"
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive,stylecheck // ginkgo...
 	"github.com/openfluxcd/artifact/test/utils"
 )
@@ -51,31 +52,41 @@ func Run(cmd *exec.Cmd) ([]byte, error) {
 	return output, nil
 }
 
-// GetNonEmptyLines converts given command output string into individual objects
-// according to line breakers, and ignores the empty elements in it.
-func GetNonEmptyLines(output string) []string {
-	var res []string
-	elements := strings.Split(output, "\n")
-	for _, element := range elements {
-		if element != "" {
-			res = append(res, element)
-		}
-	}
-
-	return res
-}
-
-// GetProjectDir will return the directory where the project is.
+// GetProjectDir traverses the directory tree starting from the current working directory to locate the root directory
+// of a Git repository (it essentially mimics "git rev-parse --show-toplevel").
 func GetProjectDir() (string, error) {
-	wd, err := os.Getwd()
+	dir, err := os.Getwd()
 	if err != nil {
-		return wd, err
+		return "", fmt.Errorf("failed to get current directory: %w", err)
 	}
-	wd = strings.ReplaceAll(wd, "/test/e2e", "")
 
-	return wd, nil
+	// Traverse up the directory tree to find the root Git project
+	for {
+		_, err = git.PlainOpen(dir)
+		if err == nil {
+			absPath, err := filepath.Abs(dir)
+			if err != nil {
+				return "", fmt.Errorf("failed to get absolute path: %w", err)
+			}
+
+			return absPath, nil
+		}
+
+		// Move up one directory level
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("no Git repository found")
+		}
+		dir = parent
+	}
 }
 
+// DeployAndWaitForResource takes a manifest file of a k8s resource and deploys it with "kubectl". Correspondingly,
+// a DeferCleanup-handler is created that will delete the resource, when the test-suite ends.
+// Additionally, "waitingFor" is a resource condition to check if the resource was deployed successfully.
+// Example:
+//
+//	err := DeployAndWaitForResource("./pod.yaml", "condition=Ready")
 func DeployAndWaitForResource(manifestFilePath, waitingFor string) error {
 	cmd := exec.Command("kubectl", "apply", "-f", manifestFilePath)
 	if _, err := utils.Run(cmd); err != nil {
@@ -90,18 +101,7 @@ func DeployAndWaitForResource(manifestFilePath, waitingFor string) error {
 
 	cmd = exec.Command("kubectl", "wait", "-f", manifestFilePath,
 		"--for", waitingFor,
-		"--timeout", "5m",
-	)
-	_, err := utils.Run(cmd)
-
-	return err
-}
-
-func WaitForResource(query, namespace, waitingFor string) error {
-	cmd := exec.Command("kubectl", "wait", query,
-		"--for", waitingFor,
-		"--namespace", namespace,
-		"--timeout", "5m",
+		"--timeout", "1m",
 	)
 	_, err := utils.Run(cmd)
 
@@ -160,6 +160,9 @@ func PrepareOCMComponent(ccPath, imageRegistry string, templateValues ...string)
 		return fmt.Errorf("could not create ocm component: %w", err)
 	}
 
+	// Note: The option '--overwrite' is necessary, when a digest of a resource is changed or unknown
+	// TODO: Discuss if this should be the default or if we should introduce an environment variable to add the option
+	//  if specified by the user.
 	cmd = exec.Command("ocm", "transfer", "ctf", "--overwrite", ctfDir, imageRegistry)
 	_, err = utils.Run(cmd)
 	if err != nil {
@@ -249,6 +252,8 @@ func DeployOCMComponents(manifestPath, imageRegistry string) error {
 	return nil
 }
 
+// GetVerifyPodFieldFunc is a helper function to return a function which checks for a pod with the passed label
+// selector. It returns the result from a comparison of the query on a specified pod-field with the expected string.
 func GetVerifyPodFieldFunc(labelSelector, fieldQuery, expect string) error {
 	return func() error {
 		cmd := exec.Command("kubectl", "get", "pod", "-l", labelSelector, "-o", fieldQuery)

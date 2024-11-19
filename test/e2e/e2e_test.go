@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -29,14 +30,16 @@ import (
 const ()
 
 var (
-	helmChart               string
-	helmImageReference      string
-	kustomizationPath       string
-	kustomizeImageReference string
-	imageRegistry           string
-	scheme                  string
-	internalImageRegistry   string
-	internalScheme          string
+	helmChart                   string
+	kustomizationPath           string
+	imageReference              string
+	imageReferenceShort         string
+	internalImageReference      string
+	internalImageReferenceNoTag string
+	imageRegistry               string
+	scheme                      string
+	internalImageRegistry       string
+	internalScheme              string
 )
 
 var _ = Describe("controller", func() {
@@ -44,7 +47,13 @@ var _ = Describe("controller", func() {
 		It("should deploy a helm resource", func() {
 			By("checking for the helm controller")
 			// Note: Namespace is taken from helm-controller default kustomization
-			Expect(utils.WaitForResource("deployment.apps/helm-controller", "helm-system", "condition=Available")).To(Succeed())
+			cmd := exec.Command("kubectl", "wait", "deployment.apps/helm-controller",
+				"--for", "condition=Available",
+				"--namespace", "helm-system",
+				"--timeout", "1m",
+			)
+			_, err := utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			pd, err := utils.GetProjectDir()
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
@@ -56,23 +65,35 @@ var _ = Describe("controller", func() {
 				scheme+imageRegistry,
 				"HelmChart="+helmChart,
 				"LocalizationConfigPath="+filepath.Join(testData, "localization-config.yaml"),
-				"ImageReference="+internalImageRegistry+"/"+helmImageReference,
+				"ImageReference="+internalImageReferenceNoTag, // Image without tag/identifier
 			)).To(Succeed())
 
 			Expect(utils.DeployOCMComponents(testData, internalScheme+internalImageRegistry)).To(Succeed())
 
 			By("validating that the resource was deployed successfully through the helm-controller")
-			Expect(utils.WaitForResource("deployment.apps/helm-flux-podinfo", "default", "condition=Available")).To(Succeed())
+			cmd = exec.Command("kubectl", "wait", "deployment.apps/helm-flux-podinfo",
+				"--for", "condition=Available",
+				"--namespace", "default",
+				"--timeout", "1m",
+			)
+			_, err = utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("validating that the localization was successful")
-			verifyFunc := utils.GetVerifyPodFieldFunc("app.kubernetes.io/name=helm-flux-podinfo", "jsonpath=\"{.items[0].spec.containers[?(@.name=='podinfo')].image}\"", filepath.Join(internalImageRegistry, helmImageReference))
+			verifyFunc := utils.GetVerifyPodFieldFunc("app.kubernetes.io/name=helm-flux-podinfo", "jsonpath=\"{.items[0].spec.containers[?(@.name=='podinfo')].image}\"", internalImageReference)
 			EventuallyWithOffset(1, verifyFunc, time.Minute, time.Second).Should(Succeed())
 		})
 
 		It("should deploy a kustomize resource", func() {
 			By("checking for the kustomize controller")
 			// Note: Namespace is taken from helm-controller default kustomization
-			Expect(utils.WaitForResource("deployment.apps/kustomize-controller", "kustomize-system", "condition=Available")).To(Succeed())
+			cmd := exec.Command("kubectl", "wait", "deployment.apps/kustomize-controller",
+				"--for", "condition=Available",
+				"--namespace", "kustomize-system",
+				"--timeout", "1m",
+			)
+			_, err := utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			pd, err := utils.GetProjectDir()
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
@@ -84,16 +105,22 @@ var _ = Describe("controller", func() {
 				scheme+imageRegistry,
 				"KustomizationPath="+kustomizationPath,
 				"LocalizationConfigPath="+filepath.Join(testData, "localization-config.yaml"),
-				"ImageReference="+internalImageRegistry+"/"+kustomizeImageReference,
+				"ImageReference="+internalImageReference,
 			)).To(Succeed())
 
 			Expect(utils.DeployOCMComponents(testData, internalScheme+internalImageRegistry)).To(Succeed())
 
 			By("validating that the resource was deployed successfully through the kustomize-controller")
-			Expect(utils.WaitForResource("deployment.apps/kustomize-podinfo", "default", "condition=Available")).To(Succeed())
+			cmd = exec.Command("kubectl", "wait", "deployment.apps/kustomize-podinfo",
+				"--for", "condition=Available",
+				"--namespace", "default",
+				"--timeout", "1m",
+			)
+			_, err = utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("validating that the localization was successful")
-			verifyFunc := utils.GetVerifyPodFieldFunc("app=kustomize-podinfo", "jsonpath=\"{.items[0].spec.containers[?(@.name=='app')].image}\"", filepath.Join(internalImageRegistry, kustomizeImageReference))
+			verifyFunc := utils.GetVerifyPodFieldFunc("app=kustomize-podinfo", "jsonpath=\"{.items[0].spec.containers[?(@.name=='app')].image}\"", internalImageReference)
 			EventuallyWithOffset(1, verifyFunc, time.Minute, time.Second).Should(Succeed())
 		})
 	})

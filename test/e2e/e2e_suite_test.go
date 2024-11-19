@@ -20,10 +20,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/google/go-containerregistry/pkg/name"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -53,14 +55,11 @@ func TestE2E(t *testing.T) {
 			helmChart = os.Getenv("HELM_CHART")
 			Expect(helmChart).NotTo(BeEmpty())
 
-			helmImageReference = os.Getenv("HELM_IMAGE_REFERENCE")
-			Expect(helmImageReference).NotTo(BeEmpty())
-
 			kustomizationPath = os.Getenv("KUSTOMIZE_PATH")
 			Expect(kustomizationPath).NotTo(BeEmpty())
 
-			kustomizeImageReference = os.Getenv("KUSTOMIZE_IMAGE_REFERENCE")
-			Expect(kustomizeImageReference).NotTo(BeEmpty())
+			imageReference = os.Getenv("IMAGE_REFERENCE")
+			Expect(imageReference).NotTo(BeEmpty())
 		})
 
 		By("Checking for an image registry", func() {
@@ -78,12 +77,18 @@ func TestE2E(t *testing.T) {
 				imageRegistryRaw = imageRegistry
 			}
 			internalScheme, internalImageRegistry = utils.SanitizeRegistryURL(imageRegistryRaw)
+
 		})
 
 		// TODO: Replace image with demo-CV image (see https://github.com/open-component-model/ocm-project/issues/317)
 		By("Providing referenced images to the image registry", func() {
+			parsed, err := name.ParseReference(imageReference)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			imageReferenceShort = parsed.Context().RepositoryStr() + ":" + parsed.Identifier()
+			internalImageReference = internalImageRegistry + "/" + imageReferenceShort
+			internalImageReferenceNoTag = internalImageRegistry + "/" + parsed.Context().RepositoryStr()
 			// Provide referenced images to our image registry to test localization
-			Expect(crane.Copy(helmChart, fmt.Sprintf("%s/%s", imageRegistry, helmImageReference))).To(Succeed())
+			Expect(crane.Copy(imageReference, fmt.Sprintf("%s/%s", imageRegistry, imageReferenceShort))).To(Succeed())
 		})
 
 		By("Starting the operator", func() {
@@ -157,7 +162,14 @@ func TestE2E(t *testing.T) {
 
 				podOutput, err := utils.Run(cmd)
 				ExpectWithOffset(2, err).NotTo(HaveOccurred())
-				podNames := utils.GetNonEmptyLines(string(podOutput))
+
+				var podNames []string
+				podNamesDirty := strings.Split(string(podOutput), "\n")
+				for _, podName := range podNamesDirty {
+					if podName != "" {
+						podNames = append(podNames, podName)
+					}
+				}
 				if len(podNames) != 1 {
 					return fmt.Errorf("expect 1 controller pods running, but got %d", len(podNames))
 				}

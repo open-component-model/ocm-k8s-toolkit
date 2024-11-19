@@ -19,7 +19,8 @@ components:
       - name: image
         type: ociArtifact
         version: "1.0.0"
-        skipDigestGeneration: true
+        options:
+          skipDigestGeneration: true
         access:
           type: ociArtifact
           imageReference: {{ .ImageReference }}
