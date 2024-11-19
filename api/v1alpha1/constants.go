@@ -40,3 +40,8 @@ const (
 	// ArtifactFinalizer is the finalizer that is added to artifacts created by the ocm controllers.
 	ArtifactFinalizer = "finalizers.ocm.software/artifact"
 )
+
+// External CRDs.
+const (
+	ArtifactCrd = "https://github.com/openfluxcd/artifact/releases/download/v0.1.1/openfluxcd.ocm.software_artifacts.yaml"
+)

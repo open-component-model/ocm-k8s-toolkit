@@ -52,7 +52,6 @@ import (
 
 const (
 	ARTIFACT_SERVER = "localhost:0"
-	ARTIFACT_CRD    = "https://github.com/openfluxcd/artifact/releases/download/v0.1.1/openfluxcd.ocm.software_artifacts.yaml"
 )
 
 var cfg *rest.Config
@@ -74,7 +73,7 @@ var _ = BeforeSuite(func() {
 	By("bootstrapping test environment")
 
 	// Get external artifact CRD
-	resp, err := http.Get(ARTIFACT_CRD)
+	resp, err := http.Get(v1alpha1.ArtifactCrd)
 	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(func() error {
 		return resp.Body.Close()
