@@ -1,0 +1,12 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: ConfiguredResource
+metadata:
+  name: configured-manifest-resource
+spec:
+  interval: 10m
+  target:
+    kind: LocalizedResource
+    name: localized-manifest-resource
+  config:
+    kind: Resource
+    name: manifests-configuration
