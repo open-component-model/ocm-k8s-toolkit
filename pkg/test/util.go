@@ -8,12 +8,17 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/vfs/pkg/memoryfs"
 	"github.com/mandelsoft/vfs/pkg/vfs"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
+	"github.com/openfluxcd/controller-manager/storage"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
+	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	"ocm.software/ocm/api/utils/tarutils"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	//nolint:revive,stylecheck // dot import necessary for Ginkgo DSL
 	. "github.com/onsi/ginkgo/v2"
@@ -21,14 +26,6 @@ import (
 	. "github.com/onsi/gomega"
 	//nolint:revive,stylecheck // dot import necessary for Ginkgo DSL
 	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
-
-	"github.com/fluxcd/pkg/runtime/patch"
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
-	"github.com/openfluxcd/controller-manager/storage"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
@@ -232,19 +229,4 @@ func CreateTGZ(tgzPackageDir string, data map[string][]byte) {
 		_, err = writer.Write(data)
 		Expect(err).ToNot(HaveOccurred())
 	}
-}
-
-func ParseCRD(decoder runtime.Decoder, getCRD func() ([]byte, error)) (*apiextensionsv1.CustomResourceDefinition, error) {
-	crdYaml, err := getCRD()
-	if err != nil {
-		return nil, fmt.Errorf("unable to get CRD: %w", err)
-	}
-
-	// Decode the YAML or JSON CRD file.
-	crd := &apiextensionsv1.CustomResourceDefinition{}
-	if _, _, err := decoder.Decode(crdYaml, nil, crd); err != nil {
-		return nil, fmt.Errorf("failed to decode CRD: %w", err)
-	}
-
-	return crd, nil
 }

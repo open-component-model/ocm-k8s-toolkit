@@ -29,7 +29,6 @@ import (
 	"github.com/openfluxcd/controller-manager/server"
 	"github.com/openfluxcd/controller-manager/storage"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
@@ -40,11 +39,11 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/yaml"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	cfgclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/client"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -53,7 +52,7 @@ import (
 
 const (
 	ARTIFACT_SERVER = "localhost:0"
-	ARTIFACT_CRD    = "https://raw.githubusercontent.com/openfluxcd/artifact/refs/heads/main/config/crd/bases/openfluxcd.ocm.software_artifacts.yaml"
+	ARTIFACT_CRD    = "https://github.com/openfluxcd/artifact/releases/download/v0.1.1/openfluxcd.ocm.software_artifacts.yaml"
 )
 
 var cfg *rest.Config
@@ -73,17 +72,19 @@ var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
 	By("bootstrapping test environment")
-	artifactCRD, err := test.ParseCRD(serializer.NewCodecFactory(scheme.Scheme).UniversalDeserializer(), func() ([]byte, error) {
-		resp, err := http.Get(ARTIFACT_CRD)
-		if err != nil {
-			return []byte{}, fmt.Errorf("failed to download CRD: %w", err)
-		}
-		DeferCleanup(func() error {
-			return resp.Body.Close()
-		})
 
-		return io.ReadAll(resp.Body)
+	// Get external artifact CRD
+	resp, err := http.Get(ARTIFACT_CRD)
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(func() error {
+		return resp.Body.Close()
 	})
+
+	crdByte, err := io.ReadAll(resp.Body)
+	Expect(err).NotTo(HaveOccurred())
+
+	artifactCRD := &apiextensionsv1.CustomResourceDefinition{}
+	err = yaml.Unmarshal(crdByte, artifactCRD)
 	Expect(err).NotTo(HaveOccurred())
 
 	testEnv = &envtest.Environment{
