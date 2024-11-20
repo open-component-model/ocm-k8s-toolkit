@@ -34,6 +34,17 @@ import (
 
 const namespace = "ocm-k8s-toolkit-system"
 
+var (
+	// image registry that is used to push and pull images.
+	imageRegistry string
+	// internal image registry represents the same image registry but is required, when using an image registry inside
+	// a cluster.
+	internalImageRegistry string
+	// image reference is used to copy the original image from the example into the image registry and test the
+	// localization and configuration.
+	imageReference string
+)
+
 // Run e2e tests using the Ginkgo runner.
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -51,49 +62,40 @@ func TestE2E(t *testing.T) {
 			})
 		})
 
-		By("Checking for template values", func() {
-			helmChart = os.Getenv("HELM_CHART")
-			Expect(helmChart).NotTo(BeEmpty())
-
-			kustomizationPath = os.Getenv("KUSTOMIZE_PATH")
-			Expect(kustomizationPath).NotTo(BeEmpty())
-
-			imageReference = os.Getenv("IMAGE_REFERENCE")
-			Expect(imageReference).NotTo(BeEmpty())
-		})
-
 		By("Checking for an image registry", func() {
-			imageRegistryRaw := os.Getenv("IMAGE_REGISTRY_URL")
-			Expect(imageRegistryRaw).NotTo(BeEmpty())
-
-			scheme, imageRegistry = utils.SanitizeRegistryURL(imageRegistryRaw)
+			imageRegistry = os.Getenv("IMAGE_REGISTRY_URL")
+			Expect(imageRegistry).NotTo(BeEmpty())
 		})
 
 		By("Checking for an internal image registry", func() {
 			// If an internal image registry in the kubernetes-cluster is used, the registry-url for the ocm repository must be adjusted
 			// (see deployment of OCM repository below)
-			imageRegistryRaw := os.Getenv("INTERNAL_IMAGE_REGISTRY_URL")
-			if imageRegistryRaw == "" {
-				imageRegistryRaw = imageRegistry
+			internalImageRegistry = os.Getenv("INTERNAL_IMAGE_REGISTRY_URL")
+			if internalImageRegistry == "" {
+				internalImageRegistry = imageRegistry
 			}
-			internalScheme, internalImageRegistry = utils.SanitizeRegistryURL(imageRegistryRaw)
-
 		})
 
 		// TODO: Replace image with demo-CV image (see https://github.com/open-component-model/ocm-project/issues/317)
 		By("Providing referenced images to the image registry", func() {
-			parsed, err := name.ParseReference(imageReference)
+			imageReferenceURL := os.Getenv("IMAGE_REFERENCE")
+			Expect(imageReferenceURL).NotTo(BeEmpty())
+
+			var err error
+			parsed, err := name.ParseReference(imageReferenceURL)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-			imageReferenceShort = parsed.Context().RepositoryStr() + ":" + parsed.Identifier()
-			internalImageReference = internalImageRegistry + "/" + imageReferenceShort
-			internalImageReferenceNoTag = internalImageRegistry + "/" + parsed.Context().RepositoryStr()
+
+			imageReference = internalImageRegistry + "/" + parsed.Context().RepositoryStr() + ":" + parsed.Identifier()
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+
 			// Provide referenced images to our image registry to test localization
-			Expect(crane.Copy(imageReference, fmt.Sprintf("%s/%s", imageRegistry, imageReferenceShort))).To(Succeed())
+			// Note: Trim 'http://' from imageRegistry in case it is passed as insecure registry
+			Expect(crane.Copy(imageReferenceURL, fmt.Sprintf("%s/%s", strings.TrimLeft(imageRegistry, "http://"), parsed.Context().RepositoryStr()+":"+parsed.Identifier()))).To(Succeed())
 		})
 
 		By("Starting the operator", func() {
 			// projectimage stores the name of the image used in the example
-			var projectimage = imageRegistry + "/ocm.software/ocm-controller:v0.0.1"
+			var projectimage = strings.TrimLeft(imageRegistry, "http://") + "/ocm.software/ocm-controller:v0.0.1"
 
 			By("Building the manager(Operator) image")
 			cmd := exec.Command("make", "docker-build")

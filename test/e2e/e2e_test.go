@@ -17,29 +17,16 @@ limitations under the License.
 package e2e
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/test/utils"
-)
-
-const ()
-
-var (
-	helmChart                   string
-	kustomizationPath           string
-	imageReference              string
-	imageReferenceShort         string
-	internalImageReference      string
-	internalImageReferenceNoTag string
-	imageRegistry               string
-	scheme                      string
-	internalImageRegistry       string
-	internalScheme              string
 )
 
 var _ = Describe("controller", func() {
@@ -55,32 +42,38 @@ var _ = Describe("controller", func() {
 			_, err := utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
-			pd, err := utils.GetProjectDir()
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			testdata := os.Getenv("TESTDATA_HELM")
+			if testdata == "" {
+				testdata = filepath.Join(os.Getenv("PROJECT_DIR"), "test/e2e/testdata/helm-release")
+			}
 
-			testData := filepath.Join(pd, "test/e2e/testdata/helm-release")
+			// TODO: Adjust/Remove when https://github.com/open-component-model/ocm-k8s-toolkit/pull/72 is merged
+			helmChart := os.Getenv("HELM_CHART")
+			Expect(helmChart).NotTo(BeEmpty())
 
 			Expect(utils.PrepareOCMComponent(
-				filepath.Join(testData, "component-constructor.yaml"),
-				scheme+imageRegistry,
+				filepath.Join(testdata, "component-constructor.yaml"),
+				imageRegistry,
 				"HelmChart="+helmChart,
-				"LocalizationConfigPath="+filepath.Join(testData, "localization-config.yaml"),
-				"ImageReference="+internalImageReferenceNoTag, // Image without tag/identifier
+				"LocalizationConfigPath=localization-config.yaml",
+				// Note: Trim 'http://' in case of insecure registry
+				"ImageReference="+strings.TrimLeft(imageReference, "http://"),
 			)).To(Succeed())
 
-			Expect(utils.DeployOCMComponents(testData, internalScheme+internalImageRegistry)).To(Succeed())
+			Expect(utils.DeployOCMComponents(filepath.Join(testdata, "manifests"), internalImageRegistry)).To(Succeed())
 
 			By("validating that the resource was deployed successfully through the helm-controller")
 			cmd = exec.Command("kubectl", "wait", "deployment.apps/helm-flux-podinfo",
 				"--for", "condition=Available",
 				"--namespace", "default",
-				"--timeout", "1m",
+				"--timeout", "2m",
 			)
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("validating that the localization was successful")
-			verifyFunc := utils.GetVerifyPodFieldFunc("app.kubernetes.io/name=helm-flux-podinfo", "jsonpath=\"{.items[0].spec.containers[?(@.name=='podinfo')].image}\"", internalImageReference)
+			// Note: Trim 'http://' in case of insecure registry
+			verifyFunc := utils.GetVerifyPodFieldFunc("app.kubernetes.io/name=helm-flux-podinfo", "jsonpath=\"{.items[0].spec.containers[?(@.name=='podinfo')].image}\"", strings.TrimLeft(imageReference, "http://"))
 			EventuallyWithOffset(1, verifyFunc, time.Minute, time.Second).Should(Succeed())
 		})
 
@@ -95,32 +88,34 @@ var _ = Describe("controller", func() {
 			_, err := utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
-			pd, err := utils.GetProjectDir()
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-
-			testData := filepath.Join(pd, "test/e2e/testdata/kustomize-release")
+			testdata := os.Getenv("TESTDATA_KUSTOMIZE")
+			if testdata == "" {
+				testdata = filepath.Join(os.Getenv("PROJECT_DIR"), "test/e2e/testdata/kustomize-release")
+			}
 
 			Expect(utils.PrepareOCMComponent(
-				filepath.Join(testData, "component-constructor.yaml"),
-				scheme+imageRegistry,
-				"KustomizationPath="+kustomizationPath,
-				"LocalizationConfigPath="+filepath.Join(testData, "localization-config.yaml"),
-				"ImageReference="+internalImageReference,
+				filepath.Join(testdata, "component-constructor.yaml"),
+				imageRegistry,
+				"KustomizationPath=kustomization",
+				"LocalizationConfigPath=localization-config.yaml",
+				// Note: Trim 'http://' in case of insecure registry
+				"ImageReference="+strings.TrimLeft(imageReference, "http://"),
 			)).To(Succeed())
 
-			Expect(utils.DeployOCMComponents(testData, internalScheme+internalImageRegistry)).To(Succeed())
+			Expect(utils.DeployOCMComponents(filepath.Join(testdata, "manifests"), internalImageRegistry)).To(Succeed())
 
 			By("validating that the resource was deployed successfully through the kustomize-controller")
 			cmd = exec.Command("kubectl", "wait", "deployment.apps/kustomize-podinfo",
 				"--for", "condition=Available",
 				"--namespace", "default",
-				"--timeout", "1m",
+				"--timeout", "2m",
 			)
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("validating that the localization was successful")
-			verifyFunc := utils.GetVerifyPodFieldFunc("app=kustomize-podinfo", "jsonpath=\"{.items[0].spec.containers[?(@.name=='app')].image}\"", internalImageReference)
+			// Note: Trim 'http://' in case of insecure registry
+			verifyFunc := utils.GetVerifyPodFieldFunc("app=kustomize-podinfo", "jsonpath=\"{.items[0].spec.containers[?(@.name=='app')].image}\"", strings.TrimLeft(imageReference, "http://"))
 			EventuallyWithOffset(1, verifyFunc, time.Minute, time.Second).Should(Succeed())
 		})
 	})

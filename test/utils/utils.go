@@ -25,19 +25,13 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/go-git/go-git/v5"
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive,stylecheck // ginkgo...
 	"github.com/openfluxcd/artifact/test/utils"
 )
 
 // Run executes the provided command within this context.
 func Run(cmd *exec.Cmd) ([]byte, error) {
-	dir, _ := GetProjectDir()
-	cmd.Dir = dir
-
-	if err := os.Chdir(cmd.Dir); err != nil {
-		fmt.Fprintf(GinkgoWriter, "chdir dir: %s\n", err)
-	}
+	cmd.Dir = os.Getenv("PROJECT_DIR")
 
 	cmd.Env = append(cmd.Env, os.Environ()...)
 	cmd.Env = append(cmd.Env, "GO110MODULE=on")
@@ -50,35 +44,6 @@ func Run(cmd *exec.Cmd) ([]byte, error) {
 	}
 
 	return output, nil
-}
-
-// GetProjectDir traverses the directory tree starting from the current working directory to locate the root directory
-// of a Git repository (it essentially mimics "git rev-parse --show-toplevel").
-func GetProjectDir() (string, error) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", fmt.Errorf("failed to get current directory: %w", err)
-	}
-
-	// Traverse up the directory tree to find the root Git project
-	for {
-		_, err = git.PlainOpen(dir)
-		if err == nil {
-			absPath, err := filepath.Abs(dir)
-			if err != nil {
-				return "", fmt.Errorf("failed to get absolute path: %w", err)
-			}
-
-			return absPath, nil
-		}
-
-		// Move up one directory level
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("no Git repository found")
-		}
-		dir = parent
-	}
 }
 
 // DeployAndWaitForResource takes a manifest file of a k8s resource and deploys it with "kubectl". Correspondingly,
@@ -106,17 +71,6 @@ func DeployAndWaitForResource(manifestFilePath, waitingFor string) error {
 	_, err := utils.Run(cmd)
 
 	return err
-}
-
-// SanitizeRegistryURL returns the scheme and rest of the URL if a scheme was provided.
-func SanitizeRegistryURL(registryURL string) (string, string) {
-	if strings.Contains(registryURL, "://") {
-		subStr := strings.SplitAfter(registryURL, "://")
-
-		return subStr[0], subStr[1]
-	}
-
-	return "", registryURL
 }
 
 // PrepareOCMComponent creates an OCM component from a component-constructor file. The component-constructor file can
@@ -160,9 +114,8 @@ func PrepareOCMComponent(ccPath, imageRegistry string, templateValues ...string)
 		return fmt.Errorf("could not create ocm component: %w", err)
 	}
 
-	// Note: The option '--overwrite' is necessary, when a digest of a resource is changed or unknown
-	// TODO: Discuss if this should be the default or if we should introduce an environment variable to add the option
-	//  if specified by the user.
+	// Note: The option '--overwrite' is necessary, when a digest of a resource is changed or unknown (which is the case
+	// in our default test)
 	cmd = exec.Command("ocm", "transfer", "ctf", "--overwrite", ctfDir, imageRegistry)
 	_, err = utils.Run(cmd)
 	if err != nil {
