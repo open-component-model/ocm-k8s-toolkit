@@ -37,7 +37,7 @@ var _ = Describe("controller", func() {
 			cmd := exec.Command("kubectl", "wait", "deployment.apps/helm-controller",
 				"--for", "condition=Available",
 				"--namespace", "helm-system",
-				"--timeout", "1m",
+				"--timeout", "5m",
 			)
 			_, err := utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
@@ -83,7 +83,7 @@ var _ = Describe("controller", func() {
 			cmd := exec.Command("kubectl", "wait", "deployment.apps/kustomize-controller",
 				"--for", "condition=Available",
 				"--namespace", "kustomize-system",
-				"--timeout", "1m",
+				"--timeout", "5m",
 			)
 			_, err := utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())

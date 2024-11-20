@@ -133,12 +133,15 @@ jobs:
           repository: openfluxcd/helm-controller
           path: helm-controller
 
+      # TODO: Create helm-controller image in public repository to omit rebuilds
       - name: Install helm-controller
+        env:
+          IMG: localhost:31000/helm-controller:latest
         run: |
-          IMG=localhost:31000/helm-controller:latest make -C helm-controller docker-build
-          IMG=localhost:31000/helm-controller:latest make -C helm-controller docker-push
+          make -C helm-controller docker-build
+          make -C helm-controller docker-push
           make -C helm-controller install
-          IMG=localhost:31000/helm-controller:latest make -C helm-controller deploy
+          make -C helm-controller deploy
 
       - name: Checkout kustomize-controller
         uses: actions/checkout@v4
@@ -146,12 +149,15 @@ jobs:
           repository: openfluxcd/kustomize-controller
           path: kustomize-controller
 
+      # TODO: Create kustomize-controller image in public repository to omit rebuilds
       - name: Install kustomize-controller
+        env:
+          IMG: localhost:31000/helm-controller:latest
         run: |
-          IMG=localhost:31000/kustomize-controller:latest make -C kustomize-controller docker-build
-          IMG=localhost:31000/kustomize-controller:latest make -C kustomize-controller docker-push
+          make -C kustomize-controller docker-build
+          make -C kustomize-controller docker-push
           make -C kustomize-controller install
-          IMG=localhost:31000/kustomize-controller:latest make -C kustomize-controller deploy
+          make -C kustomize-controller deploy
 
       - name: Run e2e test
         run: IMAGE_REGISTRY_URL=http://localhost:31000 INTERNAL_IMAGE_REGISTRY_URL=http://registry-internal.default.svc.cluster.local:5000 make test-e2e
