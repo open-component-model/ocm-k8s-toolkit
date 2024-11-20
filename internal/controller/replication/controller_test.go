@@ -29,7 +29,6 @@ import (
 	"github.com/mandelsoft/vfs/pkg/osfs"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -41,14 +40,18 @@ import (
 	resourcetypes "ocm.software/ocm/api/ocm/extensions/artifacttypes"
 	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
 	"ocm.software/ocm/api/utils/accessio"
+
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
 var _ = Describe("Replication Controller", func() {
-	Context("When reconciling a Replication", func() {
+	Context("when transferring component versions (CTFs)", func() {
 		const (
-			testNamespace = "ns-test-replication-controller"
-			compOCMName   = "ocm.software/component-for-replication"
-			compVersion   = "0.1.0"
+			testNamespace  = "ns-test-replication-controller"
+			compOCMName    = "ocm.software/component-for-replication"
+			compVersion    = "0.1.0"
+			testImage      = "gcr.io/google_containers/echoserver:1.10"
+			localImagePath = "blobs/sha256.4b93359cc643b5d8575d4f96c2d107b4512675dcfee1fa035d0c44a00b9c027c"
 		)
 
 		var (
@@ -107,14 +110,14 @@ var _ = Describe("Replication Controller", func() {
 		AfterEach(func() {
 		})
 
-		It("Test history status update with CTFs", func() {
+		It("should be properly reflected in the history", func() {
 			By("Create source CTF")
 			sourcePath := Must(os.MkdirTemp("", sourcePattern))
 			DeferCleanup(func() error {
 				return os.RemoveAll(sourcePath)
 			})
 
-			newTestComponentVersionInCTFDir(env, compOCMName, compVersion, sourcePath)
+			newTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compVersion, testImage)
 
 			By("Create source repository resource")
 			sourceRepo, sourceSpecData := newCFTRepositoryObj(testNamespace, sourceRepoResourceName, sourcePath)
@@ -171,7 +174,7 @@ var _ = Describe("Replication Controller", func() {
 
 			By("Create a newer component version")
 			compNewVersion := "0.2.0"
-			newTestComponentVersionInCTFDir(env, compOCMName, compNewVersion, sourcePath)
+			newTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compNewVersion, testImage)
 
 			By("Simulate component controller discovering the newer version")
 			component.Status.Component = *newComponentInfo(compOCMName, compNewVersion, sourceSpecData)
@@ -197,7 +200,7 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Delete(ctx, sourceRepo)).To(Succeed())
 		})
 
-		It("Test transfer options with CTFs", func() {
+		It("should be possible to configure transfer options", func() {
 
 			By("Create source CTF")
 			sourcePath := Must(os.MkdirTemp("", sourcePattern))
@@ -205,7 +208,7 @@ var _ = Describe("Replication Controller", func() {
 				return os.RemoveAll(sourcePath)
 			})
 
-			newTestComponentVersionInCTFDir(env, compOCMName, compVersion, sourcePath)
+			newTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compVersion, testImage)
 
 			By("Create source repository resource")
 			sourceRepo, sourceSpecData := newCFTRepositoryObj(testNamespace, sourceRepoResourceName, sourcePath)
@@ -260,8 +263,9 @@ var _ = Describe("Replication Controller", func() {
 			// Expect to see the transfered component version in the history
 			Expect(replication.Status.History[0].Version).To(Equal(compVersion))
 
-			// The docker image downloaded due to 'resourcesByValue: true' in the transfer options
-			imageArtifact := filepath.Join(targetPath, "blobs/sha256.4b93359cc643b5d8575d4f96c2d107b4512675dcfee1fa035d0c44a00b9c027c")
+			// Check the effect of transfer options.
+			// This docker image was downloaded due to 'resourcesByValue: true' set in the transfer options
+			imageArtifact := filepath.Join(targetPath, localImagePath)
 			Expect(imageArtifact).To(BeAnExistingFile())
 
 			By("Cleanup the resources")
@@ -274,13 +278,13 @@ var _ = Describe("Replication Controller", func() {
 	})
 })
 
-func newTestComponentVersionInCTFDir(env *Builder, compName, compVersion, path string) {
+func newTestComponentVersionInCTFDir(env *Builder, path, compName, compVersion, img string) {
 	env.OCMCommonTransport(path, accessio.FormatDirectory, func() {
 		env.Component(compName, func() {
 			env.Version(compVersion, func() {
 				env.Resource("image", "1.0.0", resourcetypes.OCI_IMAGE, ocmmetav1.ExternalRelation, func() {
 					env.Access(
-						ociartifact.New("gcr.io/google_containers/echoserver:1.10"),
+						ociartifact.New(img),
 					)
 				})
 			})
