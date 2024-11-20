@@ -122,18 +122,17 @@ func TestE2E(t *testing.T) {
 				return err
 			})
 
-			// TODO: Behaviour with external CRDs depend on decision/solution for https://github.com/open-component-model/ocm-project/issues/327
-			//By("Installing external CRDs")
-			//cmd = exec.Command("kubectl", "apply", "--server-side", "-k", "https://github.com/openfluxcd/artifact//config/crd?ref=v0.1.1")
-			//_, err = utils.Run(cmd)
-			//ExpectWithOffset(1, err).NotTo(HaveOccurred())
-			//DeferCleanup(func() error {
-			//	By("Uninstalling external CRDs")
-			//	cmd = exec.Command("kubectl", "delete", "-k", "https://github.com/openfluxcd/artifact//config/crd?ref=v0.1.1")
-			//	_, err = utils.Run(cmd)
+			By("Installing external CRDs")
+			cmd = exec.Command("kubectl", "apply", "--server-side", "-k", "https://github.com/openfluxcd/artifact//config/crd?ref=v0.1.1")
+			_, err = utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			DeferCleanup(func() error {
+				By("Uninstalling external CRDs")
+				cmd = exec.Command("kubectl", "delete", "-k", "https://github.com/openfluxcd/artifact//config/crd?ref=v0.1.1")
+				_, err = utils.Run(cmd)
 
-			//	return err
-			//})
+				return err
+			})
 
 			By("Deploying the controller-manager")
 			cmd = exec.Command("make", "deploy")
