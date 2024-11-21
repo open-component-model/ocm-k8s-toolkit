@@ -185,6 +185,7 @@ jobs:
 
       - name: Run e2e test
         env:
+          RESOURCE_TIMEOUT: 5m
           IMAGE_REGISTRY_URL: http://localhost:31000
           INTERNAL_IMAGE_REGISTRY_URL: http://registry-internal.default.svc.cluster.local:5000
         run: make test-e2e
