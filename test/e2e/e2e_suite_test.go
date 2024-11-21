@@ -206,12 +206,17 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 })
 
 var _ = AfterSuite(func(ctx SpecContext) {
-	By("displays logs from the controller", func() {
-		cmd := exec.Command("kubectl", "logs", "-n", namespace, controllerPodName)
-		output, err := utils.Run(cmd)
-		ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	logPath := os.Getenv("CONTROLLER_LOG_PATH")
+	if logPath != "" {
+		By("displays logs from the controller", func() {
+			cmdArgs := []string{"logs", "-n", namespace, controllerPodName}
+			if os.Getenv("LOG_PATH") != "" {
+				cmdArgs = append(cmdArgs, "--log-path", os.Getenv("LOG_PATH"))
+			}
+			cmd := exec.Command("kubectl", cmdArgs...)
+			_, err := utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
-		_, err = GinkgoWriter.Write(output)
-		ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	})
+		})
+	}
 })

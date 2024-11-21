@@ -60,7 +60,7 @@ jobs:
           restore-keys: |
             ${{ env.cache_name }}-${{ runner.os }}-go-
         env:
-          cache_name: manual-go-cache
+          cache_name: controller-tests
 
       - name: Restore K8s Cache
         id: cache-k8s-restore
@@ -142,6 +142,8 @@ jobs:
           make -C helm-controller docker-push
           make -C helm-controller install
           make -C helm-controller deploy
+          kubectl wait deployment.apps/helm-controller --for condition=Available --namespace helm-system --timeout 5m
+          kubectl logs --tail -1 -l app=helm-controller -n helm-system -f --ignore-errors &> helm-controller.log &
 
       - name: Checkout kustomize-controller
         uses: actions/checkout@v4
@@ -152,17 +154,19 @@ jobs:
       # TODO: Create kustomize-controller image in public repository to omit rebuilds
       - name: Install kustomize-controller
         env:
-          IMG: localhost:31000/helm-controller:latest
+          IMG: localhost:31000/kustomize-controller:latest
         run: |
           make -C kustomize-controller docker-build
           make -C kustomize-controller docker-push
           make -C kustomize-controller install
           make -C kustomize-controller deploy
+          kubectl wait deployment.apps/kustomize-controller --for condition=Available --namespace kustomize-system --timeout 5m
+          kubectl logs --tail -1 -l app=kustomize-controller -n kustomize-system -f --ignore-errors &> kustomize-controller.log &
 
       # TODO: Replace once the release with the 'skipDigestGeneration' field in the component constructor is available
       # uses: open-component-model/ocm-setup-action@main
       # with:
-      #   version: v0.18.0-rc.2
+      #   version: v0.19.0-rc.1
       - name: Set up cache for ocm (temporarily)
         uses: actions/cache@v4
         with:
@@ -188,4 +192,18 @@ jobs:
           RESOURCE_TIMEOUT: 5m
           IMAGE_REGISTRY_URL: http://localhost:31000
           INTERNAL_IMAGE_REGISTRY_URL: http://registry-internal.default.svc.cluster.local:5000
+          CONTROLLER_LOG_PATH: ./ocm-k8s-toolkit-controller.log
         run: make test-e2e
+
+      - name: Publish logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: controller-logs
+          # Currently, it is planned that the integration tests runs on every commit on a PR. Therefore, we could
+          # produce a lot of logs. To note clutter the storage, the retention-days are reduced to 1.
+          retention-days: 1
+          path: |
+            helm-controller.log
+            kustomize-controller.log
+            ocm-k8s-toolkit-controller.log

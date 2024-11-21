@@ -32,22 +32,12 @@ import (
 var _ = Describe("controller", func() {
 	Context("Operator", func() {
 		It("should deploy a helm resource", func() {
-			By("checking for the helm controller")
-			// Note: Namespace is taken from helm-controller default kustomization
-			cmd := exec.Command("kubectl", "wait", "deployment.apps/helm-controller",
-				"--for", "condition=Available",
-				"--namespace", "helm-system",
-				"--timeout", timeout,
-			)
-			_, err := utils.Run(cmd)
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-
+			// TODO: Adjust/Remove when https://github.com/open-component-model/ocm-k8s-toolkit/pull/72 is merged
 			testdata := os.Getenv("TESTDATA_HELM")
 			if testdata == "" {
 				testdata = filepath.Join(os.Getenv("PROJECT_DIR"), "test/e2e/testdata/helm-release")
 			}
 
-			// TODO: Adjust/Remove when https://github.com/open-component-model/ocm-k8s-toolkit/pull/72 is merged
 			helmChart := os.Getenv("HELM_CHART")
 			Expect(helmChart).NotTo(BeEmpty())
 
@@ -63,12 +53,12 @@ var _ = Describe("controller", func() {
 			Expect(utils.DeployOCMComponents(filepath.Join(testdata, "manifests"), internalImageRegistry, timeout)).To(Succeed())
 
 			By("validating that the resource was deployed successfully through the helm-controller")
-			cmd = exec.Command("kubectl", "wait", "deployment.apps/helm-flux-podinfo",
+			cmd := exec.Command("kubectl", "wait", "deployment.apps/helm-flux-podinfo",
 				"--for", "condition=Available",
 				"--namespace", "default",
 				"--timeout", timeout,
 			)
-			_, err = utils.Run(cmd)
+			_, err := utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("validating that the localization was successful")
@@ -78,16 +68,7 @@ var _ = Describe("controller", func() {
 		})
 
 		It("should deploy a kustomize resource", func() {
-			By("checking for the kustomize controller")
-			// Note: Namespace is taken from helm-controller default kustomization
-			cmd := exec.Command("kubectl", "wait", "deployment.apps/kustomize-controller",
-				"--for", "condition=Available",
-				"--namespace", "kustomize-system",
-				"--timeout", timeout,
-			)
-			_, err := utils.Run(cmd)
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-
+			// TODO: Adjust/Remove when https://github.com/open-component-model/ocm-k8s-toolkit/pull/72 is merged
 			testdata := os.Getenv("TESTDATA_KUSTOMIZE")
 			if testdata == "" {
 				testdata = filepath.Join(os.Getenv("PROJECT_DIR"), "test/e2e/testdata/kustomize-release")
@@ -105,12 +86,12 @@ var _ = Describe("controller", func() {
 			Expect(utils.DeployOCMComponents(filepath.Join(testdata, "manifests"), internalImageRegistry, timeout)).To(Succeed())
 
 			By("validating that the resource was deployed successfully through the kustomize-controller")
-			cmd = exec.Command("kubectl", "wait", "deployment.apps/kustomize-podinfo",
+			cmd := exec.Command("kubectl", "wait", "deployment.apps/kustomize-podinfo",
 				"--for", "condition=Available",
 				"--namespace", "default",
 				"--timeout", timeout,
 			)
-			_, err = utils.Run(cmd)
+			_, err := utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("validating that the localization was successful")
