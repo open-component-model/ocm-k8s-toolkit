@@ -159,5 +159,32 @@ jobs:
           make -C kustomize-controller install
           make -C kustomize-controller deploy
 
+      # TODO: Replace once the release with the 'skipDigestGeneration' field in the component constructor is available
+      # uses: open-component-model/ocm-setup-action@main
+      # with:
+      #   version: v0.18.0-rc.2
+      - name: Set up cache for ocm (temporarily)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ocm/bin
+          key: ${{ env.cache_name }}-${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ hashFiles('**/go.mod') }}
+          restore-keys: |
+            ${{ env.cache_name }}-${{ runner.os }}-go-
+        env:
+          cache_name: dummy-cache
+      - name: Checkout OCM (temporarily)
+        uses: actions/checkout@v4
+        with:
+          repository: open-component-model/ocm
+          path: ocm
+      - name: Build OCM (temporarily)
+        run: |
+          make -C ocm bin/ocm
+          echo "${{ github.workspace }}/ocm/bin" >> "$GITHUB_PATH"
+
       - name: Run e2e test
-        run: IMAGE_REGISTRY_URL=http://localhost:31000 INTERNAL_IMAGE_REGISTRY_URL=http://registry-internal.default.svc.cluster.local:5000 make test-e2e
+        env:
+          IMAGE_REGISTRY_URL: http://localhost:31000
+          INTERNAL_IMAGE_REGISTRY_URL: http://registry-internal.default.svc.cluster.local:5000
+        run: make test-e2e
