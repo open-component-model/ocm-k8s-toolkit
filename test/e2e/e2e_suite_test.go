@@ -43,6 +43,8 @@ var (
 	// image reference is used to copy the original image from the example into the image registry and test the
 	// localization and configuration.
 	imageReference string
+	// timeout for waiting for kuberentes resources
+	timeout string
 )
 
 // Run e2e tests using the Ginkgo runner.
@@ -61,6 +63,11 @@ func TestE2E(t *testing.T) {
 				_, _ = utils.Run(cmd)
 			})
 		})
+
+		timeout = os.Getenv("RESOURCE_TIMEOUT")
+		if timeout == "" {
+			timeout = "1m"
+		}
 
 		By("Checking for an image registry", func() {
 			imageRegistry = os.Getenv("IMAGE_REGISTRY_URL")

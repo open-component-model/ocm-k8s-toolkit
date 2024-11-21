@@ -52,7 +52,7 @@ func Run(cmd *exec.Cmd) ([]byte, error) {
 // Example:
 //
 //	err := DeployAndWaitForResource("./pod.yaml", "condition=Ready")
-func DeployAndWaitForResource(manifestFilePath, waitingFor string) error {
+func DeployAndWaitForResource(manifestFilePath, waitingFor, timeout string) error {
 	cmd := exec.Command("kubectl", "apply", "-f", manifestFilePath)
 	if _, err := utils.Run(cmd); err != nil {
 		return err
@@ -66,7 +66,7 @@ func DeployAndWaitForResource(manifestFilePath, waitingFor string) error {
 
 	cmd = exec.Command("kubectl", "wait", "-f", manifestFilePath,
 		"--for", waitingFor,
-		"--timeout", "1m",
+		"--timeout", timeout,
 	)
 	_, err := utils.Run(cmd)
 
@@ -128,7 +128,7 @@ func PrepareOCMComponent(ccPath, imageRegistry string, templateValues ...string)
 // DeployOCMComponents is a helper function that deploys all relevant OCM component parts as well as the respective
 // source-controller resource. It expects all manifests in the passed path. The image registry is required as the
 // corresponding value must be templated.
-func DeployOCMComponents(manifestPath, imageRegistry string) error {
+func DeployOCMComponents(manifestPath, imageRegistry, timeout string) error {
 	By("creating and validating the custom resource OCM repository")
 	// In some test-scenarios an internal image registry inside the cluster is used to upload the components.
 	// If this is the case, the OCM repository manifest cannot hold a static registry-url. Therefore,
@@ -168,37 +168,37 @@ func DeployOCMComponents(manifestPath, imageRegistry string) error {
 	if err := os.WriteFile(manifestOCMRepository, result.Bytes(), perm); err != nil {
 		return fmt.Errorf("could not write ocm repository manifest: %w", err)
 	}
-	if err := DeployAndWaitForResource(manifestOCMRepository, "condition=Ready"); err != nil {
+	if err := DeployAndWaitForResource(manifestOCMRepository, "condition=Ready", timeout); err != nil {
 		return fmt.Errorf("could not deploy ocm component: %w", err)
 	}
 
 	By("creating and validating the custom resource OCM component")
 	manifestComponent := filepath.Join(manifestPath, "component.yaml")
-	if err := DeployAndWaitForResource(manifestComponent, "condition=Ready"); err != nil {
+	if err := DeployAndWaitForResource(manifestComponent, "condition=Ready", timeout); err != nil {
 		return fmt.Errorf("could not deploy ocm component: %w", err)
 	}
 
 	By("creating and validating the custom resource OCM resource")
 	manifestResource := filepath.Join(manifestPath, "resource.yaml")
-	if err := DeployAndWaitForResource(manifestResource, "condition=Ready"); err != nil {
+	if err := DeployAndWaitForResource(manifestResource, "condition=Ready", timeout); err != nil {
 		return fmt.Errorf("could not deploy ocm resource: %w", err)
 	}
 
 	By("creating and validating the custom resource localization resource")
 	manifestLocalizationResource := filepath.Join(manifestPath, "localization-resource.yaml")
-	if err := DeployAndWaitForResource(manifestLocalizationResource, "condition=Ready"); err != nil {
+	if err := DeployAndWaitForResource(manifestLocalizationResource, "condition=Ready", timeout); err != nil {
 		return fmt.Errorf("could not deploy ocm localization resource: %w", err)
 	}
 
 	By("creating and validating the custom resource localized resource")
 	manifestLocalizedResource := filepath.Join(manifestPath, "localized-resource.yaml")
-	if err := DeployAndWaitForResource(manifestLocalizedResource, "condition=Ready"); err != nil {
+	if err := DeployAndWaitForResource(manifestLocalizedResource, "condition=Ready", timeout); err != nil {
 		return fmt.Errorf("could not deploy ocm localized resource: %w", err)
 	}
 
 	By("creating and validating the custom resource for the release")
 	manifestRelease := filepath.Join(manifestPath, "release.yaml")
-	if err := DeployAndWaitForResource(manifestRelease, "condition=Ready"); err != nil {
+	if err := DeployAndWaitForResource(manifestRelease, "condition=Ready", timeout); err != nil {
 		return fmt.Errorf("could not deploy release: %w", err)
 	}
 

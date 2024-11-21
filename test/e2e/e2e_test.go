@@ -37,7 +37,7 @@ var _ = Describe("controller", func() {
 			cmd := exec.Command("kubectl", "wait", "deployment.apps/helm-controller",
 				"--for", "condition=Available",
 				"--namespace", "helm-system",
-				"--timeout", "5m",
+				"--timeout", timeout,
 			)
 			_, err := utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
@@ -60,13 +60,13 @@ var _ = Describe("controller", func() {
 				"ImageReference="+strings.TrimLeft(imageReference, "http://"),
 			)).To(Succeed())
 
-			Expect(utils.DeployOCMComponents(filepath.Join(testdata, "manifests"), internalImageRegistry)).To(Succeed())
+			Expect(utils.DeployOCMComponents(filepath.Join(testdata, "manifests"), internalImageRegistry, timeout)).To(Succeed())
 
 			By("validating that the resource was deployed successfully through the helm-controller")
 			cmd = exec.Command("kubectl", "wait", "deployment.apps/helm-flux-podinfo",
 				"--for", "condition=Available",
 				"--namespace", "default",
-				"--timeout", "2m",
+				"--timeout", timeout,
 			)
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
@@ -83,7 +83,7 @@ var _ = Describe("controller", func() {
 			cmd := exec.Command("kubectl", "wait", "deployment.apps/kustomize-controller",
 				"--for", "condition=Available",
 				"--namespace", "kustomize-system",
-				"--timeout", "5m",
+				"--timeout", timeout,
 			)
 			_, err := utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
@@ -102,13 +102,13 @@ var _ = Describe("controller", func() {
 				"ImageReference="+strings.TrimLeft(imageReference, "http://"),
 			)).To(Succeed())
 
-			Expect(utils.DeployOCMComponents(filepath.Join(testdata, "manifests"), internalImageRegistry)).To(Succeed())
+			Expect(utils.DeployOCMComponents(filepath.Join(testdata, "manifests"), internalImageRegistry, timeout)).To(Succeed())
 
 			By("validating that the resource was deployed successfully through the kustomize-controller")
 			cmd = exec.Command("kubectl", "wait", "deployment.apps/kustomize-podinfo",
 				"--for", "condition=Available",
 				"--namespace", "default",
-				"--timeout", "2m",
+				"--timeout", timeout,
 			)
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
