@@ -8,7 +8,9 @@ nodes:
   - containerPort: 31000
     hostPort: 31000
 - role: worker
-# TODO: Add more context to this config
+# This hack is required because the current 'kustomize-release' will try to reach
+# 'https://<internal-image-registry>/../manifests:..'. In the current setup with an insecure image registry this URL
+# cannot be reached. Thus, the hacky redirection.
 containerdConfigPatches:
   - |-
     [plugins."io.containerd.grpc.v1.cri".registry]
