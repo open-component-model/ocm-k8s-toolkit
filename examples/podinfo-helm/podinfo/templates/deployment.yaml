@@ -13,7 +13,7 @@ spec:
         app: podinfo
     spec:
       containers:
-      - name: podinfod
+      - name: podinfo
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         imagePullPolicy: IfNotPresent
         ports:
