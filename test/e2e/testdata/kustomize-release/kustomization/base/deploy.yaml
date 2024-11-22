@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kustomize-podinfo
+spec:
+  selector:
+    matchLabels:
+      app: kustomize-podinfo
+  template:
+    metadata:
+      labels:
+        app: kustomize-podinfo
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/stefanprodan/podinfo:6.7.0
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP

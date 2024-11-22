@@ -20,15 +20,6 @@ CONTAINER_TOOL ?= docker
 REPOSITORY_ROOT := $(shell git rev-parse --show-toplevel)
 BUILD_DIR := $(REPOSITORY_ROOT)/build
 
-SOURCE_VER ?= $(shell go list -m github.com/openfluxcd/artifact | awk '{print $$2}')
-
-# Keep a record of the version of the downloaded source CRDs. It is used to
-# detect and download new CRDs when the SOURCE_VER changes.
-SOURCE_CRD_VER=$(BUILD_DIR)/.src-crd-$(SOURCE_VER)
-
-# Paths to download the CRD dependencies at.
-ARTIFACT_CRD ?= config/crd/bases/openfluxcd.ocm.software_artifacts.yaml
-
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
 SHELL = /usr/bin/env bash -o pipefail
@@ -73,13 +64,13 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate download-crd-deps envtest ## Run tests.
+test: manifests generate envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 # Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
 .PHONY: test-e2e  # Run the e2e tests against a Kind k8s instance that is spun up.
 test-e2e:
-	go test ./test/e2e/ -v -ginkgo.v
+	PROJECT_DIR=$(REPOSITORY_ROOT) go test ./test/e2e/ -v -timeout 30m -ginkgo.v
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
@@ -135,8 +126,8 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 
 ##@ Deployment
 
-ifndef ignore-not-found
-  ignore-not-found = false
+ifndef IGNORE_NOT_FOUND
+  IGNORE_NOT_FOUND = false
 endif
 
 .PHONY: install
@@ -145,7 +136,7 @@ install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~
 
 .PHONY: uninstall
 uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f -
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
@@ -154,7 +145,7 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f -
 
 ##@ Dependencies
 
@@ -175,26 +166,6 @@ KUSTOMIZE_VERSION ?= v5.4.1
 CONTROLLER_TOOLS_VERSION ?= v0.16.0
 ENVTEST_VERSION ?= release-0.18
 GOLANGCI_LINT_VERSION ?= v1.61.0
-
-# Delete previously downloaded CRDs and record the new version of the source
-# CRDs.
-$(SOURCE_CRD_VER):
-	rm -f $(BUILD_DIR)/.src-crd*
-	$(MAKE) cleanup-crd-deps
-	if ! test -d "$(BUILD_DIR)"; then mkdir -p $(BUILD_DIR); fi
-	touch $(SOURCE_CRD_VER)
-
-$(ARTIFACT_CRD):
-	@echo "Downloading CRD for artifact based on version $(SOURCE_VER)"
-	curl -s https://raw.githubusercontent.com/openfluxcd/artifact/${SOURCE_VER}/$(ARTIFACT_CRD) -o $(ARTIFACT_CRD)
-
-# Download the CRDs the controller depends on
-download-crd-deps: $(SOURCE_CRD_VER) $(ARTIFACT_CRD)
-
-# Delete the downloaded CRD dependencies.
-cleanup-crd-deps:
-	rm -f $(ARTIFACT_CRD)
-
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.

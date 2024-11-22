@@ -388,7 +388,20 @@ func getBlobAccess(ctx context.Context, access ocmctx.ResourceAccess) (blobacces
 
 // verifyResource verifies the resource digest with the digest from the component version access and component descriptor.
 func verifyResource(ctx context.Context, access ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAccess, cd *compdesc.ComponentDescriptor) error {
-	log.FromContext(ctx).V(1).Info("verify resource")
+	logger := log.FromContext(ctx)
+	logger.V(1).Info("verify resource")
+
+	// TODO: https://github.com/open-component-model/ocm-k8s-toolkit/issues/71
+	index := cd.GetResourceIndex(access.Meta())
+	if index < 0 {
+		return errors.New("resource not found in access spec")
+	}
+	raw := &cd.Resources[index]
+	if raw.Digest == nil {
+		logger.V(1).Info("no resource-digest in descriptor found. Skipping verification")
+
+		return nil
+	}
 
 	blobAccess, err := getBlobAccess(ctx, access)
 	if err != nil {

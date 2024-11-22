@@ -1,0 +1,12 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: LocalizedResource
+metadata:
+  name: helm-localized-resource
+spec:
+  interval: 10m
+  target:
+    kind: Resource
+    name: helm-resource
+  config:
+    kind: Resource
+    name: helm-localization-resource

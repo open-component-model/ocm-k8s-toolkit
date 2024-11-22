@@ -17,46 +17,25 @@ limitations under the License.
 package utils
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"text/template"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive,stylecheck // ginkgo...
+	"github.com/openfluxcd/artifact/test/utils"
 )
-
-const (
-	prometheusOperatorVersion = "v0.72.0"
-	prometheusOperatorURL     = "https://github.com/prometheus-operator/prometheus-operator/" +
-		"releases/download/%s/bundle.yaml"
-
-	certmanagerVersion = "v1.14.4"
-	certmanagerURLTmpl = "https://github.com/jetstack/cert-manager/releases/download/%s/cert-manager.yaml"
-)
-
-func warnError(err error) {
-	fmt.Fprintf(GinkgoWriter, "warning: %v\n", err)
-}
-
-// InstallPrometheusOperator installs the prometheus Operator to be used to export the enabled metrics.
-func InstallPrometheusOperator() error {
-	url := fmt.Sprintf(prometheusOperatorURL, prometheusOperatorVersion)
-	cmd := exec.Command("kubectl", "create", "-f", url)
-	_, err := Run(cmd)
-
-	return err
-}
 
 // Run executes the provided command within this context.
 func Run(cmd *exec.Cmd) ([]byte, error) {
-	dir, _ := GetProjectDir()
-	cmd.Dir = dir
+	cmd.Dir = os.Getenv("PROJECT_DIR")
 
-	if err := os.Chdir(cmd.Dir); err != nil {
-		fmt.Fprintf(GinkgoWriter, "chdir dir: %s\n", err)
-	}
+	cmd.Env = append(cmd.Env, os.Environ()...)
+	cmd.Env = append(cmd.Env, "GO110MODULE=on")
 
-	cmd.Env = append(os.Environ(), "GO111MODULE=on")
 	command := strings.Join(cmd.Args, " ")
 	fmt.Fprintf(GinkgoWriter, "running: %s\n", command)
 	output, err := cmd.CombinedOutput()
@@ -67,78 +46,181 @@ func Run(cmd *exec.Cmd) ([]byte, error) {
 	return output, nil
 }
 
-// UninstallPrometheusOperator uninstalls the prometheus.
-func UninstallPrometheusOperator() {
-	url := fmt.Sprintf(prometheusOperatorURL, prometheusOperatorVersion)
-	cmd := exec.Command("kubectl", "delete", "-f", url)
-	if _, err := Run(cmd); err != nil {
-		warnError(err)
-	}
-}
-
-// UninstallCertManager uninstalls the cert manager.
-func UninstallCertManager() {
-	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
-	cmd := exec.Command("kubectl", "delete", "-f", url)
-	if _, err := Run(cmd); err != nil {
-		warnError(err)
-	}
-}
-
-// InstallCertManager installs the cert manager bundle.
-func InstallCertManager() error {
-	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
-	cmd := exec.Command("kubectl", "apply", "-f", url)
-	if _, err := Run(cmd); err != nil {
+// DeployAndWaitForResource takes a manifest file of a k8s resource and deploys it with "kubectl". Correspondingly,
+// a DeferCleanup-handler is created that will delete the resource, when the test-suite ends.
+// Additionally, "waitingFor" is a resource condition to check if the resource was deployed successfully.
+// Example:
+//
+//	err := DeployAndWaitForResource("./pod.yaml", "condition=Ready")
+func DeployAndWaitForResource(manifestFilePath, waitingFor, timeout string) error {
+	cmd := exec.Command("kubectl", "apply", "-f", manifestFilePath)
+	if _, err := utils.Run(cmd); err != nil {
 		return err
 	}
-	// Wait for cert-manager-webhook to be ready, which can take time if cert-manager
-	// was re-installed after uninstalling on a cluster.
-	cmd = exec.Command("kubectl", "wait", "deployment.apps/cert-manager-webhook",
-		"--for", "condition=Available",
-		"--namespace", "cert-manager",
-		"--timeout", "5m",
+	DeferCleanup(func() error {
+		cmd = exec.Command("kubectl", "delete", "-f", manifestFilePath)
+		_, err := utils.Run(cmd)
+
+		return err
+	})
+
+	cmd = exec.Command("kubectl", "wait", "-f", manifestFilePath,
+		"--for", waitingFor,
+		"--timeout", timeout,
 	)
-
-	_, err := Run(cmd)
-
-	return err
-}
-
-// LoadImageToKindCluster loads a local docker image to the kind cluster.
-func LoadImageToKindClusterWithName(name string) error {
-	cluster := "kind"
-	if v, ok := os.LookupEnv("KIND_CLUSTER"); ok {
-		cluster = v
-	}
-	kindOptions := []string{"load", "docker-image", name, "--name", cluster}
-	cmd := exec.Command("kind", kindOptions...)
-	_, err := Run(cmd)
+	_, err := utils.Run(cmd)
 
 	return err
 }
 
-// GetNonEmptyLines converts given command output string into individual objects
-// according to line breakers, and ignores the empty elements in it.
-func GetNonEmptyLines(output string) []string {
-	var res []string
-	elements := strings.Split(output, "\n")
-	for _, element := range elements {
-		if element != "" {
-			res = append(res, element)
-		}
-	}
-
-	return res
-}
-
-// GetProjectDir will return the directory where the project is.
-func GetProjectDir() (string, error) {
-	wd, err := os.Getwd()
+// PrepareOCMComponent creates an OCM component from a component-constructor file. The component-constructor file can
+// contain go-template-logic and the respective key-value pairs can be by templateValues.
+// After creating the OCM component, the component is transferred to imageRegistry.
+func PrepareOCMComponent(ccPath, imageRegistry string, templateValues ...string) error {
+	By("creating ocm component")
+	tmpDir, err := os.MkdirTemp("", "")
 	if err != nil {
-		return wd, err
+		return fmt.Errorf("could not create temporary directory: %w", err)
 	}
-	wd = strings.ReplaceAll(wd, "/test/e2e", "")
+	DeferCleanup(func() error {
+		return os.RemoveAll(tmpDir)
+	})
 
-	return wd, nil
+	// The localization should replace the original value of the resource image reference with the new
+	// image reference from our image registry.
+	// In some test-scenarios an internal image registry inside the cluster is used to store the images.
+	// If this is the case, the OCM component-constructor cannot hold a static registry-url. Therefore,
+	// go-template is used to replace the registry-url.
+	//   If the environment variable INTERNAL_IMAGE_REGISTRY_URL is present, its value will be used.
+	//   If the environment variable is not present, the initial value from IMAGE_REGISTRY_URL will be used.
+	ctfDir := filepath.Join(tmpDir, "ctf")
+	cmdArgs := []string{
+		"add",
+		"componentversions",
+		"--create",
+		"--file", ctfDir,
+		ccPath,
+	}
+
+	if len(templateValues) > 0 {
+		// We could support more template-functionalities (see ocmcli), but it is not required yet.
+		cmdArgs = append(cmdArgs, "--templater", "go")
+		cmdArgs = append(cmdArgs, templateValues...)
+	}
+
+	cmd := exec.Command("ocm", cmdArgs...)
+	_, err = utils.Run(cmd)
+	if err != nil {
+		return fmt.Errorf("could not create ocm component: %w", err)
+	}
+
+	// Note: The option '--overwrite' is necessary, when a digest of a resource is changed or unknown (which is the case
+	// in our default test)
+	cmd = exec.Command("ocm", "transfer", "ctf", "--overwrite", ctfDir, imageRegistry)
+	_, err = utils.Run(cmd)
+	if err != nil {
+		return fmt.Errorf("could not transfer ocm component: %w", err)
+	}
+
+	return nil
+}
+
+// DeployOCMComponents is a helper function that deploys all relevant OCM component parts as well as the respective
+// source-controller resource. It expects all manifests in the passed path. The image registry is required as the
+// corresponding value must be templated.
+func DeployOCMComponents(manifestPath, imageRegistry, timeout string) error {
+	By("creating and validating the custom resource OCM repository")
+	// In some test-scenarios an internal image registry inside the cluster is used to upload the components.
+	// If this is the case, the OCM repository manifest cannot hold a static registry-url. Therefore,
+	// go-template is used to replace the registry-url.
+	//   If the environment variable INTERNAL_IMAGE_REGISTRY_URL is present, its value will be used.
+	//   If the environment variable is not present, the initial value from IMAGE_REGISTRY_URL will be used.
+	manifestOCMRepository := filepath.Join(manifestPath, "ocmrepository.yaml")
+	manifestContent, err := os.ReadFile(manifestOCMRepository)
+	if err != nil {
+		return fmt.Errorf("could not read ocm repository manifest: %w", err)
+	}
+
+	tmplOCMRepository, err := template.New("manifest").Parse(string(manifestContent))
+	if err != nil {
+		return fmt.Errorf("could not parse ocm repository manifest: %w", err)
+	}
+
+	dataOCMRepository := map[string]string{
+		"ImageRegistry": imageRegistry,
+	}
+
+	var result bytes.Buffer
+	if err := tmplOCMRepository.Execute(&result, dataOCMRepository); err != nil {
+		return fmt.Errorf("could not execute ocm repository manifest: %w", err)
+	}
+
+	tmpDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		return fmt.Errorf("could not create temporary directory: %w", err)
+	}
+	DeferCleanup(func() error {
+		return os.RemoveAll(tmpDir)
+	})
+
+	const perm = 0o644
+	manifestOCMRepository = filepath.Join(tmpDir, "manifestOCMRespository.yaml")
+	if err := os.WriteFile(manifestOCMRepository, result.Bytes(), perm); err != nil {
+		return fmt.Errorf("could not write ocm repository manifest: %w", err)
+	}
+	if err := DeployAndWaitForResource(manifestOCMRepository, "condition=Ready", timeout); err != nil {
+		return fmt.Errorf("could not deploy ocm component: %w", err)
+	}
+
+	By("creating and validating the custom resource OCM component")
+	manifestComponent := filepath.Join(manifestPath, "component.yaml")
+	if err := DeployAndWaitForResource(manifestComponent, "condition=Ready", timeout); err != nil {
+		return fmt.Errorf("could not deploy ocm component: %w", err)
+	}
+
+	By("creating and validating the custom resource OCM resource")
+	manifestResource := filepath.Join(manifestPath, "resource.yaml")
+	if err := DeployAndWaitForResource(manifestResource, "condition=Ready", timeout); err != nil {
+		return fmt.Errorf("could not deploy ocm resource: %w", err)
+	}
+
+	By("creating and validating the custom resource localization resource")
+	manifestLocalizationResource := filepath.Join(manifestPath, "localization-resource.yaml")
+	if err := DeployAndWaitForResource(manifestLocalizationResource, "condition=Ready", timeout); err != nil {
+		return fmt.Errorf("could not deploy ocm localization resource: %w", err)
+	}
+
+	By("creating and validating the custom resource localized resource")
+	manifestLocalizedResource := filepath.Join(manifestPath, "localized-resource.yaml")
+	if err := DeployAndWaitForResource(manifestLocalizedResource, "condition=Ready", timeout); err != nil {
+		return fmt.Errorf("could not deploy ocm localized resource: %w", err)
+	}
+
+	By("creating and validating the custom resource for the release")
+	manifestRelease := filepath.Join(manifestPath, "release.yaml")
+	if err := DeployAndWaitForResource(manifestRelease, "condition=Ready", timeout); err != nil {
+		return fmt.Errorf("could not deploy release: %w", err)
+	}
+
+	return nil
+}
+
+// GetVerifyPodFieldFunc is a helper function to return a function which checks for a pod with the passed label
+// selector. It returns the result from a comparison of the query on a specified pod-field with the expected string.
+func GetVerifyPodFieldFunc(labelSelector, fieldQuery, expect string) error {
+	return func() error {
+		cmd := exec.Command("kubectl", "get", "pod", "-l", labelSelector, "-o", fieldQuery)
+		output, err := utils.Run(cmd)
+		if err != nil {
+			return fmt.Errorf("failed to get podinfo: %w", err)
+		}
+
+		podField := strings.ReplaceAll(string(output), "\"", "")
+
+		if podField != expect {
+			return fmt.Errorf("expected pod field: %s, got: %s", expect, podField)
+		}
+
+		return nil
+	}()
 }

@@ -1,0 +1,15 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+#  labels:
+#    app.kubernetes.io/name: ocm-k8s-toolkit
+#    app.kubernetes.io/managed-by: kustomize
+  name: helm-localization-resource
+spec:
+  componentRef:
+    name: helm-component
+  interval: 10m
+  resource:
+    byReference:
+      resource:
+        name: helm-localization-config
