@@ -1,0 +1,16 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: LocalizationConfig
+metadata:
+  name: kustomize-localization-config
+spec:
+  rules:
+    - yamlsubst:
+        source:
+          resource:
+            name: image
+        target:
+          file:
+            path: base/deploy.yaml
+            value: spec.template.spec.containers[0].image
+        transformation:
+          type: Image

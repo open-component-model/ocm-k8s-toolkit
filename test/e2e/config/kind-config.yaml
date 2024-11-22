@@ -1,0 +1,22 @@
+# This config is required, when using an internal image registry inside a Kind cluster (see image-registry.yaml).
+# In this case, the external port to that registry must be available.
+apiVersion: kind.x-k8s.io/v1alpha4
+kind: Cluster
+nodes:
+- role: control-plane
+  extraPortMappings:
+  - containerPort: 31000
+    hostPort: 31000
+- role: worker
+# This hack is required because the current 'kustomize-release' will try to reach
+# 'https://<internal-image-registry>/../manifests:..'. In the current setup with an insecure image registry this URL
+# cannot be reached. Thus, the hacky redirection.
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
+        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry-internal.default.svc.cluster.local:5000"]
+          endpoint = ["http://localhost:31000"]
+      [plugins."io.containerd.grpc.v1.cri".registry.configs]
+        [plugins."io.containerd.grpc.v1.cri".registry.configs."registry-internal.default.svc.cluster.local:5000".tls]
+          insecure_skip_verify = true
