@@ -133,18 +133,6 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 			return err
 		})
 
-		By("Installing external CRDs")
-		cmd = exec.Command("kubectl", "apply", "--server-side", "-k", "https://github.com/openfluxcd/artifact//config/crd?ref=v0.1.1")
-		_, err = utils.Run(cmd)
-		ExpectWithOffset(1, err).NotTo(HaveOccurred())
-		DeferCleanup(func() error {
-			By("Uninstalling external CRDs")
-			cmd = exec.Command("kubectl", "delete", "-k", "https://github.com/openfluxcd/artifact//config/crd?ref=v0.1.1")
-			_, err = utils.Run(cmd)
-
-			return err
-		})
-
 		By("Deploying the controller-manager")
 		cmd = exec.Command("make", "deploy")
 		cmd.Env = []string{"IMG=" + projectimage}
