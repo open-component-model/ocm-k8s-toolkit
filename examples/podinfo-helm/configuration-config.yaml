@@ -1,0 +1,20 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: ResourceConfig
+metadata:
+  name: podinfo-config
+spec:
+  rules:
+  - yamlsubst:
+      source:
+        value: "#fffffc"
+      target:
+        file:
+          path: values.yaml
+          value: ui.color
+  - yamlsubst:
+      source:
+        value: "customized message"
+      target:
+        file:
+          path: values.yaml
+          value: ui.message
