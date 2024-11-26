@@ -6,7 +6,7 @@ spec:
   rules:
   - yamlsubst:
       source:
-        value: Always # Todo, find something better to configure.
+        value: Always
       target:
         file:
           path: deployment.yaml
