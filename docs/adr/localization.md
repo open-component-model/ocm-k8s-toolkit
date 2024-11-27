@@ -509,8 +509,10 @@ kind: LocalizedResource
 metadata:
   name: deployment-localization
 spec:
-  source:
-    name: 
+  # config is a resource in the same component as the target resource and contains the localization config
+  config:
+    kind: < one of LocalizationConfig, Resource, LocalizedResource, ConfiguredResource >
+    name: < name of the object in kubernetes >
   target:
     name: my-helm-chart-resource
     kind: Resource
@@ -556,9 +558,11 @@ metadata:
 spec:
   # target is the resource that will be localized
   target:
+    kind: Resource
     name: my-helm-chart
   # source is a resource in the same component as the target resource and contains the localization config
-  source:
+  config:
+    kind: ResourceConfig
     name: my-localization-config
 ```
 
@@ -631,7 +635,9 @@ metadata:
 spec:
   target:
     name: my-helm-chart
-  source:
+    kind: Resource
+  # source is a resource in the same component as the target resource and contains the localization config
+  config:
     name: my-helm-chart-localization
     kind: ResourceConfig
     apiVersion: delivery.ocm.software/v1alpha1
@@ -661,8 +667,9 @@ spec:
   # target is the resource that will be localized
   target:
     name: my-helm-chart
+    kind: Resource
   # source is a resource in the same component as the target resource and contains the localization config
-  source:
+  config:
     kind: LocalizationConfig
     name: my-localization-config
     namespace: ocm-configs
