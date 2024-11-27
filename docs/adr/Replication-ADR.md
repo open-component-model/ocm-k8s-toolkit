@@ -7,8 +7,6 @@ Technical Story:
 
 The replication controller integrated into the ocm-k8s-toolkit mimics the `ocm transfer` behaviour into a controller. This allows transferring components from one registry to another  registry. A possible use case would be that the replication controller is running in a Management / Control-Plane cluster. One can subscribe to a certain component CR and each time the component version is updated in the CR, the newer version is automatically replicated to the target environment specified by an OCMRepository CR.
 
-See also: ![use case](replication.png)
-
 # Problem Statement and Proposed Solutions
 
 ## Problem 1: Will replication always only work on the latest or on all in spec (SemVer of Component status)?
