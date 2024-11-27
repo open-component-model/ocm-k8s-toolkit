@@ -1,19 +1,19 @@
 # Configuration
 
 * Status: proposed
-* Deciders: Gergely Brautigam, Fabian Burth, Jakob Moellerm, Uwe Krueger
+* Deciders: Gergely Brautigam, Fabian Burth, Jakob Moeller, Uwe Krueger
 * Date: 2024-10-15
 
 Technical Story:
 
-Configuration is done before deployment. It has various way from plain substitution to
+Configuration is done before deployment. There are various ways ranging from plain substitution to
 more complex CUE based configuration approaches. The reasons for configuration is quite
-obvious. It gives a chance to provide multiple environments for the same Component.
+obvious. It gives a chance to provide multiple environments based on the same Component.
 This means that there can be more than one `Configuration` object for a single Component
 depending on how many environments we would like to set up / deploy to.
 
 Let's walk through the current way of providing configuration options. There a plenty.
-Then, we are going to walk through some more proposals that streamlines the configuration
+Then, we are going to walk through some more proposals that attempt to streamline the configuration
 to be more useful or easier to follow.
 
 ## Ways of providing Configuration
@@ -22,7 +22,7 @@ There are multiple ways of providing Configuration values.
 
 ### Values
 
-Plain values provided by the way of inlining.
+Plain values provided as inline values.
 
 ```yaml
 apiVersion: delivery.ocm.software/v1alpha1
@@ -56,8 +56,8 @@ ValuesFrom can be one of the following three options:
 
 #### Flux Source
 
-In case of a flux source, we take the values from a specific file and do the merge. An options `subPath`
-can be further used to refine what value to take:
+In case of a flux source, we take the values from a specific file and do the merge. An option `subPath`
+can be used to further refine what value to take:
 
 ```yaml
   valuesFrom:
@@ -75,18 +75,18 @@ can be further used to refine what value to take:
 This one is pretty self-explanatory:
 
 ```yaml
-configMapSource:
-  sourceRef:
-    name: test-config-data
-  key: values.yaml
-  subPath: test.backend
+  configMapSource:
+    sourceRef:
+      name: test-config-data
+    key: values.yaml
+    subPath: test.backend
 ```
 
-Again, an optional `subPath` can be further used to refine value substitution.
+Again, an optional `subPath` can be used to further refine value substitution.
 
 #### Component, Resource or Artifact provider
 
-This one can be used of values are provided through another resource. This option
+This one can be used for values provided through another resource. This option
 is convenient if values are bundled with another component and are shipped together
 with the target component. Or are the end result of a Localization step. Anything
 that can provide a Snapshot can provide values.
@@ -106,8 +106,8 @@ The above uses a component version and a specific resourceRef with the name `dep
 ## Schema Validation
 
 We aren't just providing values plain as is. We are also providing schema validation options
-for these configurations. This is important to make sure that no breaking happens between
-versions or if there _is_ a breaking change that is caught and communication up the call chain.
+for these configurations. This is important to make sure that no breaking change happens between
+versions or, if there _is_ a breaking change, to at least ensure that it is caught and can be communication up the call chain.
 
 This is done by the component author. They provide the schema that validates the configuration
 options. They can make sure, for example, that the replica count offers the best option
@@ -119,8 +119,8 @@ left empty, like the service account.
 Aka, YAML templating using [Spiff++](https://github.com/mandelsoft/spiff).
 
 Substitution rules are generated with plain spiff after nodes are correctly configured. This
-is important because Default values need to be handled correctly. Meaning users' values are
-correctly merged with defaults taken from the component version itself.
+is important because default values need to be handled correctly. In other words,
+users' values have to be merged correctly with the defaults taken from the component version itself.
 
 The current Configuration object looks like this:
 
@@ -193,8 +193,8 @@ configuration object for the same substitution principle.
 
 In here, we have rules for configuration and the schema that is used to
 verify the configuration values. We also have default values that will be merged
-with the user's values. The end-result is a sort of three-way merge. File determines
-where the change needs to happen and path determines the location in the file.
+with the user's values. The end-result is a sort of three-way merge. `file` determines
+where the change needs to happen and `path` determines the location in the file.
 
 At the end of the day, no matter where the configuration values are coming from, a plain
 `Localization` is performed using the OCM library:
@@ -207,19 +207,20 @@ At the end of the day, no matter where the configuration values are coming from,
 
 **Pros**:
 
-- this is working right now and can handle a multitude of complex yaml shenanigans
-- relatively easy to use from the user's perspective because the component author
+- This is working right now and can handle a multitude of complex yaml scenarios.
+- It is relatively easy to use from the user's perspective because the component author
   sets up the configuration similar to helm values. User's only need to consider
   the values they would like to set up.
-- can be used multiple times
-- the deployment works out of the box, because the configuration is not part of
+- It can be used multiple times.
+- The deployment works out of the box, because the configuration is not part of
   the actual manifest.
 
 **Cons**:
 
-- proprietary configuration is difficult to understand and yet another templating
-  language users will need to understand and get used to
-- only works with YAML and nothing else
+- Proprietary configuration is difficult to understand and with spiff++, this 
+  approach introduces yet another templating language users will need to 
+  understand and get used to.
+- Only works with YAML and nothing else.
 
 
 ## Option 2 - Go Templating
@@ -259,7 +260,7 @@ spec:
         name: manager
 ```
 
-User provided value through the configuration object would look something like this:
+User provided values through the configuration object would look something like this:
 ```yaml
 apiVersion: delivery.ocm.software/v1alpha1
 kind: Configuration
@@ -276,21 +277,21 @@ spec:
     Image: "myregistry.io/org/ocm-k8s-toolkit:v0.0.1"
 ```
 
-Once templating run using the user's configuration values are loaded into the right struct and
+Once the templating is run, the user's configuration values are loaded into the right struct and
 applied to the templated deployment.
 
 **Pros**:
 
-- users are already familiar with go templating through extensive usage in Helm
-- users have options to opt out from configuring anything as default values will
+- Users are already familiar with go templating through extensive usage in Helm.
+- Users have options to opt out from configuring anything as default values will
   then be applied instead.
 
 **Cons**:
 
-- component authors will have to provide the templating inside their deployment
-- providing default values will have to be in addition to templating so the tooling
+- Component authors will have to provide the templating inside their deployment.
+- Providing default values will have to be in addition to templating so the tooling
   can apply any defaults if they aren't provided by the user.
-- things aren't working until templating is applied to the manifest files
+- Things aren't working until templating is applied to the manifest files
   - I believe this isn't that huge of an issue since people are already used to templated
     files through extensive use of Helm.
 
@@ -324,19 +325,19 @@ patchStrategicMerge:
 
 **Pros**:
 
-- easy to configuration
-- no extra templating language needed to be understood
+- Easy to configure.
+- No extra templating language needed to be understood.
 
 **Cons**:
 
-- rigid patching
-- no default values
-- possible to overwrite existing values
-- needs a valid yaml to work
+- Rigid patching.
+- No default values.
+- It is possible to overwrite existing values.
+- It needs a valid yaml to work.
 
 ## Option 3.5 - Combining Patch Strategic Merge with Go Templating
 
-In order to avoid people having to templatize their manifests, we can offer an alternative
+In order to avoid people having to template their manifests, we can offer an alternative
 solution where we combine the patch strategic merge option with a version of the Manifest
 that is templated.
 
@@ -384,18 +385,18 @@ And after merging we would perform the templating.
 
 **Pros**:
 
-- the deployment remains compatible and applyable
-- the provider doesn't have to bother with templating
+- The deployment remains compatible and applyable.
+- The provider doesn't have to bother with templating.
 
 **Cons**:
 
-- the same rigidness as with strategic merge patch, meaning it only works with valid YAML
-- the user needs to be completely aware of how the manifest looks like in order to do a
-  valid merge
+- The same rigidness as with strategic merge patch, meaning it only works with valid YAML.
+- The user needs to be completely aware of how the manifest looks like in order to do a
+  valid merge.
 
 # Option 4
 
-Localization introduced a hybred approach to templating and configuration. Since
+Localization introduced a hybrid approach to templating and configuration. Since
 effective configuration follows the same path as Localization; the only difference being
 that Configuration objects can be applied multiple times, while Localization is a single
 shot entity; we can apply the same principles here too.
@@ -431,7 +432,7 @@ _Note_: We might be able to even re-name this object to something like
 MutationConfig that would perform either operation based on the referencing
 Object.
 
-Once these values are defined, we would follow the same principles outilned
+Once these values are defined, we would follow the same principles outlined
 in the Localization [## Decision Outcome](localization.md#decision-outcome).
 
 ## Decision Outcome
