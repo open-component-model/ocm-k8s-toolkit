@@ -416,7 +416,7 @@ spec:
         resource:
           name: my-config-values
         # using a direct value
-          value: 2
+        value: 2
       target:
         file:
           path: values.yaml
@@ -433,3 +433,41 @@ Object.
 
 Once these values are defined, we would follow the same principles outilned
 in the Localization [## Decision Outcome](localization.md#decision-outcome).
+
+## Decision Outcome
+
+In the end, we essentially decided for option 4 - to use the same mechanism and 
+custom resources as the localization uses to perform the actual value
+substitution.
+
+### Examples
+
+```yaml
+apiVersion: delivery.ocm.software/v1alpha1
+kind: ConfiguredResource
+metadata:
+  name: my-localized-helm-chart
+spec:
+  target:
+    kind: Resource
+    name: my-helm-chart
+  # config is a resource in the same component as the target resource and contains the localization config
+  config:
+    # < one of ResourceConfig, Resource, LocalizedResource, ConfiguredResource >
+    kind: ResourceConfig
+    name: my-helm-chart-localization
+    apiVersion: delivery.ocm.software/v1alpha1
+---
+apiVersion: delivery.ocm.software/v1alpha1
+kind: ResourceConfig
+metadata:
+  name: my-helm-chart-localization
+spec:
+  rules:
+    - source:
+        value: ghcr.io/open-component-model/myimage
+      target:
+        file:
+          path: values.yaml
+          value: deploy.image
+```
