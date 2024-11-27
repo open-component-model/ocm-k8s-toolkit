@@ -560,7 +560,7 @@ spec:
   target:
     kind: Resource
     name: my-helm-chart
-  # source is a resource in the same component as the target resource and contains the localization config
+  # config is a resource in the same component as the target resource and contains the localization config
   config:
     kind: ResourceConfig
     name: my-localization-config
@@ -635,8 +635,7 @@ metadata:
 spec:
   target:
     name: my-helm-chart
-    kind: Resource
-  # source is a resource in the same component as the target resource and contains the localization config
+  # config is a resource in the same component as the target resource and contains the localization config
   config:
     name: my-helm-chart-localization
     kind: ResourceConfig
@@ -668,7 +667,7 @@ spec:
   target:
     name: my-helm-chart
     kind: Resource
-  # source is a resource in the same component as the target resource and contains the localization config
+  # config is a resource in the same component as the target resource and contains the localization config
   config:
     kind: LocalizationConfig
     name: my-localization-config
