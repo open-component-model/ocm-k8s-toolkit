@@ -514,8 +514,8 @@ spec:
     kind: < one of LocalizationConfig, Resource, LocalizedResource, ConfiguredResource >
     name: < name of the object in kubernetes >
   target:
-    name: my-helm-chart-resource
     kind: Resource
+    name: my-helm-chart-resource
     apiVersion: delivery.ocm.software/v1alpha1
 
 ```
@@ -562,7 +562,9 @@ spec:
     name: my-helm-chart
   # config is a resource in the same component as the target resource and contains the localization config
   config:
-    kind: ResourceConfig
+    # so here, another Resource CR has to have been created for the ocm resource 
+    # containing the LocalizationConfig CR 
+    kind: Resource 
     name: my-localization-config
 ```
 
@@ -634,11 +636,12 @@ metadata:
   name: my-localized-helm-chart
 spec:
   target:
+    kind: Resource
     name: my-helm-chart
   # config is a resource in the same component as the target resource and contains the localization config
   config:
-    name: my-helm-chart-localization
     kind: ResourceConfig
+    name: my-helm-chart-localization
     apiVersion: delivery.ocm.software/v1alpha1
 ---
 apiVersion: delivery.ocm.software/v1alpha1
