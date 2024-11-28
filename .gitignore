@@ -33,3 +33,4 @@ go.work.sum
 # goreleaser resources
 dist/
 output/
+/.project
