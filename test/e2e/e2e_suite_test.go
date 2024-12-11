@@ -58,13 +58,11 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func(ctx SpecContext) {
 	By("Creating manager namespace", func() {
-		cmd := exec.Command("kubectl", "create", "ns", namespace)
-		_, err := utils.Run(cmd)
+		err := utils.CreateNamespace(namespace)
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
-		DeferCleanup(func() {
-			By("Deleting manager namespace")
-			cmd := exec.Command("kubectl", "delete", "ns", namespace)
-			_, _ = utils.Run(cmd)
+		DeferCleanup(func() error {
+			utils.DeleteNamespace(namespace)
+			return nil
 		})
 	})
 

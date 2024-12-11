@@ -198,7 +198,7 @@ spec:
                   type: object
                   x-kubernetes-map-type: atomic
                 type: array
-              configSets:
+              configSet:
                 description: |-
                   Propagate its effective config set. Other controllers (e.g. Component or
                   Resource controller) may use this as default if they do not explicitly

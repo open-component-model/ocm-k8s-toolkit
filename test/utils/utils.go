@@ -205,6 +205,23 @@ func DeployOCMComponents(manifestPath, imageRegistry, timeout string) error {
 	return nil
 }
 
+// CheckOCMComponent executes the OCM CLI command 'ocm check cv' with the passed component reference.
+// If credentials are required, the path to the OCM configuration file can be supplied as the second parameter.
+func CheckOCMComponent(componentReference, ocmConfigPath string) error {
+	c := []string{"ocm"}
+	if len(ocmConfigPath) > 0 {
+		c = append(c, "--config", ocmConfigPath)
+	}
+	c = append(c, "check", "cv", componentReference)
+
+	cmd := exec.Command(c[0], c[1:]...)
+	if _, err := utils.Run(cmd); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // GetVerifyPodFieldFunc is a helper function to return a function which checks for a pod with the passed label
 // selector. It returns the result from a comparison of the query on a specified pod-field with the expected string.
 func GetVerifyPodFieldFunc(labelSelector, fieldQuery, expect string) error {
@@ -223,4 +240,18 @@ func GetVerifyPodFieldFunc(labelSelector, fieldQuery, expect string) error {
 
 		return nil
 	}()
+}
+
+// Create Kubernetes namespace
+func CreateNamespace(ns string) error {
+	cmd := exec.Command("kubectl", "create", "ns", ns)
+	_, err := utils.Run(cmd)
+	return err
+}
+
+// Delete Kubernetes namespace
+func DeleteNamespace(ns string) error {
+	cmd := exec.Command("kubectl", "delete", "ns", ns)
+	_, err := utils.Run(cmd)
+	return err
 }

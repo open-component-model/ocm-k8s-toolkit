@@ -104,7 +104,7 @@ type OCMRepositoryStatus struct {
 	// defaults from OCMRepository and Resource defaults from Component) without
 	// having to traverse the entire chain.
 	// +optional
-	ConfigSet string `json:"configSets,omitempty"`
+	ConfigSet string `json:"configSet,omitempty"`
 }
 
 // GetConditions returns the conditions of the OCMRepository.
