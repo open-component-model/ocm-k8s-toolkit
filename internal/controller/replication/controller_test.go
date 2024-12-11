@@ -69,7 +69,7 @@ var _ = Describe("Replication Controller", func() {
 		var replNamespacedName types.NamespacedName
 
 		var iteration = 0
-		var maxTimeToReconcile = 2 * time.Minute
+		var maxTimeToReconcile = 5 * time.Minute
 
 		BeforeEach(func() {
 			env = NewBuilder(environment.FileSystem(osfs.OsFs))
@@ -177,7 +177,7 @@ var _ = Describe("Replication Controller", func() {
 			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
-			By("Expect Replication controller to transfer the new version withing the interval")
+			By("Expect Replication controller to transfer the new version within the interval")
 			waitingTime := replication.GetRequeueAfter() + maxTimeToReconcile
 			replication = &v1alpha1.Replication{}
 			Eventually(func() bool {

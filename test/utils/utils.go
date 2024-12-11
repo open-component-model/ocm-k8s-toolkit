@@ -214,7 +214,7 @@ func CheckOCMComponent(componentReference, ocmConfigPath string) error {
 	}
 	c = append(c, "check", "cv", componentReference)
 
-	cmd := exec.Command(c[0], c[1:]...)
+	cmd := exec.Command(c[0], c[1:]...) //nolint:gosec // The argument list is constructed right above.
 	if _, err := utils.Run(cmd); err != nil {
 		return err
 	}
@@ -242,16 +242,18 @@ func GetVerifyPodFieldFunc(labelSelector, fieldQuery, expect string) error {
 	}()
 }
 
-// Create Kubernetes namespace
+// Create Kubernetes namespace.
 func CreateNamespace(ns string) error {
 	cmd := exec.Command("kubectl", "create", "ns", ns)
 	_, err := utils.Run(cmd)
+
 	return err
 }
 
-// Delete Kubernetes namespace
+// Delete Kubernetes namespace.
 func DeleteNamespace(ns string) error {
 	cmd := exec.Command("kubectl", "delete", "ns", ns)
 	_, err := utils.Run(cmd)
+
 	return err
 }

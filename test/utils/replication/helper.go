@@ -4,11 +4,11 @@ import (
 	"os"
 	"time"
 
-	. "github.com/mandelsoft/goutils/testutils"
+	mandelsoft "github.com/mandelsoft/goutils/testutils"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	. "ocm.software/ocm/api/helper/builder"
+	ocmbuilder "ocm.software/ocm/api/helper/builder"
 	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
 	resourcetypes "ocm.software/ocm/api/ocm/extensions/artifacttypes"
@@ -25,12 +25,17 @@ import (
 // https://ocm.software/docs/getting-started/getting-started-with-ocm/create-a-component-version/#add-an-image-reference-option-1
 const TestResourceImage = "gcr.io/google_containers/echoserver:1.10"
 
-// The registry where OCM components of the OCM toolkit itself are stored can be used for read access in tests.
-const TestExternalRegistry = "ghcr.io/open-component-model/ocm"
-const TestExternalComponent = "ocm.software/ocmcli"
-const TestExternalVersion = "0.17.0"
+// Reconciliation interval for the test resources created in this file.
+const reconciliationInterval = time.Minute * 2
 
-func NewTestComponentVersionInCTFDir(env *Builder, path, compName, compVersion, img string) {
+// The registry where OCM components of the OCM toolkit itself are stored can be used for read access in tests.
+const (
+	TestExternalRegistry  = "ghcr.io/open-component-model/ocm"
+	TestExternalComponent = "ocm.software/ocmcli"
+	TestExternalVersion   = "0.17.0"
+)
+
+func NewTestComponentVersionInCTFDir(env *ocmbuilder.Builder, path, compName, compVersion, img string) {
 	env.OCMCommonTransport(path, accessio.FormatDirectory, func() {
 		env.Component(compName, func() {
 			env.Version(compVersion, func() {
@@ -45,17 +50,20 @@ func NewTestComponentVersionInCTFDir(env *Builder, path, compName, compVersion, 
 }
 
 func NewTestCFTRepository(namespace, name, path string) (*v1alpha1.OCMRepository, *[]byte) {
-	spec := Must(ctf.NewRepositorySpec(ctf.ACC_CREATE, path))
+	spec := mandelsoft.Must(ctf.NewRepositorySpec(ctf.ACC_CREATE, path))
+
 	return newTestOCMRepository(namespace, name, spec)
 }
 
 func NewTestOCIRepository(namespace, name, url string) (*v1alpha1.OCMRepository, *[]byte) {
 	spec := ocireg.NewRepositorySpec(url, nil)
+
 	return newTestOCMRepository(namespace, name, spec)
 }
 
 func newTestOCMRepository(namespace, name string, spec *genericocireg.RepositorySpec) (*v1alpha1.OCMRepository, *[]byte) {
-	specData := Must(spec.MarshalJSON())
+	specData := mandelsoft.Must(spec.MarshalJSON())
+
 	return &v1alpha1.OCMRepository{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "OCMRepository",
@@ -69,7 +77,7 @@ func newTestOCMRepository(namespace, name string, spec *genericocireg.Repository
 			RepositorySpec: &apiextensionsv1.JSON{
 				Raw: specData,
 			},
-			Interval: metav1.Duration{Duration: time.Minute * 10},
+			Interval: metav1.Duration{Duration: reconciliationInterval},
 		},
 	}, &specData
 }
@@ -91,7 +99,7 @@ func NewTestComponent(namespace, name, repoName, ocmName, ocmVersion string) *v1
 			},
 			Component: ocmName,
 			Semver:    ocmVersion,
-			Interval:  metav1.Duration{Duration: time.Minute * 10},
+			Interval:  metav1.Duration{Duration: reconciliationInterval},
 		},
 	}
 }
@@ -115,7 +123,7 @@ func NewTestReplication(namespace, name, compName, targetRepoName string) *v1alp
 				Name:      targetRepoName,
 				Namespace: namespace,
 			},
-			Interval: metav1.Duration{Duration: time.Second * 20},
+			Interval: metav1.Duration{Duration: reconciliationInterval},
 		},
 	}
 }
@@ -146,7 +154,7 @@ func SaveToManifest(obj interface{}, path string) error {
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile(path, yamlData, 0644)
+	err = os.WriteFile(path, yamlData, 0o600)
 	if err != nil {
 		return err
 	}
