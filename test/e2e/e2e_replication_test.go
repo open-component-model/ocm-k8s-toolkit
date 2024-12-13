@@ -24,28 +24,106 @@ import (
 	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/test/utils"
-	testrepl "github.com/open-component-model/ocm-k8s-toolkit/test/utils/replication"
+	helper "github.com/open-component-model/ocm-k8s-toolkit/test/utils/replication"
 )
+
+const OCMConfigCredentials1 = `
+type: generic.config.ocm.software/v1
+configurations:
+  - type: credentials.config.ocm.software
+    consumers:
+      - identity:
+          type: OCIRegistry
+          hostname: localhost
+          port: 31001
+        credentials:
+          - type: Credentials
+            properties:
+              username: admin
+              password: admin
+      - identity:
+          type: OCIRegistry
+          hostname: protected-registry1-internal.default.svc.cluster.local
+          port: 5001
+        credentials:
+          - type: Credentials
+            properties:
+              username: admin
+              password: admin
+`
+
+const OCMConfigCredentials2 = `
+type: generic.config.ocm.software/v1
+configurations:
+  - type: credentials.config.ocm.software
+    consumers:
+      - identity:
+          type: OCIRegistry
+          hostname: localhost
+          port: 31002
+        credentials:
+          - type: Credentials
+            properties:
+              username: admin2
+              password: admin2
+      - identity:
+          type: OCIRegistry
+          hostname: protected-registry2-internal.default.svc.cluster.local
+          port: 5002
+        credentials:
+          - type: Credentials
+            properties:
+              username: admin2
+              password: admin2
+`
 
 var _ = Describe("Replication Controller", func() {
 	Context("when transferring component versions (OCI)", func() {
+		// The registry where OCM components of the OCM toolkit itself are stored can be used for read access in tests.
+		const (
+			externalRegistry = "ghcr.io/open-component-model/ocm"
+			ocmCompName      = "ocm.software/ocmcli"
+			ocmCompVersion   = "0.17.0"
+		)
+
 		const testNamespace = "ns-e2e-test-replication-controller"
-		const compOCMName = "ocm.software/replication-controller/e2e-test"
-		const compVersion = "0.1.0"
+
+		const (
+			envProtectedRegistryURL          = "PROTECTED_REGISTRY_URL"
+			envInternalProtectedRegistryURL  = "INTERNAL_PROTECTED_REGISTRY_URL"
+			envProtectedRegistryURL2         = "PROTECTED_REGISTRY_URL2"
+			envInternalProtectedRegistryURL2 = "INTERNAL_PROTECTED_REGISTRY_URL2"
+		)
 
 		var pathPattern string
 		var iteration = 0
 		var (
-			sourceRepoResourceName  string
-			sourceRepoManifestFile  string
-			componentResourceName   string
-			componentManifestFile   string
-			targetRepoResourceName  string
-			targetRepoManifestFile  string
-			replicationResourceName string
-			replicationManifestFile string
+			sourceRepoResourceName      string
+			sourceRepoManifestFile      string
+			componentResourceName       string
+			componentManifestFile       string
+			targetRepoResourceName      string
+			targetRepoManifestFile      string
+			replicationResourceName     string
+			replicationManifestFile     string
+			transferOptionsResourceName string
+			credsOptionsResourceName    string
+			transferOptionsManifestFile string
+			credsOptionsManifestFile    string
+			ocmconfigFile1              string
+
+			credsOptionsResourceName2 string
+			credsOptionsManifestFile2 string
+			ocmconfigFile2            string
+			componentResourceName2    string
+			componentManifestFile2    string
+			targetRepoResourceName2   string
+			targetRepoManifestFile2   string
+			replicationResourceName2  string
+			replicationManifestFile2  string
 		)
 
 		BeforeEach(func() {
@@ -67,8 +145,26 @@ var _ = Describe("Replication Controller", func() {
 			targetRepoManifestFile = "target-OCMRepository" + i + ".yaml"
 			replicationResourceName = "test-replication" + i
 			replicationManifestFile = "Replication" + i + ".yaml"
+			transferOptionsResourceName = "test-transfer-options" + i
+			transferOptionsManifestFile = "ConfigMapTransferOpt" + i + ".yaml"
+			credsOptionsResourceName = "test-creds-options" + i
+			credsOptionsManifestFile = "ConfigMapCreds1-" + i + ".yaml"
+			ocmconfigFile1 = "creds1-" + i + ".ocmconfig"
+
+			credsOptionsResourceName2 = "test-creds-options2-" + i
+			credsOptionsManifestFile2 = "ConfigMapCreds2-" + i + ".yaml"
+			ocmconfigFile2 = "creds2-" + i + ".ocmconfig"
+			componentResourceName2 = "test-component2-" + i
+			componentManifestFile2 = "Component2-" + i + ".yaml"
+			targetRepoResourceName2 = "test-target-repository2-" + i
+			targetRepoManifestFile2 = "target-OCMRepository2-" + i + ".yaml"
+			replicationResourceName2 = "test-replication2-" + i
+			replicationManifestFile2 = "Replication2-" + i + ".yaml"
 		})
 
+		// This test transfers the test component from a public registry to the one configured via the environment variables:
+		// IMAGE_REGISTRY_URL and INTERNAL_IMAGE_REGISTRY_URL.
+		// The test does not use transfer options
 		It("should be possible to transfer OCM CLI from official location to provided OCI registry", func() {
 			By("Create temporary directory")
 			tmpDir := Must(os.MkdirTemp("", pathPattern))
@@ -77,27 +173,22 @@ var _ = Describe("Replication Controller", func() {
 			})
 
 			By("Create k8s resources")
-			sourceRepo, _ := testrepl.NewTestOCIRepository(testNamespace, sourceRepoResourceName, testrepl.TestExternalRegistry)
-			ocmCompName := testrepl.TestExternalComponent
-			ocmCompVersion := testrepl.TestExternalVersion
-			comp := testrepl.NewTestComponent(testNamespace, componentResourceName, sourceRepo.Name, ocmCompName, ocmCompVersion)
+			sourceRepo, _ := helper.NewTestOCIRepository(testNamespace, sourceRepoResourceName, externalRegistry)
+			comp := helper.NewTestComponent(testNamespace, componentResourceName, sourceRepo.Name, ocmCompName, ocmCompVersion)
 			// Use internal registry URL, because this is an in-cluster operation
 			targetRepoURL := internalImageRegistry
-			targetRepo, _ := testrepl.NewTestOCIRepository(testNamespace, targetRepoResourceName, targetRepoURL)
-			replication := testrepl.NewTestReplication(testNamespace, replicationResourceName, comp.Name, targetRepo.Name)
+			targetRepo, _ := helper.NewTestOCIRepository(testNamespace, targetRepoResourceName, targetRepoURL)
+			replication := helper.NewTestReplication(testNamespace, replicationResourceName, comp.Name, targetRepo.Name)
 
 			By("Serialize k8s resources to manifest files")
 			sourceRepoManifestFile = filepath.Join(tmpDir, sourceRepoManifestFile)
-			Expect(testrepl.SaveToManifest(sourceRepo, sourceRepoManifestFile)).To(Succeed())
-
+			Expect(helper.SaveToManifest(sourceRepo, sourceRepoManifestFile)).To(Succeed())
 			componentManifestFile = filepath.Join(tmpDir, componentManifestFile)
-			Expect(testrepl.SaveToManifest(comp, componentManifestFile)).To(Succeed())
-
+			Expect(helper.SaveToManifest(comp, componentManifestFile)).To(Succeed())
 			targetRepoManifestFile = filepath.Join(tmpDir, targetRepoManifestFile)
-			Expect(testrepl.SaveToManifest(targetRepo, targetRepoManifestFile)).To(Succeed())
-
+			Expect(helper.SaveToManifest(targetRepo, targetRepoManifestFile)).To(Succeed())
 			replicationManifestFile = filepath.Join(tmpDir, replicationManifestFile)
-			Expect(testrepl.SaveToManifest(replication, replicationManifestFile)).To(Succeed())
+			Expect(helper.SaveToManifest(replication, replicationManifestFile)).To(Succeed())
 
 			By("Apply manifests to the cluster")
 			Expect(utils.DeployAndWaitForResource(sourceRepoManifestFile, "condition=Ready", timeout)).To(Succeed())
@@ -109,6 +200,127 @@ var _ = Describe("Replication Controller", func() {
 			// Use external registry URL, because the check connects from outside
 			targetRepoURL = imageRegistry
 			Expect(utils.CheckOCMComponent(targetRepoURL+"//"+ocmCompName+":"+ocmCompVersion, "")).To(Succeed())
+		})
+
+		// This test does two transfer operations:
+		//   1. From a public registry to the one configured via the environment variables PROTECTED_REGISTRY_URL / INTERNAL_PROTECTED_REGISTRY_URL.
+		//   2. From protected registry above to a yet another protected registry (PROTECTED_REGISTRY_URL2 / INTERNAL_PROTECTED_REGISTRY_URL2).
+		// The protected registries are password-protected, thus respective ocmconfig are required to access them.
+		// Also transfer options are used in both transfer operations.
+		It("should be possible to transfer CVs between private OCI registries with transfer options", func() {
+			var (
+				protectedRegistry          string
+				internalProtectedRegistry  string
+				protectedRegistry2         string
+				internalProtectedRegistry2 string
+			)
+
+			By("Checking for protected registry URLs", func() {
+				protectedRegistry = os.Getenv(envProtectedRegistryURL)
+				Expect(protectedRegistry).NotTo(BeEmpty())
+				internalProtectedRegistry = os.Getenv(envInternalProtectedRegistryURL)
+				Expect(internalProtectedRegistry).NotTo(BeEmpty())
+				protectedRegistry2 = os.Getenv(envProtectedRegistryURL2)
+				Expect(protectedRegistry2).NotTo(BeEmpty())
+				internalProtectedRegistry2 = os.Getenv(envInternalProtectedRegistryURL2)
+				Expect(internalProtectedRegistry2).NotTo(BeEmpty())
+			})
+
+			By("Create temporary directory")
+			tmpDir := Must(os.MkdirTemp("", pathPattern))
+			DeferCleanup(func() error {
+				return os.RemoveAll(tmpDir)
+			})
+
+			By("Create k8s resources")
+			sourceRepo, _ := helper.NewTestOCIRepository(testNamespace, sourceRepoResourceName, externalRegistry)
+			comp := helper.NewTestComponent(testNamespace, componentResourceName, sourceRepo.Name, ocmCompName, ocmCompVersion)
+			transferOptionsConfigMap := helper.NewTestConfigMapForData(testNamespace, transferOptionsResourceName, helper.OCMConfigResourcesByValue)
+			credsConfigMap := helper.NewTestConfigMapForData(testNamespace, credsOptionsResourceName, OCMConfigCredentials1)
+
+			// Use internal registry URL, because this is an in-cluster operation
+			targetRepoURL := internalProtectedRegistry
+			targetRepo, _ := helper.NewTestOCIRepository(testNamespace, targetRepoResourceName, targetRepoURL)
+			targetRepo.Spec.ConfigRefs = []corev1.LocalObjectReference{
+				{Name: credsConfigMap.Name},
+			}
+			replication := helper.NewTestReplication(testNamespace, replicationResourceName, comp.Name, targetRepo.Name)
+			replication.Spec.ConfigRefs = []corev1.LocalObjectReference{
+				{Name: transferOptionsConfigMap.Name},
+			}
+
+			By("Serialize k8s resources to manifest files")
+			sourceRepoManifestFile = filepath.Join(tmpDir, sourceRepoManifestFile)
+			Expect(helper.SaveToManifest(sourceRepo, sourceRepoManifestFile)).To(Succeed())
+			componentManifestFile = filepath.Join(tmpDir, componentManifestFile)
+			Expect(helper.SaveToManifest(comp, componentManifestFile)).To(Succeed())
+			transferOptionsManifestFile = filepath.Join(tmpDir, transferOptionsManifestFile)
+			Expect(helper.SaveToManifest(transferOptionsConfigMap, transferOptionsManifestFile)).To(Succeed())
+			credsOptionsManifestFile = filepath.Join(tmpDir, credsOptionsManifestFile)
+			Expect(helper.SaveToManifest(credsConfigMap, credsOptionsManifestFile)).To(Succeed())
+			targetRepoManifestFile = filepath.Join(tmpDir, targetRepoManifestFile)
+			Expect(helper.SaveToManifest(targetRepo, targetRepoManifestFile)).To(Succeed())
+			replicationManifestFile = filepath.Join(tmpDir, replicationManifestFile)
+			Expect(helper.SaveToManifest(replication, replicationManifestFile)).To(Succeed())
+
+			By("Apply manifests to the cluster")
+			Expect(utils.DeployResource(transferOptionsManifestFile)).To(Succeed())
+			Expect(utils.DeployResource(credsOptionsManifestFile)).To(Succeed())
+			Expect(utils.DeployAndWaitForResource(sourceRepoManifestFile, "condition=Ready", timeout)).To(Succeed())
+			Expect(utils.DeployAndWaitForResource(componentManifestFile, "condition=Ready", timeout)).To(Succeed())
+			Expect(utils.DeployAndWaitForResource(targetRepoManifestFile, "condition=Ready", timeout)).To(Succeed())
+			Expect(utils.DeployAndWaitForResource(replicationManifestFile, "condition=Ready", timeout)).To(Succeed())
+
+			By("Double-check that copied component version is present in the destination private registry")
+			// Credentials are required for the 'ocm check' command to access the protected registry.
+			ocmconfigFile1 = filepath.Join(tmpDir, ocmconfigFile1)
+			Expect(helper.SaveToFile(ocmconfigFile1, []byte(OCMConfigCredentials1))).To(Succeed())
+			// Use external registry URL, because the check connects from outside.
+			targetRepoURL = protectedRegistry
+			Expect(utils.CheckOCMComponent(targetRepoURL+"//"+ocmCompName+":"+ocmCompVersion, ocmconfigFile1)).To(Succeed())
+
+			By("Set up resources to transfer the CV further (from one protected registry to another protected registry)")
+			// Previous target is now the new source. Btw., the resource already exists in the cluster.
+			sourceRepo = targetRepo
+			// New component resource to watch the protected registry.
+			comp = helper.NewTestComponent(testNamespace, componentResourceName2, sourceRepo.Name, ocmCompName, ocmCompVersion)
+			// Credentials for the second protected registry.
+			credsConfigMap2 := helper.NewTestConfigMapForData(testNamespace, credsOptionsResourceName2, OCMConfigCredentials2)
+
+			// New target repo is the second protected registry.
+			targetRepoURL = internalProtectedRegistry2
+			targetRepo, _ = helper.NewTestOCIRepository(testNamespace, targetRepoResourceName2, targetRepoURL)
+			targetRepo.Spec.ConfigRefs = []corev1.LocalObjectReference{
+				{Name: credsConfigMap2.Name},
+			}
+			replication = helper.NewTestReplication(testNamespace, replicationResourceName2, comp.Name, targetRepo.Name)
+			replication.Spec.ConfigRefs = []corev1.LocalObjectReference{
+				{Name: transferOptionsConfigMap.Name}, // Re-use existing ConfigMap with transfer options.
+			}
+
+			By("Serialize k8s resources to manifest files")
+			componentManifestFile2 = filepath.Join(tmpDir, componentManifestFile2)
+			Expect(helper.SaveToManifest(comp, componentManifestFile2)).To(Succeed())
+			credsOptionsManifestFile2 = filepath.Join(tmpDir, credsOptionsManifestFile2)
+			Expect(helper.SaveToManifest(credsConfigMap2, credsOptionsManifestFile2)).To(Succeed())
+			targetRepoManifestFile2 = filepath.Join(tmpDir, targetRepoManifestFile2)
+			Expect(helper.SaveToManifest(targetRepo, targetRepoManifestFile2)).To(Succeed())
+			replicationManifestFile2 = filepath.Join(tmpDir, replicationManifestFile2)
+			Expect(helper.SaveToManifest(replication, replicationManifestFile2)).To(Succeed())
+
+			By("Apply manifests to the cluster")
+			Expect(utils.DeployResource(credsOptionsManifestFile2)).To(Succeed())
+			Expect(utils.DeployAndWaitForResource(componentManifestFile2, "condition=Ready", timeout)).To(Succeed())
+			Expect(utils.DeployAndWaitForResource(targetRepoManifestFile2, "condition=Ready", timeout)).To(Succeed())
+			Expect(utils.DeployAndWaitForResource(replicationManifestFile2, "condition=Ready", timeout)).To(Succeed())
+
+			By("Double-check that copied component version is present in the second private registry")
+			// Credentials are required for the 'ocm check' command to access the protected registry.
+			ocmconfigFile2 = filepath.Join(tmpDir, ocmconfigFile2)
+			Expect(helper.SaveToFile(ocmconfigFile2, []byte(OCMConfigCredentials2))).To(Succeed())
+			// Use external registry URL, because the check connects from outside.
+			targetRepoURL = protectedRegistry2
+			Expect(utils.CheckOCMComponent(targetRepoURL+"//"+ocmCompName+":"+ocmCompVersion, ocmconfigFile2)).To(Succeed())
 		})
 	})
 })

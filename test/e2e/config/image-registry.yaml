@@ -105,7 +105,7 @@ spec:
   selector:
     app: protected-registry1
 ---
-# Internal port to the image registry. Can be reached from inside the cluster with 'http://registry-internal.default.svc.cluster.local:5001/'
+# Internal port to the image registry. Can be reached from inside the cluster with 'http://protected-registry1-internal.default.svc.cluster.local:5001/'
 apiVersion: v1
 kind: Service
 metadata:
@@ -182,7 +182,7 @@ spec:
   selector:
     app: protected-registry2
 ---
-# Internal port to the image registry. Can be reached from inside the cluster with 'http://registry-internal.default.svc.cluster.local:5002/'
+# Internal port to the image registry. Can be reached from inside the cluster with 'http://protected-registry2-internal.default.svc.cluster.local:5002/'
 apiVersion: v1
 kind: Service
 metadata:

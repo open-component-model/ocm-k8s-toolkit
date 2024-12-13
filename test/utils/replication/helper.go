@@ -21,19 +21,21 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
-// "gcr.io/google_containers/echoserver:1.10" is taken as test content, because it is used to explain OCM here:
-// https://ocm.software/docs/getting-started/getting-started-with-ocm/create-a-component-version/#add-an-image-reference-option-1
-const TestResourceImage = "gcr.io/google_containers/echoserver:1.10"
-
 // Reconciliation interval for the test resources created in this file.
 const reconciliationInterval = time.Minute * 2
 
-// The registry where OCM components of the OCM toolkit itself are stored can be used for read access in tests.
-const (
-	TestExternalRegistry  = "ghcr.io/open-component-model/ocm"
-	TestExternalComponent = "ocm.software/ocmcli"
-	TestExternalVersion   = "0.17.0"
-)
+const OCMConfigResourcesByValue = `
+type: generic.config.ocm.software/v1
+configurations:
+  - type: transport.ocm.config.ocm.software
+    recursive: true
+    overwrite: true
+    localResourcesByValue: false
+    resourcesByValue: true
+    sourcesByValue: false
+    keepGlobalAccess: false
+    stopOnExistingVersion: false
+`
 
 func NewTestComponentVersionInCTFDir(env *ocmbuilder.Builder, path, compName, compVersion, img string) {
 	env.OCMCommonTransport(path, accessio.FormatDirectory, func() {
@@ -138,6 +140,10 @@ func NewTestComponentInfo(ocmName, ocmVersion string, rawRepoSpec *[]byte) *v1al
 
 func NewTestConfigMapForData(namespace, name, data string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: "v1",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
 			Name:      name,
@@ -154,10 +160,11 @@ func SaveToManifest(obj interface{}, path string) error {
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile(path, yamlData, 0o600)
-	if err != nil {
-		return err
-	}
 
-	return nil
+	return SaveToFile(path, yamlData)
+}
+
+// SaveToFile saves a byte array to a file at the given path.
+func SaveToFile(path string, data []byte) error {
+	return os.WriteFile(path, data, 0o600)
 }

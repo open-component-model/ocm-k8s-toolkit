@@ -53,8 +53,27 @@ func Run(cmd *exec.Cmd) ([]byte, error) {
 //
 //	err := DeployAndWaitForResource("./pod.yaml", "condition=Ready")
 func DeployAndWaitForResource(manifestFilePath, waitingFor, timeout string) error {
+	err := DeployResource(manifestFilePath)
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.Command("kubectl", "wait", "-f", manifestFilePath,
+		"--for", waitingFor,
+		"--timeout", timeout,
+	)
+	_, err = utils.Run(cmd)
+
+	return err
+}
+
+// DeployAndWaitForResource takes a manifest file of a k8s resource and deploys it with "kubectl". Correspondingly,
+// a DeferCleanup-handler is created that will delete the resource, when the test-suite ends.
+// In contrast to "DeployAndWaitForResource", this function does not wait for a certain condition to be fulfilled.
+func DeployResource(manifestFilePath string) error {
 	cmd := exec.Command("kubectl", "apply", "-f", manifestFilePath)
-	if _, err := utils.Run(cmd); err != nil {
+	_, err := utils.Run(cmd)
+	if err != nil {
 		return err
 	}
 	DeferCleanup(func() error {
@@ -63,12 +82,6 @@ func DeployAndWaitForResource(manifestFilePath, waitingFor, timeout string) erro
 
 		return err
 	})
-
-	cmd = exec.Command("kubectl", "wait", "-f", manifestFilePath,
-		"--for", waitingFor,
-		"--timeout", timeout,
-	)
-	_, err := utils.Run(cmd)
 
 	return err
 }

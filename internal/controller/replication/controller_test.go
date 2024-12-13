@@ -36,16 +36,19 @@ import (
 	environment "ocm.software/ocm/api/helper/env"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	testrepl "github.com/open-component-model/ocm-k8s-toolkit/test/utils/replication"
+	helper "github.com/open-component-model/ocm-k8s-toolkit/test/utils/replication"
 )
 
 var _ = Describe("Replication Controller", func() {
 	Context("when transferring component versions (CTFs)", func() {
 		const (
-			testNamespace  = "ns-test-replication-controller"
-			compOCMName    = "ocm.software/component-for-replication"
-			compVersion    = "0.1.0"
-			testImage      = testrepl.TestResourceImage
+			testNamespace = "ns-test-replication-controller"
+			compOCMName   = "ocm.software/component-for-replication"
+			compVersion   = "0.1.0"
+
+			// "gcr.io/google_containers/echoserver:1.10" is taken as test content, because it is used to explain OCM here:
+			// https://ocm.software/docs/getting-started/getting-started-with-ocm/create-a-component-version/#add-an-image-reference-option-1
+			testImage      = "gcr.io/google_containers/echoserver:1.10"
 			localImagePath = "blobs/sha256.4b93359cc643b5d8575d4f96c2d107b4512675dcfee1fa035d0c44a00b9c027c"
 		)
 
@@ -113,10 +116,10 @@ var _ = Describe("Replication Controller", func() {
 				return os.RemoveAll(sourcePath)
 			})
 
-			testrepl.NewTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compVersion, testImage)
+			helper.NewTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compVersion, testImage)
 
 			By("Create source repository resource")
-			sourceRepo, sourceSpecData := testrepl.NewTestCFTRepository(testNamespace, sourceRepoResourceName, sourcePath)
+			sourceRepo, sourceSpecData := helper.NewTestCFTRepository(testNamespace, sourceRepoResourceName, sourcePath)
 			Expect(k8sClient.Create(ctx, sourceRepo)).To(Succeed())
 
 			By("Simulate ocmrepository controller for source repository")
@@ -124,11 +127,11 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, sourceRepo)).To(Succeed())
 
 			By("Create source component resource")
-			component := testrepl.NewTestComponent(testNamespace, compResourceName, sourceRepoResourceName, compOCMName, compVersion)
+			component := helper.NewTestComponent(testNamespace, compResourceName, sourceRepoResourceName, compOCMName, compVersion)
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("Simulate component controller")
-			component.Status.Component = *testrepl.NewTestComponentInfo(compOCMName, compVersion, sourceSpecData)
+			component.Status.Component = *helper.NewTestComponentInfo(compOCMName, compVersion, sourceSpecData)
 			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
@@ -139,7 +142,7 @@ var _ = Describe("Replication Controller", func() {
 			})
 
 			By("Create target repository resource")
-			targetRepo, targetSpecData := testrepl.NewTestCFTRepository(testNamespace, targetRepoResourceName, targetPath)
+			targetRepo, targetSpecData := helper.NewTestCFTRepository(testNamespace, targetRepoResourceName, targetPath)
 			Expect(k8sClient.Create(ctx, targetRepo)).To(Succeed())
 
 			By("Simulate ocmrepository controller for target repository")
@@ -148,7 +151,7 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, targetRepo)).To(Succeed())
 
 			By("Create and reconcile Replication resource")
-			replication := testrepl.NewTestReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
+			replication := helper.NewTestReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
 			Expect(k8sClient.Create(ctx, replication)).To(Succeed())
 
 			replication = &v1alpha1.Replication{}
@@ -170,10 +173,10 @@ var _ = Describe("Replication Controller", func() {
 
 			By("Create a newer component version")
 			compNewVersion := "0.2.0"
-			testrepl.NewTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compNewVersion, testImage)
+			helper.NewTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compNewVersion, testImage)
 
 			By("Simulate component controller discovering the newer version")
-			component.Status.Component = *testrepl.NewTestComponentInfo(compOCMName, compNewVersion, sourceSpecData)
+			component.Status.Component = *helper.NewTestComponentInfo(compOCMName, compNewVersion, sourceSpecData)
 			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
@@ -204,10 +207,10 @@ var _ = Describe("Replication Controller", func() {
 				return os.RemoveAll(sourcePath)
 			})
 
-			testrepl.NewTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compVersion, testImage)
+			helper.NewTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compVersion, testImage)
 
 			By("Create source repository resource")
-			sourceRepo, sourceSpecData := testrepl.NewTestCFTRepository(testNamespace, sourceRepoResourceName, sourcePath)
+			sourceRepo, sourceSpecData := helper.NewTestCFTRepository(testNamespace, sourceRepoResourceName, sourcePath)
 			Expect(k8sClient.Create(ctx, sourceRepo)).To(Succeed())
 
 			By("Simulate ocmrepository controller for source repository")
@@ -215,11 +218,11 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, sourceRepo)).To(Succeed())
 
 			By("Create source component resource")
-			component := testrepl.NewTestComponent(testNamespace, compResourceName, sourceRepoResourceName, compOCMName, compVersion)
+			component := helper.NewTestComponent(testNamespace, compResourceName, sourceRepoResourceName, compOCMName, compVersion)
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("Simulate component controller")
-			component.Status.Component = *testrepl.NewTestComponentInfo(compOCMName, compVersion, sourceSpecData)
+			component.Status.Component = *helper.NewTestComponentInfo(compOCMName, compVersion, sourceSpecData)
 			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
@@ -230,7 +233,7 @@ var _ = Describe("Replication Controller", func() {
 			})
 
 			By("Create target repository resource")
-			targetRepo, targetSpecData := testrepl.NewTestCFTRepository(testNamespace, targetRepoResourceName, targetPath)
+			targetRepo, targetSpecData := helper.NewTestCFTRepository(testNamespace, targetRepoResourceName, targetPath)
 			Expect(k8sClient.Create(ctx, targetRepo)).To(Succeed())
 
 			By("Simulate ocmrepository controller for target repository")
@@ -239,11 +242,11 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, targetRepo)).To(Succeed())
 
 			By("Create ConfigMap with transfer options")
-			configMap := testrepl.NewTestConfigMapForData(testNamespace, optResourceName, ocmconfigTransferOptions)
+			configMap := helper.NewTestConfigMapForData(testNamespace, optResourceName, helper.OCMConfigResourcesByValue)
 			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
 
 			By("Create and reconcile Replication resource")
-			replication := testrepl.NewTestReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
+			replication := helper.NewTestReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
 			replication.Spec.ConfigRefs = []corev1.LocalObjectReference{
 				{Name: optResourceName},
 			}
@@ -273,16 +276,3 @@ var _ = Describe("Replication Controller", func() {
 		})
 	})
 })
-
-var ocmconfigTransferOptions = `
-type: generic.config.ocm.software/v1
-configurations:
-  - type: transport.ocm.config.ocm.software
-    recursive: true
-    overwrite: true
-    localResourcesByValue: false
-    resourcesByValue: true
-    sourcesByValue: false
-    keepGlobalAccess: false
-    stopOnExistingVersion: false
-`
