@@ -18,6 +18,7 @@ package utils
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -220,12 +221,18 @@ func DeployOCMComponents(manifestPath, imageRegistry, timeout string) error {
 
 // CheckOCMComponent executes the OCM CLI command 'ocm check cv' with the passed component reference.
 // If credentials are required, the path to the OCM configuration file can be supplied as the second parameter.
-func CheckOCMComponent(componentReference, ocmConfigPath string) error {
+// Options are optional. For possible values see:
+// https://github.com/open-component-model/ocm/blob/main/docs/reference/ocm_check_componentversions.md
+func CheckOCMComponent(componentReference, ocmConfigPath string, options ...string) error {
 	c := []string{"ocm"}
 	if len(ocmConfigPath) > 0 {
 		c = append(c, "--config", ocmConfigPath)
 	}
-	c = append(c, "check", "cv", componentReference)
+	c = append(c, "check", "cv")
+	if len(options) > 0 {
+		c = append(c, options[0:]...)
+	}
+	c = append(c, componentReference)
 
 	cmd := exec.Command(c[0], c[1:]...) //nolint:gosec // The argument list is constructed right above.
 	if _, err := utils.Run(cmd); err != nil {
@@ -233,6 +240,32 @@ func CheckOCMComponent(componentReference, ocmConfigPath string) error {
 	}
 
 	return nil
+}
+
+func GetOCMResourceImageRef(componentReference, resourceName, ocmConfigPath string) (string, error) {
+	const imgRef = "imageReference:"
+	c := []string{"ocm"}
+	if len(ocmConfigPath) > 0 {
+		c = append(c, "--config", ocmConfigPath)
+	}
+	c = append(c, "get", "resources", componentReference, resourceName, "-oyaml", "|", "grep", imgRef)
+
+	cmd := exec.Command(c[0], c[1:]...) //nolint:gosec // The argument list is constructed right above.
+	outBytes, err := utils.Run(cmd)
+	if err != nil {
+		return "", err
+	}
+
+	output := string(outBytes)
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		l := strings.TrimSpace(line)
+		if strings.HasPrefix(l, imgRef) {
+			return l[len(imgRef+" "):], nil
+		}
+	}
+
+	return output, errors.New("'" + imgRef + "' not found in the command output")
 }
 
 // GetVerifyPodFieldFunc is a helper function to return a function which checks for a pod with the passed label

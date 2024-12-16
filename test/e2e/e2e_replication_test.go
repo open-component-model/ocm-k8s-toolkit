@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
@@ -82,11 +83,16 @@ configurations:
 
 var _ = Describe("Replication Controller", func() {
 	Context("when transferring component versions (OCI)", func() {
-		// The registry where OCM components of the OCM toolkit itself are stored can be used for read access in tests.
+		// Using an existing component for the test, either podinfo or OCM CLI itself.
+		// podinfo is preferred, because it has an image, which can either be copied or not,
+		// depending on provided transfer options.
 		const (
-			externalRegistry = "ghcr.io/open-component-model/ocm"
-			ocmCompName      = "ocm.software/ocmcli"
-			ocmCompVersion   = "0.17.0"
+			externalRegistry       = "ghcr.io/open-component-model" // "ghcr.io/open-component-model/ocm"
+			ocmCompName            = "ocm.software/podinfo"         // "ocm.software/ocmcli"
+			ocmCompVersion         = "6.6.2"                        // "0.17.0"
+			podinfoImage           = "stefanprodan/podinfo:6.6.2"
+			podinfoImgResourceName = "image"
+			ocmCheckOptFailOnError = "--fail-on-error"
 		)
 
 		const testNamespace = "ns-e2e-test-replication-controller"
@@ -277,7 +283,7 @@ var _ = Describe("Replication Controller", func() {
 			Expect(helper.SaveToFile(ocmconfigFile1, []byte(OCMConfigCredentials1))).To(Succeed())
 			// Use external registry URL, because the check connects from outside.
 			targetRepoURL = protectedRegistry
-			Expect(utils.CheckOCMComponent(targetRepoURL+"//"+ocmCompName+":"+ocmCompVersion, ocmconfigFile1)).To(Succeed())
+			Expect(utils.CheckOCMComponent(targetRepoURL+"//"+ocmCompName+":"+ocmCompVersion, ocmconfigFile1, ocmCheckOptFailOnError)).To(Succeed())
 
 			By("Set up resources to transfer the CV further (from one protected registry to another protected registry)")
 			// Previous target is now the new source. Btw., the resource already exists in the cluster.
@@ -320,7 +326,16 @@ var _ = Describe("Replication Controller", func() {
 			Expect(helper.SaveToFile(ocmconfigFile2, []byte(OCMConfigCredentials2))).To(Succeed())
 			// Use external registry URL, because the check connects from outside.
 			targetRepoURL = protectedRegistry2
-			Expect(utils.CheckOCMComponent(targetRepoURL+"//"+ocmCompName+":"+ocmCompVersion, ocmconfigFile2)).To(Succeed())
+			componentReference := targetRepoURL + "//" + ocmCompName + ":" + ocmCompVersion
+			Expect(utils.CheckOCMComponent(componentReference, ocmconfigFile2, ocmCheckOptFailOnError)).To(Succeed())
+
+			By("Double-check that \"resourcesByValue\" transfer option has been applied")
+			// I.e. that the resource's imageReference points to the correct registry .
+			// Example reference:
+			// "http://protected-registry2-internal.default.svc.cluster.local:5002/stefanprodan/podinfo:6.6.2@sha256:4aa3b819f4cafc97d03d902ed17cbec076e2beee02d53b67ff88527124086fd9"
+			imgRef, err := utils.GetOCMResourceImageRef(componentReference, podinfoImgResourceName, ocmconfigFile2)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(strings.HasPrefix(imgRef, internalProtectedRegistry2+"/"+podinfoImage)).Should(BeTrue())
 		})
 	})
 })
