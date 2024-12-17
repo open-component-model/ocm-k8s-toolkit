@@ -68,7 +68,7 @@ func DeployAndWaitForResource(manifestFilePath, waitingFor, timeout string) erro
 	return err
 }
 
-// DeployAndWaitForResource takes a manifest file of a k8s resource and deploys it with "kubectl". Correspondingly,
+// DeployResource takes a manifest file of a k8s resource and deploys it with "kubectl". Correspondingly,
 // a DeferCleanup-handler is created that will delete the resource, when the test-suite ends.
 // In contrast to "DeployAndWaitForResource", this function does not wait for a certain condition to be fulfilled.
 func DeployResource(manifestFilePath string) error {
