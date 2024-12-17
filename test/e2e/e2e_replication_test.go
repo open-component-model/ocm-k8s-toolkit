@@ -111,7 +111,7 @@ var _ = Describe("Replication Controller", func() {
 			ocmconfigFile := filepath.Join(manifestDir, "creds1.ocmconfig")
 			// Use external registry URL, because the check connects from outside.
 			componentReference := protectedRegistry + "//" + ocmCompName + ":" + ocmCompVersion
-			Expect(utils.CheckOCMComponent(protectedRegistry+"//"+ocmCompName+":"+ocmCompVersion, ocmconfigFile, ocmCheckOptFailOnError)).To(Succeed())
+			Expect(utils.CheckOCMComponent(componentReference, ocmconfigFile, ocmCheckOptFailOnError)).To(Succeed())
 
 			By("Apply manifests to the cluster, required for the second transfer operation")
 			// The intermediate repo is now the new source. Btw., the resource already exists in the cluster.
