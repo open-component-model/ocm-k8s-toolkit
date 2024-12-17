@@ -25,24 +25,45 @@ import (
 
 	"github.com/fluxcd/pkg/apis/meta"
 	"github.com/fluxcd/pkg/runtime/conditions"
-	. "github.com/mandelsoft/goutils/testutils"
+	mandelsoft "github.com/mandelsoft/goutils/testutils"
 	"github.com/mandelsoft/vfs/pkg/osfs"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	. "ocm.software/ocm/api/helper/builder"
+	ocmbuilder "ocm.software/ocm/api/helper/builder"
 	environment "ocm.software/ocm/api/helper/env"
+	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
+	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
+	resourcetypes "ocm.software/ocm/api/ocm/extensions/artifacttypes"
+	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
+	"ocm.software/ocm/api/ocm/extensions/repositories/genericocireg"
+	"ocm.software/ocm/api/utils/accessio"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	helper "github.com/open-component-model/ocm-k8s-toolkit/test/utils/replication"
 )
+
+const reconciliationInterval = time.Second * 30
+
+const OCMConfigResourcesByValue = `
+type: generic.config.ocm.software/v1
+configurations:
+  - type: transport.ocm.config.ocm.software
+    recursive: true
+    overwrite: true
+    localResourcesByValue: false
+    resourcesByValue: true
+    sourcesByValue: false
+    keepGlobalAccess: false
+    stopOnExistingVersion: false
+`
 
 var _ = Describe("Replication Controller", func() {
 	Context("when transferring component versions (CTFs)", func() {
 		const (
-			testNamespace = "ns-test-replication-controller"
+			testNamespace = "replication-controller-test"
 			compOCMName   = "ocm.software/component-for-replication"
 			compVersion   = "0.1.0"
 
@@ -56,7 +77,7 @@ var _ = Describe("Replication Controller", func() {
 			ctx       context.Context
 			cancel    context.CancelFunc
 			namespace *corev1.Namespace
-			env       *Builder
+			env       *ocmbuilder.Builder
 		)
 
 		var (
@@ -75,7 +96,7 @@ var _ = Describe("Replication Controller", func() {
 		var maxTimeToReconcile = 5 * time.Minute
 
 		BeforeEach(func() {
-			env = NewBuilder(environment.FileSystem(osfs.OsFs))
+			env = ocmbuilder.NewBuilder(environment.FileSystem(osfs.OsFs))
 			DeferCleanup(env.Cleanup)
 
 			ctx, cancel = context.WithCancel(context.Background())
@@ -111,15 +132,15 @@ var _ = Describe("Replication Controller", func() {
 
 		It("should be properly reflected in the history", func() {
 			By("Create source CTF")
-			sourcePath := Must(os.MkdirTemp("", sourcePattern))
+			sourcePath := mandelsoft.Must(os.MkdirTemp("", sourcePattern))
 			DeferCleanup(func() error {
 				return os.RemoveAll(sourcePath)
 			})
 
-			helper.NewTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compVersion, testImage)
+			newTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compVersion, testImage)
 
 			By("Create source repository resource")
-			sourceRepo, sourceSpecData := helper.NewTestCFTRepository(testNamespace, sourceRepoResourceName, sourcePath)
+			sourceRepo, sourceSpecData := newTestCFTRepository(testNamespace, sourceRepoResourceName, sourcePath)
 			Expect(k8sClient.Create(ctx, sourceRepo)).To(Succeed())
 
 			By("Simulate ocmrepository controller for source repository")
@@ -127,22 +148,22 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, sourceRepo)).To(Succeed())
 
 			By("Create source component resource")
-			component := helper.NewTestComponent(testNamespace, compResourceName, sourceRepoResourceName, compOCMName, compVersion)
+			component := newTestComponent(testNamespace, compResourceName, sourceRepoResourceName, compOCMName, compVersion)
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("Simulate component controller")
-			component.Status.Component = *helper.NewTestComponentInfo(compOCMName, compVersion, sourceSpecData)
+			component.Status.Component = *newTestComponentInfo(compOCMName, compVersion, sourceSpecData)
 			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
 			By("Create target CTF")
-			targetPath := Must(os.MkdirTemp("", targetPattern))
+			targetPath := mandelsoft.Must(os.MkdirTemp("", targetPattern))
 			DeferCleanup(func() error {
 				return os.RemoveAll(targetPath)
 			})
 
 			By("Create target repository resource")
-			targetRepo, targetSpecData := helper.NewTestCFTRepository(testNamespace, targetRepoResourceName, targetPath)
+			targetRepo, targetSpecData := newTestCFTRepository(testNamespace, targetRepoResourceName, targetPath)
 			Expect(k8sClient.Create(ctx, targetRepo)).To(Succeed())
 
 			By("Simulate ocmrepository controller for target repository")
@@ -151,7 +172,7 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, targetRepo)).To(Succeed())
 
 			By("Create and reconcile Replication resource")
-			replication := helper.NewTestReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
+			replication := newTestReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
 			Expect(k8sClient.Create(ctx, replication)).To(Succeed())
 
 			replication = &v1alpha1.Replication{}
@@ -173,10 +194,10 @@ var _ = Describe("Replication Controller", func() {
 
 			By("Create a newer component version")
 			compNewVersion := "0.2.0"
-			helper.NewTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compNewVersion, testImage)
+			newTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compNewVersion, testImage)
 
 			By("Simulate component controller discovering the newer version")
-			component.Status.Component = *helper.NewTestComponentInfo(compOCMName, compNewVersion, sourceSpecData)
+			component.Status.Component = *newTestComponentInfo(compOCMName, compNewVersion, sourceSpecData)
 			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
@@ -202,15 +223,15 @@ var _ = Describe("Replication Controller", func() {
 		It("should be possible to configure transfer options", func() {
 
 			By("Create source CTF")
-			sourcePath := Must(os.MkdirTemp("", sourcePattern))
+			sourcePath := mandelsoft.Must(os.MkdirTemp("", sourcePattern))
 			DeferCleanup(func() error {
 				return os.RemoveAll(sourcePath)
 			})
 
-			helper.NewTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compVersion, testImage)
+			newTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compVersion, testImage)
 
 			By("Create source repository resource")
-			sourceRepo, sourceSpecData := helper.NewTestCFTRepository(testNamespace, sourceRepoResourceName, sourcePath)
+			sourceRepo, sourceSpecData := newTestCFTRepository(testNamespace, sourceRepoResourceName, sourcePath)
 			Expect(k8sClient.Create(ctx, sourceRepo)).To(Succeed())
 
 			By("Simulate ocmrepository controller for source repository")
@@ -218,22 +239,22 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, sourceRepo)).To(Succeed())
 
 			By("Create source component resource")
-			component := helper.NewTestComponent(testNamespace, compResourceName, sourceRepoResourceName, compOCMName, compVersion)
+			component := newTestComponent(testNamespace, compResourceName, sourceRepoResourceName, compOCMName, compVersion)
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("Simulate component controller")
-			component.Status.Component = *helper.NewTestComponentInfo(compOCMName, compVersion, sourceSpecData)
+			component.Status.Component = *newTestComponentInfo(compOCMName, compVersion, sourceSpecData)
 			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
 			By("Create target CTF")
-			targetPath := Must(os.MkdirTemp("", targetPattern))
+			targetPath := mandelsoft.Must(os.MkdirTemp("", targetPattern))
 			DeferCleanup(func() error {
 				return os.RemoveAll(targetPath)
 			})
 
 			By("Create target repository resource")
-			targetRepo, targetSpecData := helper.NewTestCFTRepository(testNamespace, targetRepoResourceName, targetPath)
+			targetRepo, targetSpecData := newTestCFTRepository(testNamespace, targetRepoResourceName, targetPath)
 			Expect(k8sClient.Create(ctx, targetRepo)).To(Succeed())
 
 			By("Simulate ocmrepository controller for target repository")
@@ -242,11 +263,11 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, targetRepo)).To(Succeed())
 
 			By("Create ConfigMap with transfer options")
-			configMap := helper.NewTestConfigMapForData(testNamespace, optResourceName, helper.OCMConfigResourcesByValue)
+			configMap := newTestConfigMapForData(testNamespace, optResourceName, OCMConfigResourcesByValue)
 			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
 
 			By("Create and reconcile Replication resource")
-			replication := helper.NewTestReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
+			replication := newTestReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
 			replication.Spec.ConfigRefs = []corev1.LocalObjectReference{
 				{Name: optResourceName},
 			}
@@ -276,3 +297,114 @@ var _ = Describe("Replication Controller", func() {
 		})
 	})
 })
+
+func newTestComponentVersionInCTFDir(env *ocmbuilder.Builder, path, compName, compVersion, img string) {
+	env.OCMCommonTransport(path, accessio.FormatDirectory, func() {
+		env.Component(compName, func() {
+			env.Version(compVersion, func() {
+				env.Resource("image", "1.0.0", resourcetypes.OCI_IMAGE, ocmmetav1.ExternalRelation, func() {
+					env.Access(
+						ociartifact.New(img),
+					)
+				})
+			})
+		})
+	})
+}
+
+func newTestCFTRepository(namespace, name, path string) (*v1alpha1.OCMRepository, *[]byte) {
+	spec := mandelsoft.Must(ctf.NewRepositorySpec(ctf.ACC_CREATE, path))
+
+	return newTestOCMRepository(namespace, name, spec)
+}
+
+func newTestOCMRepository(namespace, name string, spec *genericocireg.RepositorySpec) (*v1alpha1.OCMRepository, *[]byte) {
+	specData := mandelsoft.Must(spec.MarshalJSON())
+
+	return &v1alpha1.OCMRepository{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "OCMRepository",
+			APIVersion: v1alpha1.GroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      name,
+		},
+		Spec: v1alpha1.OCMRepositorySpec{
+			RepositorySpec: &apiextensionsv1.JSON{
+				Raw: specData,
+			},
+			Interval: metav1.Duration{Duration: reconciliationInterval},
+		},
+	}, &specData
+}
+
+func newTestComponent(namespace, name, repoName, ocmName, ocmVersion string) *v1alpha1.Component {
+	return &v1alpha1.Component{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Component",
+			APIVersion: v1alpha1.GroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      name,
+		},
+		Spec: v1alpha1.ComponentSpec{
+			RepositoryRef: v1alpha1.ObjectKey{
+				Namespace: namespace,
+				Name:      repoName,
+			},
+			Component: ocmName,
+			Semver:    ocmVersion,
+			Interval:  metav1.Duration{Duration: reconciliationInterval},
+		},
+	}
+}
+
+func newTestComponentInfo(ocmName, ocmVersion string, rawRepoSpec *[]byte) *v1alpha1.ComponentInfo {
+	return &v1alpha1.ComponentInfo{
+		RepositorySpec: &apiextensionsv1.JSON{Raw: *rawRepoSpec},
+		Component:      ocmName,
+		Version:        ocmVersion,
+	}
+}
+
+func newTestReplication(namespace, name, compName, targetRepoName string) *v1alpha1.Replication {
+	return &v1alpha1.Replication{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Replication",
+			APIVersion: v1alpha1.GroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: v1alpha1.ReplicationSpec{
+			ComponentRef: v1alpha1.ObjectKey{
+				Name:      compName,
+				Namespace: namespace,
+			},
+			TargetRepositoryRef: v1alpha1.ObjectKey{
+				Name:      targetRepoName,
+				Namespace: namespace,
+			},
+			Interval: metav1.Duration{Duration: reconciliationInterval},
+		},
+	}
+}
+
+func newTestConfigMapForData(namespace, name, data string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      name,
+		},
+		Data: map[string]string{
+			v1alpha1.OCMConfigKey: data,
+		},
+	}
+}
