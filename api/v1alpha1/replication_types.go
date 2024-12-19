@@ -52,10 +52,10 @@ type ReplicationSpec struct {
 	// +optional
 	HistoryCapacity int `json:"historyLength,omitempty"`
 
-	// Verification of the copied component in the target repository is required.
 	// Verify contains a signature name specifying the component signature to be
 	// verified as well as the trusted public keys (or certificates containing
-	// the public keys) used to verify the signature.
+	// the public keys) used to verify the signature. If specified, the copied
+	// component must be verified  in the target repository.
 	// +optional
 	Verify []Verification `json:"verify,omitempty"`
 
