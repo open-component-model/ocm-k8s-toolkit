@@ -179,10 +179,7 @@ func (r *Reconciler) transfer(ctx context.Context,
 	// instance and not at the global default context variable.
 	octx := ocmctx.New(datacontext.MODE_EXTENDED)
 	defer func() {
-		err := octx.Finalize()
-		if err != nil {
-			retErr = errors.Join(retErr, err)
-		}
+		retErr = errors.Join(retErr, octx.Finalize())
 	}()
 	// session := ocmctx.NewSession(datacontext.NewSession())
 	// automatically close the session when the ocm context is closed in the above defer
