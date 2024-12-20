@@ -181,9 +181,9 @@ func (r *Reconciler) transfer(ctx context.Context,
 	defer func() {
 		retErr = errors.Join(retErr, octx.Finalize())
 	}()
-	// session := ocmctx.NewSession(datacontext.NewSession())
+	session := ocmctx.NewSession(datacontext.NewSession())
 	// automatically close the session when the ocm context is closed in the above defer
-	// octx.Finalizer().Close(session)
+	octx.Finalizer().Close(session)
 
 	historyRecord = v1alpha1.TransferStatus{
 		StartTime:            metav1.Now(),
@@ -203,36 +203,25 @@ func (r *Reconciler) transfer(ctx context.Context,
 		return historyRecord, fmt.Errorf("cannot create RepositorySpec from raw data: %w", err)
 	}
 
-	// sourceRepo, err := session.LookupRepository(octx, sourceSpec)
-	sourceRepo, err := octx.RepositoryForSpec(sourceSpec)
+	sourceRepo, err := session.LookupRepository(octx, sourceSpec)
 	if err != nil {
 		return historyRecord, fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
 	}
-	defer func() {
-		retErr = errors.Join(retErr, sourceRepo.Close())
-	}()
 
-	cv, err := sourceRepo.LookupComponentVersion(comp.Status.Component.Component, comp.Status.Component.Version)
+	cv, err := session.LookupComponentVersion(sourceRepo, comp.Status.Component.Component, comp.Status.Component.Version)
 	if err != nil {
 		return historyRecord, fmt.Errorf("cannot lookup component version in source repository: %w", err)
 	}
-	defer func() {
-		retErr = errors.Join(retErr, cv.Close())
-	}()
 
 	targetSpec, err := octx.RepositorySpecForConfig(targetOCMRepo.Spec.RepositorySpec.Raw, nil)
 	if err != nil {
 		return historyRecord, fmt.Errorf("cannot create RepositorySpec from raw data: %w", err)
 	}
 
-	// targetRepo, err := session.LookupRepository(octx, targetSpec)
-	targetRepo, err := octx.RepositoryForSpec(targetSpec)
+	targetRepo, err := session.LookupRepository(octx, targetSpec)
 	if err != nil {
 		return historyRecord, fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
 	}
-	defer func() {
-		retErr = errors.Join(retErr, targetRepo.Close())
-	}()
 
 	// Extract transfer options from OCM Context
 	opts := &standard.Options{}
@@ -247,11 +236,10 @@ func (r *Reconciler) transfer(ctx context.Context,
 	}
 
 	// check if the component version was transferred successfully
-	tcv, err := targetRepo.LookupComponentVersion(comp.Status.Component.Component, comp.Status.Component.Version)
+	_, err = session.LookupComponentVersion(targetRepo, comp.Status.Component.Component, comp.Status.Component.Version)
 	if err != nil {
 		return historyRecord, fmt.Errorf("cannot lookup component version in target repository: %w", err)
 	}
-	defer tcv.Close()
 
 	// This command checks, whether the copied component version is completely contained in the target OCM repository
 	// with all its dependent component references.
