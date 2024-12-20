@@ -195,9 +195,7 @@ func (r *Reconciler) transfer(ctx context.Context,
 
 	err := r.ConfigureOCMContext(ctx, octx, replication, comp, targetOCMRepo)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, replication, v1alpha1.ConfigureContextFailedReason, "Configuring OCM context failed")
-
-		return historyRecord, err
+		return historyRecord, fmt.Errorf("cannot configure OCM context: %w", err)
 	}
 
 	sourceSpec, err := octx.RepositorySpecForConfig(comp.Status.Component.RepositorySpec.Raw, nil)
