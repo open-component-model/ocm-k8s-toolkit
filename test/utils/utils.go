@@ -18,6 +18,7 @@ package utils
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -242,30 +243,45 @@ func CheckOCMComponent(componentReference, ocmConfigPath string, options ...stri
 	return nil
 }
 
+// GetOCMResourceImageRef returns the image reference of a specified resource of a component version.
+// For the format of component reference see OCM CLI documentation.
 func GetOCMResourceImageRef(componentReference, resourceName, ocmConfigPath string) (string, error) {
-	const imgRef = "imageReference:"
-	c := []string{"ocm"}
+	// Construct the command 'ocm get resources', which is used here to get the image reference of a resource.
+	// See also: https://github.com/open-component-model/ocm/blob/main/docs/reference/ocm_get_resources.md
+	c := []string{"ocm", "--loglevel", "error"}
 	if len(ocmConfigPath) > 0 {
 		c = append(c, "--config", ocmConfigPath)
 	}
-	c = append(c, "get", "resources", componentReference, resourceName, "-oyaml", "|", "grep", imgRef)
+	c = append(c, "get", "resources", componentReference, resourceName, "-oJSON") // -oJSON is used to get the output in JSON format.
 
 	cmd := exec.Command(c[0], c[1:]...) //nolint:gosec // The argument list is constructed right above.
-	outBytes, err := utils.Run(cmd)
+	output, err := utils.Run(cmd)
 	if err != nil {
 		return "", err
 	}
 
-	output := string(outBytes)
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		l := strings.TrimSpace(line)
-		if strings.HasPrefix(l, imgRef) {
-			return l[len(imgRef+" "):], nil
-		}
+	// This struct corresponds to the json formmat of the command output.
+	// We are only interested in one specific field, the image reference. All other fields are omitted.
+	type Result struct {
+		Items []struct {
+			Element struct {
+				Access struct {
+					ImageReference string `json:"imageReference"`
+				} `json:"access"`
+			} `json:"element"`
+		} `json:"items"`
 	}
 
-	return output, errors.New("'" + imgRef + "' not found in the command output")
+	var r Result
+	err = json.Unmarshal(output, &r)
+	if err != nil {
+		return "", errors.New("could not unmarshal command output: " + string(output))
+	}
+	if len(r.Items) != 1 {
+		return "", errors.New("exactly one item is expected in command output: " + string(output))
+	}
+
+	return r.Items[0].Element.Access.ImageReference, nil
 }
 
 // GetVerifyPodFieldFunc is a helper function to return a function which checks for a pod with the passed label
