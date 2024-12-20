@@ -86,7 +86,7 @@ func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, replication 
 func (r *Reconciler) reconcileExists(ctx context.Context, replication *v1alpha1.Replication) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	if replication.GetDeletionTimestamp() != nil {
-		logger.Info("deleting replication", "name", replication.Name)
+		logger.Info("replication is being deleted and cannot be used", "name", replication.Name)
 
 		return ctrl.Result{}, nil
 	}

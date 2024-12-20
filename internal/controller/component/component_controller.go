@@ -104,7 +104,7 @@ func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, component *v
 func (r *Reconciler) reconcileExists(ctx context.Context, component *v1alpha1.Component) (_ ctrl.Result, retErr error) {
 	logger := log.FromContext(ctx)
 	if component.GetDeletionTimestamp() != nil {
-		logger.Info("deleting component", "name", component.Name)
+		logger.Info("component is being deleted and cannot be used", "name", component.Name)
 
 		return ctrl.Result{}, nil
 	}
