@@ -208,13 +208,17 @@ func (r *Reconciler) transfer(ctx context.Context,
 	if err != nil {
 		return historyRecord, fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
 	}
-	defer sourceRepo.Close()
+	defer func() {
+		retErr = errors.Join(retErr, sourceRepo.Close())
+	}()
 
 	cv, err := sourceRepo.LookupComponentVersion(comp.Status.Component.Component, comp.Status.Component.Version)
 	if err != nil {
 		return historyRecord, fmt.Errorf("cannot lookup component version in source repository: %w", err)
 	}
-	defer cv.Close()
+	defer func() {
+		retErr = errors.Join(retErr, cv.Close())
+	}()
 
 	targetSpec, err := octx.RepositorySpecForConfig(targetOCMRepo.Spec.RepositorySpec.Raw, nil)
 	if err != nil {
@@ -226,7 +230,9 @@ func (r *Reconciler) transfer(ctx context.Context,
 	if err != nil {
 		return historyRecord, fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
 	}
-	defer targetRepo.Close()
+	defer func() {
+		retErr = errors.Join(retErr, targetRepo.Close())
+	}()
 
 	// Extract transfer options from OCM Context
 	opts := &standard.Options{}
