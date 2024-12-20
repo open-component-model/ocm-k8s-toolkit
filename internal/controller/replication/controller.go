@@ -198,12 +198,7 @@ func (r *Reconciler) transfer(ctx context.Context,
 		return historyRecord, fmt.Errorf("cannot configure OCM context: %w", err)
 	}
 
-	sourceSpec, err := octx.RepositorySpecForConfig(comp.Status.Component.RepositorySpec.Raw, nil)
-	if err != nil {
-		return historyRecord, fmt.Errorf("cannot create RepositorySpec from raw data: %w", err)
-	}
-
-	sourceRepo, err := session.LookupRepository(octx, sourceSpec)
+	sourceRepo, err := session.LookupRepositoryForConfig(octx, comp.Status.Component.RepositorySpec.Raw)
 	if err != nil {
 		return historyRecord, fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
 	}
@@ -213,12 +208,7 @@ func (r *Reconciler) transfer(ctx context.Context,
 		return historyRecord, fmt.Errorf("cannot lookup component version in source repository: %w", err)
 	}
 
-	targetSpec, err := octx.RepositorySpecForConfig(targetOCMRepo.Spec.RepositorySpec.Raw, nil)
-	if err != nil {
-		return historyRecord, fmt.Errorf("cannot create RepositorySpec from raw data: %w", err)
-	}
-
-	targetRepo, err := session.LookupRepository(octx, targetSpec)
+	targetRepo, err := session.LookupRepositoryForConfig(octx, targetOCMRepo.Spec.RepositorySpec.Raw)
 	if err != nil {
 		return historyRecord, fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
 	}
@@ -235,37 +225,50 @@ func (r *Reconciler) transfer(ctx context.Context,
 		return historyRecord, fmt.Errorf("cannot transfer component version to target repository: %w", err)
 	}
 
-	// check if the component version was transferred successfully
-	_, err = session.LookupComponentVersion(targetRepo, comp.Status.Component.Component, comp.Status.Component.Version)
+	// the transfer operation can only be considered successful, if the copied component can be successfully verified in the target repository
+	err = r.validate(session, targetRepo, comp.Status.Component.Component, comp.Status.Component.Version)
 	if err != nil {
-		return historyRecord, fmt.Errorf("cannot lookup component version in target repository: %w", err)
+		return historyRecord, err
 	}
-
-	// This command checks, whether the copied component version is completely contained in the target OCM repository
-	// with all its dependent component references.
-	// https://github.com/open-component-model/ocm/blob/main/docs/reference/ocm_check_componentversions.md
-	// TODO: configure '--local-resources' and '--local-sources', if respective transfer options are set
-	// (see https://github.com/open-component-model/ocm-project/issues/343)
-	result, err := check.Check().ForId(targetRepo, ocmutils.NewNameVersion(comp.Status.Component.Component, comp.Status.Component.Version))
-	if err != nil {
-		return historyRecord, fmt.Errorf("cannot verify that component version exists in target repository: %w", err)
-	}
-	if !result.IsEmpty() {
-		msgBytes, err := json.Marshal(result)
-		if err != nil {
-			return historyRecord, fmt.Errorf("cannot marshal the result of component version check in target repository: %w", err)
-		}
-
-		return historyRecord, fmt.Errorf("component version is not completely contained in target repository: %s", string(msgBytes))
-	}
-
-	// TODO: verify component's signature in target repository (if component is signed)
-	// (see https://github.com/open-component-model/ocm-project/issues/344)
 
 	historyRecord.Success = true
 	historyRecord.EndTime = metav1.Now()
 
 	return historyRecord, nil
+}
+
+// validate checks if the component version can be found in the repository
+// and if it is completely (with dependent component references) contained in the target OCM repository.
+// If this is not the case an error is returned.
+// In the future this function should also verify the component's signature.
+func (r *Reconciler) validate(session ocmctx.Session, repo ocmctx.Repository, compName string, compVersion string) error {
+	// check if component version can be found in the repository
+	_, err := session.LookupComponentVersion(repo, compName, compVersion)
+	if err != nil {
+		return fmt.Errorf("cannot lookup component version in repository: %w", err)
+	}
+
+	// 'check.Check()' provides the same functionality as the 'ocm check cv' CLI command.
+	// See also: https://github.com/open-component-model/ocm/blob/main/docs/reference/ocm_check_componentversions.md
+	// TODO: configure '--local-resources' and '--local-sources', if respective transfer options are set
+	// (see https://github.com/open-component-model/ocm-project/issues/343)
+	result, err := check.Check().ForId(repo, ocmutils.NewNameVersion(compName, compVersion))
+	if err != nil {
+		return fmt.Errorf("cannot verify that component version exists in repository: %w", err)
+	}
+	if !result.IsEmpty() {
+		msgBytes, err := json.Marshal(result)
+		if err != nil {
+			return fmt.Errorf("cannot marshal the result of component version check in repository: %w", err)
+		}
+
+		return fmt.Errorf("component version is not completely contained in repository: %s", string(msgBytes))
+	}
+
+	// TODO: verify component's signature in target repository (if component is signed)
+	// (see https://github.com/open-component-model/ocm-project/issues/344)
+
+	return nil
 }
 
 func (r *Reconciler) ConfigureOCMContext(ctx context.Context, octx ocmctx.Context,
