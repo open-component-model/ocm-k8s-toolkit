@@ -260,7 +260,7 @@ func GetOCMResourceImageRef(componentReference, resourceName, ocmConfigPath stri
 		return "", err
 	}
 
-	// This struct corresponds to the json formmat of the command output.
+	// This struct corresponds to the json format of the command output.
 	// We are only interested in one specific field, the image reference. All other fields are omitted.
 	type Result struct {
 		Items []struct {
