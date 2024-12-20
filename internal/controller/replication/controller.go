@@ -256,13 +256,15 @@ func (r *Reconciler) transfer(ctx context.Context,
 	// (see https://github.com/open-component-model/ocm-project/issues/343)
 	result, err := check.Check().ForId(targetRepo, ocmutils.NewNameVersion(comp.Status.Component.Component, comp.Status.Component.Version))
 	if err != nil {
-		return historyRecord, fmt.Errorf("error checking component version in target repository: %w", err)
+		return historyRecord, fmt.Errorf("cannot verify that component version exists in target repository: %w", err)
 	}
-	if result != nil {
+	if !result.IsEmpty() {
 		msgBytes, err := json.Marshal(result)
 		if err != nil {
-			return historyRecord, fmt.Errorf("error checking component version in target repository: %s", string(msgBytes))
+			return historyRecord, fmt.Errorf("cannot marshal the result of component version check in target repository: %w", err)
 		}
+
+		return historyRecord, fmt.Errorf("component version is not completely contained in target repository: %s", string(msgBytes))
 	}
 
 	// TODO: verify component's signature in target repository (if component is signed)
