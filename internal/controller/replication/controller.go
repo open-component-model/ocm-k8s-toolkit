@@ -33,8 +33,12 @@ import (
 	"ocm.software/ocm/api/ocm/tools/transfer/transferhandler/standard"
 	ocmutils "ocm.software/ocm/api/utils/misc"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
@@ -47,6 +51,11 @@ import (
 type Reconciler struct {
 	*ocm.BaseReconciler
 }
+
+const (
+	componentIndexField  = "spec.componentRef.name"
+	targetRepoIndexField = "spec.targetRepositoryRef.name"
+)
 
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=replications,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=replications/status,verbs=get;update;patch
@@ -313,7 +322,75 @@ func (r *Reconciler) setReplicationStatus(replication *v1alpha1.Replication, his
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Create index for component name
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Replication{}, componentIndexField, componentNameExtractor); err != nil {
+		return err
+	}
+
+	// Create index for target repository name
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Replication{}, targetRepoIndexField, targetRepoNameExtractor); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.Replication{}).
+		For(&v1alpha1.Replication{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&v1alpha1.Component{}, handler.EnqueueRequestsFromMapFunc(r.replicationMapFunc)).
+		Watches(&v1alpha1.OCMRepository{}, handler.EnqueueRequestsFromMapFunc(r.replicationMapFunc)).
 		Complete(r)
+}
+
+func componentNameExtractor(obj client.Object) []string {
+	replication, ok := obj.(*v1alpha1.Replication)
+	if !ok {
+		return nil
+	}
+
+	return []string{replication.Spec.ComponentRef.Name}
+}
+
+func targetRepoNameExtractor(obj client.Object) []string {
+	replication, ok := obj.(*v1alpha1.Replication)
+	if !ok {
+		return nil
+	}
+
+	return []string{replication.Spec.TargetRepositoryRef.Name}
+}
+
+func componentMatchingFields(component *v1alpha1.Component) client.MatchingFields {
+	return client.MatchingFields{componentIndexField: component.GetName()}
+}
+
+func targetRepoMatchingFields(repo *v1alpha1.OCMRepository) client.MatchingFields {
+	return client.MatchingFields{targetRepoIndexField: repo.GetName()}
+}
+
+func (r *Reconciler) replicationMapFunc(ctx context.Context, obj client.Object) []reconcile.Request {
+	var fields client.MatchingFields
+	replList := &v1alpha1.ReplicationList{}
+
+	component, ok := obj.(*v1alpha1.Component)
+	if ok {
+		fields = componentMatchingFields(component)
+	} else if repo, ok := obj.(*v1alpha1.OCMRepository); ok {
+		fields = targetRepoMatchingFields(repo)
+	} else {
+		return []reconcile.Request{}
+	}
+
+	if err := r.List(ctx, replList, fields); err != nil {
+		return []reconcile.Request{}
+	}
+
+	requests := make([]reconcile.Request, 0, len(replList.Items))
+	for _, replication := range replList.Items {
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: replication.GetNamespace(),
+				Name:      replication.GetName(),
+			},
+		})
+	}
+
+	return requests
 }
