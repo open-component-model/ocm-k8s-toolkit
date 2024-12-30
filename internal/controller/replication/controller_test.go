@@ -295,6 +295,78 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Delete(ctx, component)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, sourceRepo)).To(Succeed())
 		})
+
+		It("transfer errors should be properly reflected in the history", func() {
+			By("Create source CTF")
+			sourcePath := mandelsoft.Must(os.MkdirTemp("", sourcePattern))
+			DeferCleanup(func() error {
+				return os.RemoveAll(sourcePath)
+			})
+
+			// The created directory is empty, i.e. the test will try to transfer a non-existing component version.
+			// This should result in an error, logged in the status of the replication object.
+
+			By("Create source repository resource")
+			sourceRepo, sourceSpecData := newTestCFTRepository(testNamespace, sourceRepoResourceName, sourcePath)
+			Expect(k8sClient.Create(ctx, sourceRepo)).To(Succeed())
+
+			By("Simulate ocmrepository controller for source repository")
+			conditions.MarkTrue(sourceRepo, meta.ReadyCondition, "ready", "")
+			Expect(k8sClient.Status().Update(ctx, sourceRepo)).To(Succeed())
+
+			By("Create source component resource")
+			component := newTestComponent(testNamespace, compResourceName, sourceRepoResourceName, compOCMName, compVersion)
+			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+
+			By("Simulate component controller")
+			component.Status.Component = *newTestComponentInfo(compOCMName, compVersion, sourceSpecData)
+			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
+			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
+
+			By("Create target CTF")
+			targetPath := mandelsoft.Must(os.MkdirTemp("", targetPattern))
+			DeferCleanup(func() error {
+				return os.RemoveAll(targetPath)
+			})
+
+			By("Create target repository resource")
+			targetRepo, targetSpecData := newTestCFTRepository(testNamespace, targetRepoResourceName, targetPath)
+			Expect(k8sClient.Create(ctx, targetRepo)).To(Succeed())
+
+			By("Simulate ocmrepository controller for target repository")
+			targetRepo.Spec.RepositorySpec.Raw = *targetSpecData
+			conditions.MarkTrue(targetRepo, meta.ReadyCondition, "ready", "")
+			Expect(k8sClient.Status().Update(ctx, targetRepo)).To(Succeed())
+
+			By("Create and reconcile Replication resource")
+			replication := newTestReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
+			Expect(k8sClient.Create(ctx, replication)).To(Succeed())
+
+			// During the sleep time multiple reconciliation attempts are expected.
+			time.Sleep(maxTimeToReconcile)
+			replication = &v1alpha1.Replication{}
+			Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
+
+			// Only one history entry with the error is expected, despite multiple reconciliation attempts.
+			Expect(len(replication.Status.History)).To(Equal(1))
+			Expect(conditions.IsReady(replication)).To(BeFalse())
+			Expect(replication.Status.History[0].Success).To(BeFalse())
+			Expect(replication.Status.History[0].Error).To(HavePrefix("cannot lookup component version in source repository: component version \"" + compOCMName + ":" + compVersion + "\" not found"))
+
+			// Check that the other fields are properly set.
+			Expect(replication.Status.History[0].Component).To(Equal(compOCMName))
+			Expect(replication.Status.History[0].Version).To(Equal(compVersion))
+			Expect(replication.Status.History[0].SourceRepositorySpec).To(Equal(string(*sourceSpecData)))
+			Expect(replication.Status.History[0].TargetRepositorySpec).To(Equal(string(*targetSpecData)))
+			Expect(replication.Status.History[0].StartTime).NotTo(BeZero())
+			Expect(replication.Status.History[0].EndTime).NotTo(BeZero())
+
+			By("Cleanup the resources")
+			Expect(k8sClient.Delete(ctx, replication)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, targetRepo)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, sourceRepo)).To(Succeed())
+		})
 	})
 })
 

@@ -192,6 +192,23 @@ func (repl *Replication) AddHistoryRecord(rec TransferStatus) {
 	if len(repl.Status.History) >= repl.Spec.HistoryCapacity {
 		repl.Status.History = repl.Status.History[1:]
 	}
+
+	// If the same error ocurrs again and again, just update the last record's time.
+	if len(repl.Status.History) > 0 {
+		lastRec := &repl.Status.History[len(repl.Status.History)-1]
+		if !rec.Success &&
+			!lastRec.Success &&
+			lastRec.Error == rec.Error &&
+			lastRec.Component == rec.Component &&
+			lastRec.Version == rec.Version &&
+			lastRec.TargetRepositorySpec == rec.TargetRepositorySpec {
+			lastRec.StartTime = rec.StartTime
+			lastRec.EndTime = rec.EndTime
+
+			return
+		}
+	}
+
 	repl.Status.History = append(repl.Status.History, rec)
 }
 
