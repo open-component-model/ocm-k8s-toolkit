@@ -193,7 +193,7 @@ func (repl *Replication) AddHistoryRecord(rec TransferStatus) {
 		repl.Status.History = repl.Status.History[1:]
 	}
 
-	// If the same error ocurrs again and again, just update the last record's time.
+	// If the same error occurs again and again, just update the last record's time.
 	if len(repl.Status.History) > 0 {
 		lastRec := &repl.Status.History[len(repl.Status.History)-1]
 		if !rec.Success &&
