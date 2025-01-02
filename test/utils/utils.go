@@ -18,6 +18,8 @@ package utils
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -53,8 +55,27 @@ func Run(cmd *exec.Cmd) ([]byte, error) {
 //
 //	err := DeployAndWaitForResource("./pod.yaml", "condition=Ready")
 func DeployAndWaitForResource(manifestFilePath, waitingFor, timeout string) error {
+	err := DeployResource(manifestFilePath)
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.Command("kubectl", "wait", "-f", manifestFilePath,
+		"--for", waitingFor,
+		"--timeout", timeout,
+	)
+	_, err = utils.Run(cmd)
+
+	return err
+}
+
+// DeployResource takes a manifest file of a k8s resource and deploys it with "kubectl". Correspondingly,
+// a DeferCleanup-handler is created that will delete the resource, when the test-suite ends.
+// In contrast to "DeployAndWaitForResource", this function does not wait for a certain condition to be fulfilled.
+func DeployResource(manifestFilePath string) error {
 	cmd := exec.Command("kubectl", "apply", "-f", manifestFilePath)
-	if _, err := utils.Run(cmd); err != nil {
+	_, err := utils.Run(cmd)
+	if err != nil {
 		return err
 	}
 	DeferCleanup(func() error {
@@ -63,12 +84,6 @@ func DeployAndWaitForResource(manifestFilePath, waitingFor, timeout string) erro
 
 		return err
 	})
-
-	cmd = exec.Command("kubectl", "wait", "-f", manifestFilePath,
-		"--for", waitingFor,
-		"--timeout", timeout,
-	)
-	_, err := utils.Run(cmd)
 
 	return err
 }
@@ -205,6 +220,70 @@ func DeployOCMComponents(manifestPath, imageRegistry, timeout string) error {
 	return nil
 }
 
+// CheckOCMComponent executes the OCM CLI command 'ocm check cv' with the passed component reference.
+// If credentials are required, the path to the OCM configuration file can be supplied as the second parameter.
+// Options are optional. For possible values see:
+// https://github.com/open-component-model/ocm/blob/main/docs/reference/ocm_check_componentversions.md
+func CheckOCMComponent(componentReference, ocmConfigPath string, options ...string) error {
+	c := []string{"ocm"}
+	if len(ocmConfigPath) > 0 {
+		c = append(c, "--config", ocmConfigPath)
+	}
+	c = append(c, "check", "cv")
+	if len(options) > 0 {
+		c = append(c, options[0:]...)
+	}
+	c = append(c, componentReference)
+
+	cmd := exec.Command(c[0], c[1:]...) //nolint:gosec // The argument list is constructed right above.
+	if _, err := utils.Run(cmd); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GetOCMResourceImageRef returns the image reference of a specified resource of a component version.
+// For the format of component reference see OCM CLI documentation.
+func GetOCMResourceImageRef(componentReference, resourceName, ocmConfigPath string) (string, error) {
+	// Construct the command 'ocm get resources', which is used here to get the image reference of a resource.
+	// See also: https://github.com/open-component-model/ocm/blob/main/docs/reference/ocm_get_resources.md
+	c := []string{"ocm", "--loglevel", "error"}
+	if len(ocmConfigPath) > 0 {
+		c = append(c, "--config", ocmConfigPath)
+	}
+	c = append(c, "get", "resources", componentReference, resourceName, "-oJSON") // -oJSON is used to get the output in JSON format.
+
+	cmd := exec.Command(c[0], c[1:]...) //nolint:gosec // The argument list is constructed right above.
+	output, err := utils.Run(cmd)
+	if err != nil {
+		return "", err
+	}
+
+	// This struct corresponds to the json format of the command output.
+	// We are only interested in one specific field, the image reference. All other fields are omitted.
+	type Result struct {
+		Items []struct {
+			Element struct {
+				Access struct {
+					ImageReference string `json:"imageReference"`
+				} `json:"access"`
+			} `json:"element"`
+		} `json:"items"`
+	}
+
+	var r Result
+	err = json.Unmarshal(output, &r)
+	if err != nil {
+		return "", errors.New("could not unmarshal command output: " + string(output))
+	}
+	if len(r.Items) != 1 {
+		return "", errors.New("exactly one item is expected in command output: " + string(output))
+	}
+
+	return r.Items[0].Element.Access.ImageReference, nil
+}
+
 // GetVerifyPodFieldFunc is a helper function to return a function which checks for a pod with the passed label
 // selector. It returns the result from a comparison of the query on a specified pod-field with the expected string.
 func GetVerifyPodFieldFunc(labelSelector, fieldQuery, expect string) error {
@@ -223,4 +302,20 @@ func GetVerifyPodFieldFunc(labelSelector, fieldQuery, expect string) error {
 
 		return nil
 	}()
+}
+
+// Create Kubernetes namespace.
+func CreateNamespace(ns string) error {
+	cmd := exec.Command("kubectl", "create", "ns", ns)
+	_, err := utils.Run(cmd)
+
+	return err
+}
+
+// Delete Kubernetes namespace.
+func DeleteNamespace(ns string) error {
+	cmd := exec.Command("kubectl", "delete", "ns", ns)
+	_, err := utils.Run(cmd)
+
+	return err
 }

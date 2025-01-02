@@ -126,6 +126,8 @@ jobs:
         run: |
           kubectl apply -f test/e2e/config/image-registry.yaml
           kubectl wait pod -l app=registry --for condition=Ready --timeout 5m
+          kubectl wait pod -l app=protected-registry1 --for condition=Ready --timeout 5m
+          kubectl wait pod -l app=protected-registry2 --for condition=Ready --timeout 5m
 
       - name: Install external CRDs
         run: kubectl apply --server-side -k https://github.com/openfluxcd/artifact//config/crd?ref=v0.1.1
@@ -193,9 +195,13 @@ jobs:
       - name: Run e2e test
         env:
           RESOURCE_TIMEOUT: 5m
+          CONTROLLER_LOG_PATH: ./ocm-k8s-toolkit-controller.log
           IMAGE_REGISTRY_URL: http://localhost:31000
           INTERNAL_IMAGE_REGISTRY_URL: http://registry-internal.default.svc.cluster.local:5000
-          CONTROLLER_LOG_PATH: ./ocm-k8s-toolkit-controller.log
+          PROTECTED_REGISTRY_URL: http://localhost:31001
+          INTERNAL_PROTECTED_REGISTRY_URL: http://protected-registry1-internal.default.svc.cluster.local:5001
+          PROTECTED_REGISTRY_URL2: http://localhost:31002
+          INTERNAL_PROTECTED_REGISTRY_URL2: http://protected-registry2-internal.default.svc.cluster.local:5002
         run: make test-e2e
 
       - name: Publish logs on failure
