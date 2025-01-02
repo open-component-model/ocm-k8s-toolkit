@@ -120,7 +120,7 @@ func (r *Reconciler) reconcileOCM(ctx context.Context, ocmRepo *v1alpha1.OCMRepo
 	return result, nil
 }
 
-func (r *Reconciler) reconcileRepository(ctx context.Context, octx ocmctx.Context, ocmRepo *v1alpha1.OCMRepository) (ctrl.Result, error) { //nolint:unparam // needed
+func (r *Reconciler) reconcileRepository(ctx context.Context, octx ocmctx.Context, ocmRepo *v1alpha1.OCMRepository) (ctrl.Result, error) {
 	session := ocmctx.NewSession(datacontext.NewSession())
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
@@ -139,26 +139,26 @@ func (r *Reconciler) reconcileRepository(ctx context.Context, octx ocmctx.Contex
 
 	status.MarkReady(r.EventRecorder, ocmRepo, "Successfully reconciled")
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: ocmRepo.GetRequeueAfter()}, nil
 }
 
 func (r *Reconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRepo *v1alpha1.OCMRepository) error {
 	spec, err := octx.RepositorySpecForConfig(ocmRepo.Spec.RepositorySpec.Raw, nil)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, "cannot create RepositorySpec from raw data")
+		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, err.Error())
 
 		return reconcile.TerminalError(fmt.Errorf("cannot create RepositorySpec from raw data: %w", err))
 	}
 
 	if err = spec.Validate(octx, nil); err != nil {
-		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, "invalid RepositorySpec")
+		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, err.Error())
 
 		return fmt.Errorf("invalid RepositorySpec: %w", err)
 	}
 
 	_, err = session.LookupRepository(octx, spec)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, "cannot lookup repository for RepositorySpec")
+		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, err.Error())
 
 		return fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
 	}

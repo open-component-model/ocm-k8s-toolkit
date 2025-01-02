@@ -8,10 +8,17 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/vfs/pkg/memoryfs"
 	"github.com/mandelsoft/vfs/pkg/vfs"
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
+	"github.com/openfluxcd/controller-manager/storage"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
+	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	"ocm.software/ocm/api/utils/tarutils"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	//nolint:revive,stylecheck // dot import necessary for Ginkgo DSL
 	. "github.com/onsi/ginkgo/v2"
@@ -19,14 +26,6 @@ import (
 	. "github.com/onsi/gomega"
 	//nolint:revive,stylecheck // dot import necessary for Ginkgo DSL
 	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
-
-	"github.com/fluxcd/pkg/runtime/patch"
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
-	"github.com/openfluxcd/controller-manager/storage"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"

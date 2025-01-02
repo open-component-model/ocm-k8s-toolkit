@@ -46,6 +46,7 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization"
 	locclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/client"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/ocmrepository"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/replication"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/resource"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	// +kubebuilder:scaffold:imports
@@ -211,6 +212,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "LocalizedResource")
 		os.Exit(1)
 	}
+
 	if err = (&configuration.Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client:        mgr.GetClient(),
@@ -221,6 +223,17 @@ func main() {
 		ConfigClient: cfgclient.NewClientWithLocalStorage(mgr.GetClient(), storage, mgr.GetScheme()),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ConfiguredResource")
+		os.Exit(1)
+	}
+
+	if err = (&replication.Reconciler{
+		BaseReconciler: &ocm.BaseReconciler{
+			Client:        mgr.GetClient(),
+			Scheme:        mgr.GetScheme(),
+			EventRecorder: eventsRecorder,
+		},
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Replication")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

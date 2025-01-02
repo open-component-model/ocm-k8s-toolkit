@@ -1,0 +1,12 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: LocalizedResource
+metadata:
+  name: kustomize-localized-resource
+spec:
+  interval: 10m
+  target:
+    kind: Resource
+    name: kustomize-resource
+  config:
+    kind: Resource
+    name: kustomize-localization-resource
