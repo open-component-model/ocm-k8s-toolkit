@@ -82,11 +82,6 @@ jobs:
           key: ${{ steps.cache-k8s-restore.outputs.cache-primary-key }}
 
   e2e-tests:
-    env:
-      HELM_CHART: ghcr.io/stefanprodan/charts/podinfo:6.7.1
-      IMAGE_REFERENCE: ghcr.io/stefanprodan/podinfo:6.7.1
-      IMAGE_REGISTRY_URL: http://localhost:31000
-      INTERNAL_IMAGE_REGISTRY_URL: http://registry-internal.default.svc.cluster.local:5000
     runs-on: large_runner
     steps:
       - name: Self Hosted Runner Post Job Cleanup Action
@@ -195,6 +190,8 @@ jobs:
       - name: Run e2e test
         env:
           RESOURCE_TIMEOUT: 5m
+          HELM_CHART: ghcr.io/stefanprodan/charts/podinfo:6.7.1
+          IMAGE_REFERENCE: ghcr.io/stefanprodan/podinfo:6.7.1
           CONTROLLER_LOG_PATH: ./ocm-k8s-toolkit-controller.log
           IMAGE_REGISTRY_URL: http://localhost:31000
           INTERNAL_IMAGE_REGISTRY_URL: http://registry-internal.default.svc.cluster.local:5000
