@@ -18,12 +18,12 @@ Options:
 * Option 2: Only replicate one single latest version mentioned in the Component resource's Status.
 
 Proposed solution:
-* Option 2, i.e. only replicate the version mentioned in the status of the Component resource. In this case we can be sure that we replicate a state of the Component that has been successfully reconciled and fulfills certain prerequisites. And it matches the behavior of OCM CLI.
+* Option 2, i.e. only replicate the version mentioned in the status of the Component resource. In this case we can be sure that we replicate a state of the Component that has been successfully reconciled and fulfills certain prerequisites. And this approach matches the behavior of OCM CLI.
 
 Possible consequences:
 * In case there is customer demand, a possibility to replicate all versions or a range of versions would have to be added later. Btw., OCM library currently does not support replication of a version range. Same functionality would have to be added to OCM CLI, to have feature parity with the replication controller.
 * It can happen that some in-between versions have not been replicated for some reason, and the Component resource is already on a greater version. In this case a manual workaround would be possible: either creation of a dedicated set of resources (Replication + Component) covering the missing version or a transfer with OCM CLI.
-* It should be explicetly decided, if if is acceptable to wait for customer demand, see [respective issue](https://github.com/open-component-model/ocm-project/issues/357).
+* It should be explicetly decided, if it is acceptable to wait for customer demand, see [respective issue](https://github.com/open-component-model/ocm-project/issues/357).
 
 ## Problem 2: Should a successful replication automatically result in creation of k8s resources in the target environment?
 
@@ -35,9 +35,9 @@ Options:
 Proposed solution:
 * Option 3, i.e. the replication process will not create custom resources in the target cluster. The assumption is that in vast majority of use cases the target cluster is not the one where the replication controller is running. And creation of resources on a different cluster is out of the scope for the replication controller.
 
-## Problem 3: Status information of how many previous runs does a single Replication resource need to keep in the Status?
+## Problem 3: How many "historical records" does a single Replication resource need to keep in the Status?
 
-A historical record contains certain information about a single transfer operation, like for example:
+A "historical record" contains certain information about a single transfer operation, like for example:
 * Name and version of the transferred OCM component.
 * Target repository URL.
 * Information about success or failure of the transfer operation, etc.
@@ -86,7 +86,7 @@ Proposed solution:
 * Option 2, because ocmconfig is the canonical way to provide configuration to OCM Library and OCM CLI.  
 
 Possible consequences:
-* Config type 'transport.ocm.config.ocm.software' would need to be extended to support more command line options (e.g. `--disable-uploads`). This extension looks logical, as the current differences between the config type and the command line options seem like a mismatch.
+* Config type 'transport.ocm.config.ocm.software' would need to be extended to support more command line options (e.g. `--disable-uploads`). This extension looks logical, as the current differences between the config type and the command line options seem like a mismatch. See also https://github.com/open-component-model/ocm-project/issues/342.
 * The same logic also applies to other types of configuration, which will then be provided to the Replication controller as custom resources containing ocmconfig:
   * Resolver configuration (config type 'ocm.config.ocm.software', similar to `--lookup` CLI command).
   * Uploader configuration (config type 'uploader.ocm.config.ocm.software', similar to `--uploader` CLI command).
