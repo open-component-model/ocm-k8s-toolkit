@@ -56,7 +56,7 @@ Proposed solution:
 Possible consequences:
 * Older records will be automatically removed from history (Component's status) and cannot be viewed/restored afterwards.
 
-## Problem 4: Should the Replication controller take the Artifact resource, prepared by the Component controller, into account?
+## Problem 4: Should the Replication controller make use of the Artifact resource, prepared by the Component controller?
 
 Options:
 * Option 1: No, provide the OCM Library with OCM coordinates of the source component and let it download the component version from scratch.
