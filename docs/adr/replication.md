@@ -27,13 +27,15 @@ Possible consequences:
 
 ## Problem 2: Should a successful replication automatically result in creation of k8s resources in the target environment?
 
+The target OCI registry might also be watched by a set of ocm-k8s-toolkit controllers. Then the question could araise, if after a successful transfer of an COM component to the target environment a corresponding set of k8s resources (i.e. Component, OCMRepository etc.) has to be created or updated there, e.g. if not existing yet.
+
 Options:
 * Option 1: Yes, always create.
 * Option 2. Yes, if possible and desirable by the user.
 * Option 3. No.
 
 Proposed solution:
-* Option 3, i.e. the replication process will not create custom resources in the target cluster. The assumption is that in vast majority of use cases the target cluster is not the one where the replication controller is running. And creation of resources on a different cluster is out of the scope for the replication controller.
+* Option 3, i.e. the replication process will not create custom resources in the target environment. This goes beyond the functionality of OCM transfer. Also the assumption is that in vast majority of use cases the cluster controlling the target environment is not the one handling the current replication. And creation of resources on a different cluster is out of the scope for the replication controller.
 
 ## Problem 3: How many "historical records" does a single Replication resource need to keep in the Status?
 
