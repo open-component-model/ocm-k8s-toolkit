@@ -27,7 +27,7 @@ Possible consequences:
 
 ## Problem 2: Should a successful replication automatically result in creation of k8s resources in the target environment?
 
-The target OCI registry might also be watched by a set of ocm-k8s-toolkit controllers. Then the question could araise, if after a successful transfer of an COM component to the target environment a corresponding set of k8s resources (i.e. Component, OCMRepository etc.) has to be created or updated there, e.g. if not existing yet.
+The target OCI registry might also be watched by a set of ocm-k8s-toolkit controllers. Then the question could araise, if after a successful transfer of an OCM component to the target environment a corresponding set of k8s resources (i.e. Component, OCMRepository etc.) has to be created or updated there, e.g. if not existing yet.
 
 Options:
 * Option 1: Yes, always create.
