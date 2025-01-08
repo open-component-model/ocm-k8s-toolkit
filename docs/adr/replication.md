@@ -58,11 +58,13 @@ Proposed solution:
 Possible consequences:
 * Older records will be automatically removed from history (Component's status) and cannot be viewed/restored afterwards.
 
-## Problem 4: Should the Replication controller make use of the Artifact resource, prepared by the Component controller?
+## Problem 4: Should the Replication controller make use of component descriptors cached by the Component controller?
+
+As a matter of fact, the Component controller caches the component descriptors of the OCM components it is working on. At the moment of writing such a cached component descriptor is represented as a dedicated Artifact custom resource, which is referenced from the status of the Compoent resource. In the future the implementation will likely change. But the question remains the same - should the replication controller try to re-use the cached component descriptor?
 
 Options:
-* Option 1: No, provide the OCM Library with OCM coordinates of the source component and let it download the component version from scratch.
-* Option 2: Use a custom source provider that allows the OCM Library to consume the Artifact and fetch the required data from the HTTP URL. For this we might need a custom repository mapping that would expose it from a CTF.
+* Option 1: No, provide the OCM Library with OCM coordinates of the source component and let it download the component version from the source repository from scratch.
+* Option 2: Use a custom source provider that allows the OCM Library to consume the Artifact (or its future replacement) and fetch the required data from the local HTTP URL. For this we might need a custom repository mapping that would expose it from a CTF.
 
 Proposed solution:
 * Option 1, because it is much simplier to implement. The other option would require a complex logic, while the benefits are unclear. 
