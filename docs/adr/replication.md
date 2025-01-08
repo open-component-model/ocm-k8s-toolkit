@@ -60,7 +60,7 @@ Possible consequences:
 
 ## Problem 4: Should the Replication controller make use of component descriptors cached by the Component controller?
 
-As a matter of fact, the Component controller caches the component descriptors of the OCM components it is working on. At the moment of writing such a cached component descriptor is represented as a dedicated Artifact custom resource, which is referenced from the status of the Compoent resource. In the future the implementation will likely change. But the question remains the same - should the replication controller try to re-use the cached component descriptor?
+As a matter of fact, the Component controller caches the component descriptors of the OCM components it is working on. At the moment of writing such a cached component descriptor is represented as a dedicated Artifact custom resource, which is referenced from the status of the Component resource. In the future the implementation will likely change. But the question remains the same - should the replication controller try to re-use the cached component descriptor?
 
 Options:
 * Option 1: No, provide the OCM Library with OCM coordinates of the source component and let it download the component version from the source repository from scratch.
