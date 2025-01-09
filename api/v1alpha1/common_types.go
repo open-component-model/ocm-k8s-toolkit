@@ -30,16 +30,22 @@ const (
 	ConfigurationPolicyDoNotPropagate ConfigurationPolicy = "DoNotPropagate"
 )
 
+// OCMConfiguration defines a configuration applied to the reconciliation of an
+// ocm k8s object as well as the policy for its propagation of this
+// configuration.
 type OCMConfiguration struct {
 	// Ref reference config maps or secrets containing arbitrary
 	// ocm config data (in the ocm config file format), or other configurable
 	// ocm api objects (OCMRepository, Component, Resource) to
 	// reuse their propagated configuration.
+	// +kubebuilder:validation:XValidation:rule="!has(self.apiVersion) || self.apiVersion == \"v1\" || self.apiVersion == \"delivery.ocm.software/v1alpha1\" || self.apiVersion == \"\"",message="apiVersion must be one of \"v1\", \"delivery.ocm.software/v1alpha1\""
+	// +kubebuilder:validation:XValidation:rule="self.kind == \"Secret\" || self.kind == \"ConfigMap\" || self.kind == \"OCMRepository\" || self.kind == \"Component\" || self.kind == \"Resource\"",message="kind must be one of \"Secret\", \"ConfigMap\", \"OCMRepository\", \"Component\", \"Resource\""
 	// +required
-	Ref meta.NamespacedObjectKindReference `json:"refs"`
+	Ref meta.NamespacedObjectKindReference `json:"ref"`
 	// Policy affects the propagation behavior of the configuration. If set to
 	// ConfigurationPolicyPropagate other ocm api objects can reference this
 	// object to reuse this configuration.
+	// +kubebuilder:validation:XValidation:rule="self == \"Propagate\" || self == \"DoNotPropagate\"",message="policy must be one of \"Propagate\", \"DoNotPropagate\""
 	// +optional
 	Policy ConfigurationPolicy `json:"policy,omitempty"`
 }

@@ -61,6 +61,10 @@ spec:
                   OCMConfig defines references to secrets, config maps or ocm api
                   objects providing configuration data including credentials.
                 items:
+                  description: |-
+                    OCMConfiguration defines a configuration applied to the reconciliation of an
+                    ocm k8s object as well as the policy for its propagation of this
+                    configuration.
                   properties:
                     policy:
                       description: |-
@@ -68,7 +72,10 @@ spec:
                         ConfigurationPolicyPropagate other ocm api objects can reference this
                         object to reuse this configuration.
                       type: string
-                    refs:
+                      x-kubernetes-validations:
+                      - message: policy must be one of "Propagate", "DoNotPropagate"
+                        rule: self == "Propagate" || self == "DoNotPropagate"
+                    ref:
                       description: |-
                         Ref reference config maps or secrets containing arbitrary
                         ocm config data (in the ocm config file format), or other configurable
@@ -93,8 +100,18 @@ spec:
                       - kind
                       - name
                       type: object
+                      x-kubernetes-validations:
+                      - message: apiVersion must be one of "v1", "delivery.ocm.software/v1alpha1"
+                        rule: '!has(self.apiVersion) || self.apiVersion == "v1" ||
+                          self.apiVersion == "delivery.ocm.software/v1alpha1" || self.apiVersion
+                          == ""'
+                      - message: kind must be one of "Secret", "ConfigMap", "OCMRepository",
+                          "Component", "Resource"
+                        rule: self.kind == "Secret" || self.kind == "ConfigMap" ||
+                          self.kind == "OCMRepository" || self.kind == "Component"
+                          || self.kind == "Resource"
                   required:
-                  - refs
+                  - ref
                   type: object
                 type: array
               resource:
@@ -220,6 +237,10 @@ spec:
                   whose configuration data was applied to the Resource reconciliation,
                   in the order the configuration data was applied.
                 items:
+                  description: |-
+                    OCMConfiguration defines a configuration applied to the reconciliation of an
+                    ocm k8s object as well as the policy for its propagation of this
+                    configuration.
                   properties:
                     policy:
                       description: |-
@@ -227,7 +248,10 @@ spec:
                         ConfigurationPolicyPropagate other ocm api objects can reference this
                         object to reuse this configuration.
                       type: string
-                    refs:
+                      x-kubernetes-validations:
+                      - message: policy must be one of "Propagate", "DoNotPropagate"
+                        rule: self == "Propagate" || self == "DoNotPropagate"
+                    ref:
                       description: |-
                         Ref reference config maps or secrets containing arbitrary
                         ocm config data (in the ocm config file format), or other configurable
@@ -252,8 +276,18 @@ spec:
                       - kind
                       - name
                       type: object
+                      x-kubernetes-validations:
+                      - message: apiVersion must be one of "v1", "delivery.ocm.software/v1alpha1"
+                        rule: '!has(self.apiVersion) || self.apiVersion == "v1" ||
+                          self.apiVersion == "delivery.ocm.software/v1alpha1" || self.apiVersion
+                          == ""'
+                      - message: kind must be one of "Secret", "ConfigMap", "OCMRepository",
+                          "Component", "Resource"
+                        rule: self.kind == "Secret" || self.kind == "ConfigMap" ||
+                          self.kind == "OCMRepository" || self.kind == "Component"
+                          || self.kind == "Resource"
                   required:
-                  - refs
+                  - ref
                   type: object
                 type: array
               observedGeneration:
