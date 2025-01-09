@@ -71,7 +71,7 @@ Proposed solution:
 
 ## Problem 5: When should a new replication process be triggered?
 
-A Replication resource is being continuosly reconciled. So the question is, under which curcumstances does the controller need to trigger a new OCM transfer operation?
+A Replication resource is being continuously reconciled. So the question is, under which circumstances does the controller need to trigger a new OCM transfer operation?
 
 Proposed solution is to trigger the actual replication, if one of the below conditions applies: 
 * If the combination of component name, component version, target repository URL and transfer options is not contained in the replication history (status of the Replication resource) yet.
