@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/fluxcd/pkg/runtime/conditions"
@@ -322,7 +321,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	}
 
 	// Update status
-	if err = setResourceStatus(ctx, resource, resourceAccess); err != nil {
+	if err = setResourceStatus(ctx, configs, resource, resourceAccess); err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.StatusSetFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to set resource status: %w", err)
@@ -555,7 +554,7 @@ func reconcileArtifact(
 }
 
 // setResourceStatus updates the resource status with the all required information.
-func setResourceStatus(ctx context.Context, resource *v1alpha1.Resource, resourceAccess ocmctx.ResourceAccess) error {
+func setResourceStatus(ctx context.Context, configs []v1alpha1.OCMConfiguration, resource *v1alpha1.Resource, resourceAccess ocmctx.ResourceAccess) error {
 	log.FromContext(ctx).V(1).Info("updating resource status")
 
 	// Get the access spec from the resource access
@@ -578,13 +577,7 @@ func setResourceStatus(ctx context.Context, resource *v1alpha1.Resource, resourc
 		Digest:        resourceAccess.Meta().Digest.String(),
 	}
 
-	var ocmconfigs []v1alpha1.OCMConfiguration
-	for _, config := range resource.Spec.OCMConfig {
-		if config.Policy == v1alpha1.ConfigurationPolicyPropagate {
-			ocmconfigs = append(ocmconfigs, config)
-		}
-	}
-	resource.Status.EffectiveOCMConfig = slices.Clone(ocmconfigs)
+	resource.Status.EffectiveOCMConfig = configs
 
 	return nil
 }
