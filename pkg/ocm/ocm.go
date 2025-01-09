@@ -77,11 +77,9 @@ func ConfigureContext(ctx context.Context, octx ocm.Context, client ctrl.Client,
 		if len(verifications) > 1 {
 			return fmt.Errorf("only one verification list is supported")
 		}
-		verifis := verifications[0]
-
 		signinfo := signingattr.Get(octx)
 
-		for _, verifi := range verifis {
+		for _, verifi := range verifications[0] {
 			signinfo.RegisterPublicKey(verifi.Signature, verifi.PublicKey)
 		}
 	}
