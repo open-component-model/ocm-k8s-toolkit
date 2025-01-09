@@ -7,10 +7,9 @@ spec:
   repositorySpec:
     baseUrl: ghcr.io/open-component-model
     type: OCIRegistry
-  secretRefs:
-  - name: ocm-secret
-  configRefs:
-  - name: ocm-config
-  configSet: standard
+  ocmConfig:
+    - ref:
+        kind: Secret
+        name: secret
   interval: 10m
   suspend: false
