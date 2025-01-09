@@ -46,6 +46,7 @@ type OCMConfiguration struct {
 	// ConfigurationPolicyPropagate other ocm api objects can reference this
 	// object to reuse this configuration.
 	// +kubebuilder:validation:XValidation:rule="self == \"Propagate\" || self == \"DoNotPropagate\"",message="policy must be one of \"Propagate\", \"DoNotPropagate\""
+	// +kubebuilder:default:="DoNotPropagate"
 	// +optional
 	Policy ConfigurationPolicy `json:"policy,omitempty"`
 }
