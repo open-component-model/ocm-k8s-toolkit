@@ -3,9 +3,8 @@ name: CI
 on:
   pull_request:
     paths-ignore:
-      - 'CODE_OF_CONDUCT.md'
-      - 'README.md'
-      - 'Contributing.md'
+      - '**.md'
+      - 'docs/**'
   workflow_call:
 
   push:
