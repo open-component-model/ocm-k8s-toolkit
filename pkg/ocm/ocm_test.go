@@ -534,27 +534,6 @@ consumers:
 			Expect(config).To(BeNil())
 		})
 
-		It("propagation policy defaulting", func() {
-			repo := v1alpha1.OCMRepository{
-				Spec: v1alpha1.OCMRepositorySpec{
-					OCMConfig: []v1alpha1.OCMConfiguration{
-						{
-							Ref: meta.NamespacedObjectKindReference{
-								APIVersion: corev1.SchemeGroupVersion.String(),
-								Kind:       "ConfigMap",
-								Namespace:  Namespace,
-								Name:       ConfigMap,
-							},
-						},
-					},
-				},
-			}
-
-			config, err := GetEffectiveConfig(ctx, nil, &repo)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(config[0].Policy).To(Equal(v1alpha1.ConfigurationPolicyDoNotPropagate))
-		})
-
 		It("referenced object not found", func() {
 			configMap := corev1.ConfigMap{
 				TypeMeta: metav1.TypeMeta{

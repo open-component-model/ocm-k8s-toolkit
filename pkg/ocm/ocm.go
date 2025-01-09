@@ -162,9 +162,6 @@ func GetEffectiveConfig(ctx context.Context, client ctrl.Client, obj v1alpha1.Co
 
 	var refs []v1alpha1.OCMConfiguration
 	for _, config := range configs {
-		if config.Policy == "" {
-			config.Policy = v1alpha1.ConfigurationPolicyDoNotPropagate
-		}
 		if config.Ref.Namespace == "" {
 			config.Ref.Namespace = obj.GetNamespace()
 		}
@@ -196,8 +193,8 @@ func GetEffectiveConfig(ctx context.Context, client ctrl.Client, obj v1alpha1.Co
 			}
 
 			for _, ref := range resource.GetPropagatedOCMConfig() {
-				// do not propagate the policy of the parent resource but set the
-				// policy specified in the respective config
+				// do not propagate the policy of the parent resource but set
+				// the policy specified in the respective config
 				ref.Policy = config.Policy
 				refs = append(refs, ref)
 			}
