@@ -169,19 +169,10 @@ func (in Component) GetRequeueAfter() time.Duration {
 	return in.Spec.Interval.Duration
 }
 
-// GetSpecifiedOCMConfig returns the configurations specifically specified in
-// the spec of the Component.
-// CAREFUL: The configurations retrieved from this method might reference other
-// configurable OCM objects (OCMRepository, Component, Resource). In that case
-// the effective configurations (referencing Secrets or ConfigMaps) propagated
-// by the referenced OCM objects have to be resolved
-// (see ocm.GetEffectiveConfig).
 func (in *Component) GetSpecifiedOCMConfig() []OCMConfiguration {
 	return slices.Clone(in.Spec.OCMConfig)
 }
 
-// GetPropagatedOCMConfig returns the effective configurations propagated by the
-// Component.
 func (in *Component) GetPropagatedOCMConfig() []OCMConfiguration {
 	var propagatedConfigs []OCMConfiguration
 	for _, ocmconfig := range in.Status.EffectiveOCMConfig {
