@@ -18,7 +18,6 @@ package v1alpha1
 
 import (
 	"fmt"
-	"slices"
 	"time"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -87,7 +86,7 @@ func (in OCMRepository) GetRequeueAfter() time.Duration {
 }
 
 func (in *OCMRepository) GetSpecifiedOCMConfig() []OCMConfiguration {
-	return slices.Clone(in.Spec.OCMConfig)
+	return in.Spec.OCMConfig
 }
 
 func (in *OCMRepository) GetPropagatedOCMConfig() []OCMConfiguration {

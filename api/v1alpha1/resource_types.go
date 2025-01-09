@@ -18,7 +18,6 @@ package v1alpha1
 
 import (
 	"fmt"
-	"slices"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -124,7 +123,7 @@ func (in Resource) GetRequeueAfter() time.Duration {
 	return in.Spec.Interval.Duration
 }
 func (in *Resource) GetSpecifiedOCMConfig() []OCMConfiguration {
-	return slices.Clone(in.Spec.OCMConfig)
+	return in.Spec.OCMConfig
 }
 
 func (in *Resource) GetPropagatedOCMConfig() []OCMConfiguration {
