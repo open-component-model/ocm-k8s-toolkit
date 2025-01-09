@@ -235,7 +235,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.ConfigureContextFailedReason, err.Error())
 
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, err
 	}
 	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs)
 	if err != nil {
