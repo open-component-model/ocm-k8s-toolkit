@@ -86,6 +86,8 @@ Pros:
 Cons:
 - Probably more complex to consume the blobs as the consumer must know the identity of the source resource and the
 resulting blob.
+- No selective watch for changes in the blob possible. The reconciliation would always trigger, when something on the
+status of the source resources is changed.
 - ...
 
 #### Option 2: Use the `snapshot` implementation
@@ -107,29 +109,43 @@ Pros:
 
 Cons:
 - In another org and repository (migration required)
-- Implemented for a plain http-server
+- Implemented for a plain http-server and not for OCI registry (check [storage implementation][controller-manager-storage])
 - ...
 
-#### Option 4: Create a new Custom Resource based on `artifact` and `snapshot`
+#### Option 4: Use `OCIRepository` implementation from `FluxCD`
+
+See [definition][oci-repository-type]
 
 Pros:
-- ...
+- No transformation needed for `FluxCD` consumers, e.g. `helm-controller`
+- Fits good, if we use an (internal) OCI registry
 
 Cons:
+- Probably contains too much unnecessary information
 - ...
 
 ## (Internal) OCI Registry
 ...
 
 ### Option 1: Use implementation from ocm-controllers v1
-...
 
-### Option 2: Implement the deployment of an internal OCI registry
-...
+Pros:
+- Already implemented.
+- ...
 
-### Option 3: Use OCI registry that FluxCD will use in the future
-...
+Cons:
+- ...
 
+### Option 2: Use [`zot`](https://github.com/project-zot/zot)
+
+Pros:
+- Is the newest shot
+- FluxCD mentions that they want to use a `zot` OCI registry in the future
+- ...
+
+Cons:
+- Implement from scratch (probably not true)
+- ...
 
 ## Links
 - Epic [#75](https://github.com/open-component-model/ocm-k8s-toolkit/issues/75)
@@ -148,3 +164,5 @@ Cons:
 [snapshot-version-ref]: https://github.com/open-component-model/ocm-controller/blob/8588071a05532abd28916931963f88b16622e44d/controllers/resource_controller.go#L212
 [snapshot-create-identity]: https://github.com/open-component-model/ocm-controller/blob/8588071a05532abd28916931963f88b16622e44d/controllers/resource_controller.go#L287
 [artifact-digest-verify]: https://github.com/openfluxcd/controller-manager/blob/d83030b764ab4f143d4b9a815227ad3cdfd9433f/storage/storage.go#L478
+[oci-repository-type]: https://github.com/fluxcd/source-controller/blob/529eee0ed1afc6063acd9750aa598d90ae3399ed/api/v1beta2/ocirepository_types.go#L296
+[controller-manager-storage]: https://github.com/openfluxcd/controller-manager/blob/d83030b764ab4f143d4b9a815227ad3cdfd9433f/storage/storage.go
