@@ -27,6 +27,8 @@ import (
 // (exposing a subset of its options in the manifest).
 // This allows transferring components into a private registry based on a "ocmops" based process.
 
+const KindReplication = "Replication"
+
 // ReplicationSpec defines the desired state of Replication.
 type ReplicationSpec struct {
 	// ComponentRef is a reference to a Component to be replicated.
