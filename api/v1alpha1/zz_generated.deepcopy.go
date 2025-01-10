@@ -950,20 +950,10 @@ func (in *ReplicationSpec) DeepCopyInto(out *ReplicationSpec) {
 		*out = make([]Verification, len(*in))
 		copy(*out, *in)
 	}
-	if in.SecretRefs != nil {
-		in, out := &in.SecretRefs, &out.SecretRefs
-		*out = make([]corev1.LocalObjectReference, len(*in))
+	if in.OCMConfig != nil {
+		in, out := &in.OCMConfig, &out.OCMConfig
+		*out = make([]OCMConfiguration, len(*in))
 		copy(*out, *in)
-	}
-	if in.ConfigRefs != nil {
-		in, out := &in.ConfigRefs, &out.ConfigRefs
-		*out = make([]corev1.LocalObjectReference, len(*in))
-		copy(*out, *in)
-	}
-	if in.ConfigSet != nil {
-		in, out := &in.ConfigSet, &out.ConfigSet
-		*out = new(string)
-		**out = **in
 	}
 }
 
@@ -994,14 +984,9 @@ func (in *ReplicationStatus) DeepCopyInto(out *ReplicationStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	if in.SecretRefs != nil {
-		in, out := &in.SecretRefs, &out.SecretRefs
-		*out = make([]corev1.LocalObjectReference, len(*in))
-		copy(*out, *in)
-	}
-	if in.ConfigRefs != nil {
-		in, out := &in.ConfigRefs, &out.ConfigRefs
-		*out = make([]corev1.LocalObjectReference, len(*in))
+	if in.EffectiveOCMConfig != nil {
+		in, out := &in.EffectiveOCMConfig, &out.EffectiveOCMConfig
+		*out = make([]OCMConfiguration, len(*in))
 		copy(*out, *in)
 	}
 }
