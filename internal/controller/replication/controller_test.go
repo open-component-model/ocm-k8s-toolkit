@@ -45,7 +45,7 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
-const reconciliationInterval = time.Second * 30
+const reconciliationInterval = time.Second * 3
 
 const OCMConfigResourcesByValue = `
 type: generic.config.ocm.software/v1
@@ -342,10 +342,13 @@ var _ = Describe("Replication Controller", func() {
 			replication := newTestReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
 			Expect(k8sClient.Create(ctx, replication)).To(Succeed())
 
-			// During the sleep time multiple reconciliation attempts are expected.
-			time.Sleep(maxTimeToReconcile)
-			replication = &v1alpha1.Replication{}
-			Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
+			// Check that the reconciliation consistently fails (due to physically non-existing component version).
+			waitingTime := 3 * time.Second // interval to collect failed reconciliation attempts
+			Consistently(func() bool {
+				replication = &v1alpha1.Replication{}
+				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
+				return conditions.IsReady(replication)
+			}, waitingTime).Should(BeFalse())
 
 			// Only one history entry with the error is expected, despite multiple reconciliation attempts.
 			Expect(len(replication.Status.History)).To(Equal(1))
