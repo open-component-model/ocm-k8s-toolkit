@@ -343,6 +343,8 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Create(ctx, replication)).To(Succeed())
 
 			// Check that the reconciliation consistently fails (due to physically non-existing component version).
+			// The assumption here is that after the first error k8s will apply a backoff strategy that will trigger
+			// a couple of more reconciliation attempts during the waiting time.
 			waitingTime := 3 * time.Second // interval to collect failed reconciliation attempts
 			Consistently(func() bool {
 				replication = &v1alpha1.Replication{}
