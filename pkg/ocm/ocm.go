@@ -34,42 +34,25 @@ import (
 func ConfigureContext(ctx context.Context, octx ocm.Context, client ctrl.Client,
 	configs []v1alpha1.OCMConfiguration, verifications ...[]Verification,
 ) error {
+	var obj ctrl.Object
 	for _, config := range configs {
 		switch config.Kind {
 		case "Secret":
-			var secret corev1.Secret
-			err := client.Get(ctx, ctrl.ObjectKey{
-				Namespace: config.Ref.Namespace,
-				Name:      config.Ref.Name,
-			}, &secret)
-			if err != nil {
-				return fmt.Errorf("configure context cannot fetch secret "+
-					"%s/%s: %w", config.Ref.Namespace, config.Ref.Name, err)
-			}
-			err = ConfigureContextForSecret(ctx, octx, &secret)
-			if err != nil {
-				return fmt.Errorf("configure context failed for secret "+
-					"%s/%s: %w", config.Ref.Namespace, config.Ref.Name, err)
-			}
+			obj = &corev1.Secret{}
 		case "ConfigMap":
-			var configmap corev1.ConfigMap
-			err := client.Get(ctx, ctrl.ObjectKey{
-				Namespace: config.Ref.Namespace,
-				Name:      config.Ref.Name,
-			}, &configmap)
-			if err != nil {
-				return fmt.Errorf("configure context cannot fetch config "+
-					"map %s/%s: %w", config.Ref.Namespace, config.Ref.Name, err)
-			}
-			err = ConfigureContextForConfigMaps(ctx, octx, &configmap)
-			if err != nil {
-				return fmt.Errorf("configure context failed for secret "+
-					"%s/%s: %w", config.Ref.Namespace, config.Ref.Name, err)
-			}
+			obj = &corev1.ConfigMap{}
+		}
+		err := client.Get(ctx, ctrl.ObjectKey{
 			Namespace: config.Namespace,
 			Name:      config.Name,
+		}, obj)
+		if err != nil {
 			return fmt.Errorf("configure context cannot fetch %s "+
 				"%s/%s: %w", config.Kind, config.Namespace, config.Name, err)
+		}
+		err = ConfigureContextForSecretOrConfigMap(ctx, octx, obj)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -83,11 +66,28 @@ func ConfigureContext(ctx context.Context, octx ocm.Context, client ctrl.Client,
 		}
 		signinfo := signingattr.Get(octx)
 
-		for _, verifi := range verifications[0] {
-			signinfo.RegisterPublicKey(verifi.Signature, verifi.PublicKey)
+		for _, v := range verifications[0] {
+			signinfo.RegisterPublicKey(v.Signature, v.PublicKey)
 		}
 	}
 
+	return nil
+}
+
+// ConfigureContextForSecretOrConfigMap wraps ConfigureContextForSecret and
+// ConfigureContextForConfigMaps to configure the ocm context.
+func ConfigureContextForSecretOrConfigMap(ctx context.Context, octx ocm.Context, obj ctrl.Object) error {
+	var err error
+	switch o := obj.(type) {
+	case *corev1.Secret:
+		err = ConfigureContextForSecret(ctx, octx, o)
+	case *corev1.ConfigMap:
+		err = ConfigureContextForConfigMaps(ctx, octx, o)
+	}
+	if err != nil {
+		return fmt.Errorf("configure context failed for %s "+
+			"%s/%s: %w", obj.GetObjectKind(), obj.GetNamespace(), obj.GetName(), err)
+	}
 	return nil
 }
 
@@ -198,11 +198,13 @@ func GetEffectiveConfig(ctx context.Context, client ctrl.Client, obj v1alpha1.Co
 				return nil, fmt.Errorf("failed to fetch resource %s: %w", config.Name, err)
 			}
 
-			for _, ref := range resource.GetPropagatedOCMConfig() {
-				// do not propagate the policy of the parent resource but set
-				// the policy specified in the respective config
-				ref.Policy = config.Policy
-				refs = append(refs, ref)
+			for _, ref := range resource.GetEffectiveOCMConfig() {
+				if ref.Policy == v1alpha1.ConfigurationPolicyPropagate {
+					// do not propagate the policy of the parent resource but set
+					// the policy specified in the respective config
+					ref.Policy = config.Policy
+					refs = append(refs, ref)
+				}
 			}
 		}
 	}
