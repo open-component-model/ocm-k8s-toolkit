@@ -88,6 +88,7 @@ func ConfigureContextForSecretOrConfigMap(ctx context.Context, octx ocm.Context,
 		return fmt.Errorf("configure context failed for %s "+
 			"%s/%s: %w", obj.GetObjectKind(), obj.GetNamespace(), obj.GetName(), err)
 	}
+
 	return nil
 }
 
