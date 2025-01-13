@@ -348,6 +348,7 @@ var _ = Describe("Replication Controller", func() {
 			waitingTime := 3 * time.Second // interval during which to collect failed reconciliation attempts
 			errorCounter := 0
 			var errorTimestamp metav1.Time
+			errorMsg := "cannot lookup component version in source repository: component version \"" + compOCMName + ":" + compVersion + "\" not found"
 			Consistently(func() bool {
 				replication = &v1alpha1.Replication{}
 				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
@@ -357,10 +358,11 @@ var _ = Describe("Replication Controller", func() {
 					return isReady
 				}
 
-				historyLen := len(replication.Status.History)
-				if historyLen > 0 && replication.Status.History[historyLen-1].EndTime.After(errorTimestamp.Time) {
+				i := len(replication.Status.History) - 1
+				if i >= 0 && replication.Status.History[i].EndTime.After(errorTimestamp.Time) {
+					Expect(replication.Status.History[i].Error).To(HavePrefix(errorMsg))
 					errorCounter++
-					errorTimestamp = replication.Status.History[historyLen-1].EndTime
+					errorTimestamp = replication.Status.History[i].EndTime
 				}
 
 				return isReady
@@ -373,7 +375,6 @@ var _ = Describe("Replication Controller", func() {
 			Expect(len(replication.Status.History)).To(Equal(1))
 			Expect(conditions.IsReady(replication)).To(BeFalse())
 			Expect(replication.Status.History[0].Success).To(BeFalse())
-			Expect(replication.Status.History[0].Error).To(HavePrefix("cannot lookup component version in source repository: component version \"" + compOCMName + ":" + compVersion + "\" not found"))
 
 			// Check that the other fields are properly set.
 			Expect(replication.Status.History[0].Component).To(Equal(compOCMName))
