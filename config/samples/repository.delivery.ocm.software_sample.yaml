@@ -8,8 +8,7 @@ spec:
     baseUrl: ghcr.io/open-component-model
     type: OCIRegistry
   ocmConfig:
-    - ref:
-        kind: Secret
-        name: secret
+    - kind: Secret
+      name: secret
   interval: 10m
   suspend: false

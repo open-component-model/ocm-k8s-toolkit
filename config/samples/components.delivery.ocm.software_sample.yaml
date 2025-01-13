@@ -16,9 +16,8 @@ spec:
     secretRef:
       name: ocm-pk-secret
   ocmConfig:
-    - ref:
-        apiVersion: v1
-        kind: OCMRepository
-        name: repo
+    - apiVersion: v1
+      kind: OCMRepository
+      name: repo
   interval: 10m
   suspend: false

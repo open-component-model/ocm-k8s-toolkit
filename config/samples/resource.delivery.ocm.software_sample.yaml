@@ -11,10 +11,9 @@ spec:
       resource:
         name: oci
       referencePath:
-      - name: ocm-comp-ref
+        - name: ocm-comp-ref
   ocmConfig:
-    - ref:
-        kind: Component
-        name: ocm-comp
+    - kind: Component
+      name: ocm-comp
   interval: 10min
   suspend: false

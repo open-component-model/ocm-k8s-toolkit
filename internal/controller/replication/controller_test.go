@@ -271,7 +271,7 @@ var _ = Describe("Replication Controller", func() {
 			replication := newTestReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
 			replication.Spec.OCMConfig = []v1alpha1.OCMConfiguration{
 				{
-					Ref: meta.NamespacedObjectKindReference{
+					NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 						Kind: "ConfigMap",
 						Name: optResourceName,
 					},

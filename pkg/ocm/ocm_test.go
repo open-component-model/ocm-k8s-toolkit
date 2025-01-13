@@ -275,7 +275,7 @@ consumers:
 			By("setup configs")
 			configs = []v1alpha1.OCMConfiguration{
 				{
-					Ref: meta.NamespacedObjectKindReference{
+					NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 						APIVersion: corev1.SchemeGroupVersion.String(),
 						Kind:       "Secret",
 						Name:       secrets[0].Name,
@@ -283,7 +283,7 @@ consumers:
 					},
 				},
 				{
-					Ref: meta.NamespacedObjectKindReference{
+					NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 						APIVersion: corev1.SchemeGroupVersion.String(),
 						Kind:       "Secret",
 						Name:       secrets[1].Name,
@@ -291,14 +291,14 @@ consumers:
 					Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
 				},
 				{
-					Ref: meta.NamespacedObjectKindReference{
+					NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 						Kind: "Secret",
 						Name: secrets[2].Name,
 					},
 					Policy: v1alpha1.ConfigurationPolicyPropagate,
 				},
 				{
-					Ref: meta.NamespacedObjectKindReference{
+					NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 						APIVersion: corev1.SchemeGroupVersion.String(),
 						Kind:       "ConfigMap",
 						Name:       configmaps[0].Name,
@@ -306,7 +306,7 @@ consumers:
 					},
 				},
 				{
-					Ref: meta.NamespacedObjectKindReference{
+					NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 						APIVersion: corev1.SchemeGroupVersion.String(),
 						Kind:       "ConfigMap",
 						Name:       configmaps[1].Name,
@@ -314,7 +314,7 @@ consumers:
 					Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
 				},
 				{
-					Ref: meta.NamespacedObjectKindReference{
+					NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 						Kind: "ConfigMap",
 						Name: configmaps[2].Name,
 					},
@@ -422,7 +422,7 @@ consumers:
 
 			ocmConfig := []v1alpha1.OCMConfiguration{
 				{
-					Ref: meta.NamespacedObjectKindReference{
+					NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 						APIVersion: configMap.APIVersion,
 						Kind:       configMap.Kind,
 						Name:       configMap.Name,
@@ -431,7 +431,7 @@ consumers:
 					Policy: v1alpha1.ConfigurationPolicyPropagate,
 				},
 				{
-					Ref: meta.NamespacedObjectKindReference{
+					NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 						APIVersion: configMap.APIVersion,
 						Kind:       configMap.Kind,
 						Name:       configMap.Name,
@@ -459,7 +459,7 @@ consumers:
 				Spec: v1alpha1.OCMRepositorySpec{
 					OCMConfig: []v1alpha1.OCMConfiguration{
 						{
-							Ref: meta.NamespacedObjectKindReference{
+							NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 								Kind:      "ConfigMap",
 								Namespace: Namespace,
 								Name:      ConfigMap,
@@ -471,7 +471,7 @@ consumers:
 
 			config, err := GetEffectiveConfig(ctx, nil, &repo)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(config[0].Ref.APIVersion).To(Equal(corev1.SchemeGroupVersion.String()))
+			Expect(config[0].APIVersion).To(Equal(corev1.SchemeGroupVersion.String()))
 		})
 
 		It("api version defaulting for secrets", func() {
@@ -479,7 +479,7 @@ consumers:
 				Spec: v1alpha1.OCMRepositorySpec{
 					OCMConfig: []v1alpha1.OCMConfiguration{
 						{
-							Ref: meta.NamespacedObjectKindReference{
+							NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 								Kind:      "Secret",
 								Namespace: Namespace,
 								Name:      Secret,
@@ -491,7 +491,7 @@ consumers:
 
 			config, err := GetEffectiveConfig(ctx, nil, &repo)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(config[0].Ref.APIVersion).To(Equal(corev1.SchemeGroupVersion.String()))
+			Expect(config[0].APIVersion).To(Equal(corev1.SchemeGroupVersion.String()))
 		})
 
 		It("empty api version for ocm controller kinds", func() {
@@ -499,7 +499,7 @@ consumers:
 				Spec: v1alpha1.OCMRepositorySpec{
 					OCMConfig: []v1alpha1.OCMConfiguration{
 						{
-							Ref: meta.NamespacedObjectKindReference{
+							NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 								Kind:      v1alpha1.KindOCMRepository,
 								Namespace: Namespace,
 								Name:      Secret,
@@ -519,7 +519,7 @@ consumers:
 				Spec: v1alpha1.OCMRepositorySpec{
 					OCMConfig: []v1alpha1.OCMConfiguration{
 						{
-							Ref: meta.NamespacedObjectKindReference{
+							NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 								Kind:      "Deployment",
 								Namespace: Namespace,
 								Name:      Secret,
@@ -551,7 +551,7 @@ consumers:
 
 			ocmConfig := []v1alpha1.OCMConfiguration{
 				{
-					Ref: meta.NamespacedObjectKindReference{
+					NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 						APIVersion: configMap.APIVersion,
 						Kind:       configMap.Kind,
 						Name:       configMap.Name,
@@ -586,7 +586,7 @@ consumers:
 					},
 					OCMConfig: []v1alpha1.OCMConfiguration{
 						{
-							Ref: meta.NamespacedObjectKindReference{
+							NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 								APIVersion: repo.APIVersion,
 								Kind:       repo.Kind,
 								Name:       repo.Name,
@@ -619,7 +619,7 @@ consumers:
 
 			ocmConfig := []v1alpha1.OCMConfiguration{
 				{
-					Ref: meta.NamespacedObjectKindReference{
+					NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 						APIVersion: configMap.APIVersion,
 						Kind:       configMap.Kind,
 						Name:       configMap.Name,
@@ -654,7 +654,7 @@ consumers:
 					},
 					OCMConfig: []v1alpha1.OCMConfiguration{
 						{
-							Ref: meta.NamespacedObjectKindReference{
+							NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 								APIVersion: repo.APIVersion,
 								Kind:       repo.Kind,
 								Name:       repo.Name,
@@ -687,7 +687,7 @@ consumers:
 
 			ocmConfig := []v1alpha1.OCMConfiguration{
 				{
-					Ref: meta.NamespacedObjectKindReference{
+					NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 						APIVersion: configMap.APIVersion,
 						Kind:       configMap.Kind,
 						Name:       configMap.Name,
@@ -722,7 +722,7 @@ consumers:
 					},
 					OCMConfig: []v1alpha1.OCMConfiguration{
 						{
-							Ref: meta.NamespacedObjectKindReference{
+							NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 								APIVersion: repo.APIVersion,
 								Kind:       repo.Kind,
 								Name:       repo.Name,

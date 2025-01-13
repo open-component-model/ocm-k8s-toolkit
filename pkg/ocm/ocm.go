@@ -35,7 +35,7 @@ func ConfigureContext(ctx context.Context, octx ocm.Context, client ctrl.Client,
 	configs []v1alpha1.OCMConfiguration, verifications ...[]Verification,
 ) error {
 	for _, config := range configs {
-		switch config.Ref.Kind {
+		switch config.Kind {
 		case "Secret":
 			var secret corev1.Secret
 			err := client.Get(ctx, ctrl.ObjectKey{
@@ -66,6 +66,10 @@ func ConfigureContext(ctx context.Context, octx ocm.Context, client ctrl.Client,
 				return fmt.Errorf("configure context failed for secret "+
 					"%s/%s: %w", config.Ref.Namespace, config.Ref.Name, err)
 			}
+			Namespace: config.Namespace,
+			Name:      config.Name,
+			return fmt.Errorf("configure context cannot fetch %s "+
+				"%s/%s: %w", config.Kind, config.Namespace, config.Name, err)
 		}
 	}
 
@@ -162,22 +166,22 @@ func GetEffectiveConfig(ctx context.Context, client ctrl.Client, obj v1alpha1.Co
 
 	var refs []v1alpha1.OCMConfiguration
 	for _, config := range configs {
-		if config.Ref.Namespace == "" {
-			config.Ref.Namespace = obj.GetNamespace()
+		if config.Namespace == "" {
+			config.Namespace = obj.GetNamespace()
 		}
 
 		var resource v1alpha1.ConfigRefProvider
-		if config.Ref.Kind == "Secret" || config.Ref.Kind == "ConfigMap" {
-			if config.Ref.APIVersion == "" {
-				config.Ref.APIVersion = corev1.SchemeGroupVersion.String()
+		if config.Kind == "Secret" || config.Kind == "ConfigMap" {
+			if config.APIVersion == "" {
+				config.APIVersion = corev1.SchemeGroupVersion.String()
 			}
 			refs = append(refs, config)
 		} else {
-			if config.Ref.APIVersion == "" {
-				return nil, fmt.Errorf("api version must be set for reference of kind %s", config.Ref.Kind)
+			if config.APIVersion == "" {
+				return nil, fmt.Errorf("api version must be set for reference of kind %s", config.Kind)
 			}
 
-			switch config.Ref.Kind {
+			switch config.Kind {
 			case v1alpha1.KindOCMRepository:
 				resource = &v1alpha1.OCMRepository{}
 			case v1alpha1.KindComponent:
@@ -187,11 +191,11 @@ func GetEffectiveConfig(ctx context.Context, client ctrl.Client, obj v1alpha1.Co
 			case v1alpha1.KindReplication:
 				resource = &v1alpha1.Replication{}
 			default:
-				return nil, fmt.Errorf("unsupported reference kind: %s", config.Ref.Kind)
+				return nil, fmt.Errorf("unsupported reference kind: %s", config.Kind)
 			}
 
-			if err := client.Get(ctx, ctrl.ObjectKey{Namespace: config.Ref.Namespace, Name: config.Ref.Name}, resource); err != nil || resource == nil {
-				return nil, fmt.Errorf("failed to fetch resource %s: %w", config.Ref.Name, err)
+			if err := client.Get(ctx, ctrl.ObjectKey{Namespace: config.Namespace, Name: config.Name}, resource); err != nil || resource == nil {
+				return nil, fmt.Errorf("failed to fetch resource %s: %w", config.Name, err)
 			}
 
 			for _, ref := range resource.GetPropagatedOCMConfig() {
