@@ -7,8 +7,9 @@ spec:
   componentRef:
     name: another-podinfo
     namespace: e2e-replication-controller-test
-  configRefs:
-  - name: transfer-options
+  ocmConfig:
+    - kind: ConfigMap
+      name: transfer-options
   interval: 2m0s
   targetRepositoryRef:
     name: intermediate-repository

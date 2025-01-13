@@ -4,8 +4,9 @@ metadata:
   name: intermediate-repository
   namespace: e2e-replication-controller-test
 spec:
-  configRefs:
-  - name: creds-intermediate
+  ocmConfig:
+    - kind: ConfigMap
+      name: creds-intermediate
   interval: 2m0s
   repositorySpec:
     baseUrl: http://protected-registry1-internal.default.svc.cluster.local:5001
