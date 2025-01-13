@@ -349,14 +349,10 @@ var _ = Describe("Replication Controller", func() {
 			errorCounter := 0
 			var errorTimestamp metav1.Time
 			errorMsg := "cannot lookup component version in source repository: component version \"" + compOCMName + ":" + compVersion + "\" not found"
-			Consistently(func() bool {
+			Eventually(func() int {
 				replication = &v1alpha1.Replication{}
 				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
-
-				isReady := conditions.IsReady(replication)
-				if isReady { // false is expected
-					return isReady
-				}
+				Expect(conditions.IsReady(replication)).To(BeFalse())
 
 				i := len(replication.Status.History) - 1
 				if i >= 0 && replication.Status.History[i].EndTime.After(errorTimestamp.Time) {
@@ -365,15 +361,14 @@ var _ = Describe("Replication Controller", func() {
 					errorTimestamp = replication.Status.History[i].EndTime
 				}
 
-				return isReady
-			}, waitingTime).Should(BeFalse())
+				return errorCounter
+			}, waitingTime).Should(Equal(2)) // It is enough to know that reconciliation ran at least 2 times.
 
 			// Check that there have been multiple reconciliation attempts.
 			Expect(errorCounter).To(BeNumerically(">", 1))
 
 			// Only one history entry with the error is expected, despite multiple reconciliation attempts.
 			Expect(len(replication.Status.History)).To(Equal(1))
-			Expect(conditions.IsReady(replication)).To(BeFalse())
 			Expect(replication.Status.History[0].Success).To(BeFalse())
 
 			// Check that the other fields are properly set.
