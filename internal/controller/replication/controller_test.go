@@ -345,12 +345,29 @@ var _ = Describe("Replication Controller", func() {
 			// Check that the reconciliation consistently fails (due to physically non-existing component version).
 			// The assumption here is that after the first error k8s will apply a backoff strategy that will trigger
 			// a couple of more reconciliation attempts during the waiting time.
-			waitingTime := 3 * time.Second // interval to collect failed reconciliation attempts
+			waitingTime := 3 * time.Second // interval during which to collect failed reconciliation attempts
+			errorCounter := 0
+			var errorTimestamp metav1.Time
 			Consistently(func() bool {
 				replication = &v1alpha1.Replication{}
 				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
-				return conditions.IsReady(replication)
+
+				isReady := conditions.IsReady(replication)
+				if isReady { // false is expected
+					return isReady
+				}
+
+				historyLen := len(replication.Status.History)
+				if historyLen > 0 && replication.Status.History[historyLen-1].EndTime.After(errorTimestamp.Time) {
+					errorCounter++
+					errorTimestamp = replication.Status.History[historyLen-1].EndTime
+				}
+
+				return isReady
 			}, waitingTime).Should(BeFalse())
+
+			// Check that there have been multiple reconciliation attempts.
+			Expect(errorCounter).To(BeNumerically(">", 1))
 
 			// Only one history entry with the error is expected, despite multiple reconciliation attempts.
 			Expect(len(replication.Status.History)).To(Equal(1))
