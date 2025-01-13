@@ -4,21 +4,25 @@
 
 ## Background
 
-Initially, it was planned to use a Custom Resource `Artifact` type to make blobs available between other controllers
-as well as publishing the result to be consumed by anything that handles that `Artifact` type. 
-This `Artifact` type was [defined][artifact-definition] to point to a URL and hold a human-readable identifier
+The controllers in this repository create artifacts/blobs that are used by one another. For example, the
+component-controller creates an artifact containing the component descriptors from the specified component version.
+Finally, the resource controller, or if specified the configuration controller, creates a blob as an artifact that holds
+the resource that is consumed by the deployers.
+
+Initially, it was planned to use a Custom Resource `artifact` type to represent these artifacts.
+This `artifact` type was [defined][artifact-definition] to point to a URL and hold a human-readable identifier
 `Revision` of a blob stored in a http-server inside the controller.
 
-The `Artifact` idea was part of a bigger [RFC][fluxcd-rfc] for `FluxCD` which was unfortunately rejected.
-Therefore, the Custom Resource `Artifact` is not needed anymore. Additionally, the team decided to not use a plain
-http-server but an internal OCI registry to store and publish its blobs that are produced by the OCM controllers as 
-single layer OCI artifacts.
+The `artifact` idea was part of a bigger [RFC][fluxcd-rfc] for `FluxCD` which was unfortunately rejected.
+Therefore, the original purpose of that Custom Resource `artifact` is not present anymore. Additionally, the team
+decided to not use a plain http-server but an internal OCI registry to store and publish its blobs that are produced by
+the OCM controllers as single layer OCI artifacts.
 
 There are several options on how to proceed with the replacement and implementation that are discussed below.
 
 ## Artifact
 An artifact in the current context describes a resource that holds an identity to a blob and a pointer where to find
-the blob (currently an URL). It that sense, a producer can create an artifact and store these information and a consumer
+the blob (currently a URL). It that sense, a producer can create an artifact and store these information and a consumer
 can search for artifacts with the specific identity to find out its location.
 
 In the current implementation the artifact is defined in the [openfluxcd/artifact repository][artifact-definition].
@@ -76,7 +80,7 @@ The following sections discusses several options.
 
 #### Option 1: Omit the `artifact`/`snapshot` concept
 
-Instead of using an intermediate custom resource as `artifact` or `snapshot`, one could update the status of the source
+Instead of using an intermediate Custom Resource as `artifact` or `snapshot`, one could update the status of the source
 resource that is creating the blob could point to the location of that blob itself.
 
 Pros:
@@ -99,6 +103,7 @@ Pros:
 
 Cons:
 - Status fields feel unnecessary.
+- Require a transformer to make the artifacts consumable by `FluxCD`s Helm- and Kustomize-Controller
 - ...
 
 #### Option 3: Use the `artifact` implementation
@@ -108,8 +113,9 @@ Pros:
 - ...
 
 Cons:
-- In another org and repository (migration required)
-- Implemented for a plain http-server and not for OCI registry (check [storage implementation][controller-manager-storage])
+- In another GitHub organization that will be archived in the future as the initial purpose has vanished.
+- Implemented for a plain http-server and not for OCI registry (check 
+[storage implementation][controller-manager-storage])
 - ...
 
 #### Option 4: Use `OCIRepository` implementation from `FluxCD`
@@ -117,7 +123,7 @@ Cons:
 See [definition][oci-repository-type]
 
 Pros:
-- No transformation needed for `FluxCD` consumers, e.g. `helm-controller`
+- No transformer needed for `FluxCD`s consumers Helm- and Kustomize-Controller 
 - Fits good, if we use an (internal) OCI registry
 
 Cons:
@@ -163,6 +169,6 @@ Cons:
 [go-containerregistry-digest]: https://github.com/google/go-containerregistry/blob/6bce25ecf0297c1aa9072bc665b5cf58d53e1c54/pkg/v1/manifest.go#L47
 [snapshot-version-ref]: https://github.com/open-component-model/ocm-controller/blob/8588071a05532abd28916931963f88b16622e44d/controllers/resource_controller.go#L212
 [snapshot-create-identity]: https://github.com/open-component-model/ocm-controller/blob/8588071a05532abd28916931963f88b16622e44d/controllers/resource_controller.go#L287
-[artifact-digest-verify]: https://github.com/openfluxcd/controller-manager/blob/d83030b764ab4f143d4b9a815227ad3cdfd9433f/storage/storage.go#L478
+[artifact-digest-verify-ref]: https://github.com/openfluxcd/controller-manager/blob/d83030b764ab4f143d4b9a815227ad3cdfd9433f/storage/storage.go#L478
 [oci-repository-type]: https://github.com/fluxcd/source-controller/blob/529eee0ed1afc6063acd9750aa598d90ae3399ed/api/v1beta2/ocirepository_types.go#L296
 [controller-manager-storage]: https://github.com/openfluxcd/controller-manager/blob/d83030b764ab4f143d4b9a815227ad3cdfd9433f/storage/storage.go
