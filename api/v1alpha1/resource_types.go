@@ -122,19 +122,13 @@ func (in *Resource) GetKind() string {
 func (in Resource) GetRequeueAfter() time.Duration {
 	return in.Spec.Interval.Duration
 }
+
 func (in *Resource) GetSpecifiedOCMConfig() []OCMConfiguration {
 	return in.Spec.OCMConfig
 }
 
-func (in *Resource) GetPropagatedOCMConfig() []OCMConfiguration {
-	var propagatedConfigs []OCMConfiguration
-	for _, ocmconfig := range in.Status.EffectiveOCMConfig {
-		if ocmconfig.Policy == ConfigurationPolicyPropagate {
-			propagatedConfigs = append(propagatedConfigs, ocmconfig)
-		}
-	}
-
-	return propagatedConfigs
+func (in *Resource) GetEffectiveOCMConfig() []OCMConfiguration {
+	return in.Status.EffectiveOCMConfig
 }
 
 // +kubebuilder:object:root=true

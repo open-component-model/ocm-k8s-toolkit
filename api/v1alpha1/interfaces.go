@@ -23,7 +23,7 @@ type ConfigRefProvider interface {
 
 	// GetPropagatedOCMConfig returns the effective configurations propagated by the
 	// Component.
-	GetPropagatedOCMConfig() []OCMConfiguration
+	GetEffectiveOCMConfig() []OCMConfiguration
 }
 
 // OCMK8SObject is a composite interface that the ocm-k8s-toolkit resources implement which allows them to use

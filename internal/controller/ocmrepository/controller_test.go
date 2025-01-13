@@ -138,9 +138,9 @@ var _ = Describe("OCMRepository Controller", func() {
 		})
 	})
 
-	Describe("Reconsiling a valid OCMRepository", func() {
+	Describe("Reconciling a valid OCMRepository", func() {
 
-		Context("When SecretRefs and ConfigRefs properly set", func() {
+		Context("When ConfigRefs properly set", func() {
 			It("OCMRepository can be reconciled", func() {
 
 				By("creating secret and config objects")
@@ -205,89 +205,69 @@ var _ = Describe("OCMRepository Controller", func() {
 				By("creating OCMRepository object")
 				Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
 
-				By("check that the SecretRefs and ConfigRefs are in the status")
+				By("check that the ConfigRefs are in the status")
+				expectedEffectiveOCMConfig := []v1alpha1.OCMConfiguration{
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "Secret",
+							Name:       secrets[0].Name,
+							Namespace:  secrets[0].Namespace,
+						},
+						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+					},
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "Secret",
+							Name:       secrets[1].Name,
+							Namespace:  secrets[1].Namespace,
+						},
+						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+					},
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "Secret",
+							Name:       secrets[2].Name,
+							Namespace:  secrets[2].Namespace,
+						},
+						Policy: v1alpha1.ConfigurationPolicyPropagate,
+					},
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "ConfigMap",
+							Name:       configs[0].Name,
+							Namespace:  configs[0].Namespace,
+						},
+						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+					},
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "ConfigMap",
+							Name:       configs[1].Name,
+							Namespace:  configs[1].Namespace,
+						},
+						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+					},
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "ConfigMap",
+							Name:       configs[2].Name,
+							Namespace:  configs[2].Namespace,
+						},
+						Policy: v1alpha1.ConfigurationPolicyPropagate,
+					},
+				}
 				Eventually(komega.Object(ocmRepo), "15s").Should(And(
 					HaveField("Status.Conditions", ContainElement(
 						And(HaveField("Type", Equal(meta.ReadyCondition)), HaveField("Status", Equal(metav1.ConditionTrue))),
 					)),
-					HaveField("Status.EffectiveOCMConfig", ConsistOf(
-						[]v1alpha1.OCMConfiguration{
-							{
-								NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
-									APIVersion: corev1.SchemeGroupVersion.String(),
-									Kind:       "Secret",
-									Name:       secrets[0].Name,
-									Namespace:  secrets[0].Namespace,
-								},
-								Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
-							},
-							{
-								NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
-									APIVersion: corev1.SchemeGroupVersion.String(),
-									Kind:       "Secret",
-									Name:       secrets[1].Name,
-									Namespace:  secrets[1].Namespace,
-								},
-								Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
-							},
-							{
-								NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
-									APIVersion: corev1.SchemeGroupVersion.String(),
-									Kind:       "Secret",
-									Name:       secrets[2].Name,
-									Namespace:  secrets[2].Namespace,
-								},
-								Policy: v1alpha1.ConfigurationPolicyPropagate,
-							},
-							{
-								NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
-									APIVersion: corev1.SchemeGroupVersion.String(),
-									Kind:       "ConfigMap",
-									Name:       configs[0].Name,
-									Namespace:  configs[0].Namespace,
-								},
-								Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
-							},
-							{
-								NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
-									APIVersion: corev1.SchemeGroupVersion.String(),
-									Kind:       "ConfigMap",
-									Name:       configs[1].Name,
-									Namespace:  configs[1].Namespace,
-								},
-								Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
-							},
-							{
-								NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
-									APIVersion: corev1.SchemeGroupVersion.String(),
-									Kind:       "ConfigMap",
-									Name:       configs[2].Name,
-									Namespace:  configs[2].Namespace,
-								},
-								Policy: v1alpha1.ConfigurationPolicyPropagate,
-							},
-						})),
-					HaveField("GetPropagatedOCMConfig()", ConsistOf(
-						[]v1alpha1.OCMConfiguration{
-							{
-								NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
-									APIVersion: corev1.SchemeGroupVersion.String(),
-									Kind:       "Secret",
-									Name:       secrets[2].Name,
-									Namespace:  secrets[2].Namespace,
-								},
-								Policy: v1alpha1.ConfigurationPolicyPropagate,
-							},
-							{
-								NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
-									APIVersion: corev1.SchemeGroupVersion.String(),
-									Kind:       "ConfigMap",
-									Name:       configs[2].Name,
-									Namespace:  configs[2].Namespace,
-								},
-								Policy: v1alpha1.ConfigurationPolicyPropagate,
-							},
-						})),
+					HaveField("Status.EffectiveOCMConfig", ConsistOf(expectedEffectiveOCMConfig)),
+					HaveField("GetEffectiveOCMConfig()", ConsistOf(expectedEffectiveOCMConfig)),
 				))
 
 				By("cleanup secret and config objects")

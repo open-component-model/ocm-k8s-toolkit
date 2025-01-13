@@ -139,19 +139,12 @@ func (repl Replication) GetRequeueAfter() time.Duration {
 	return repl.Spec.Interval.Duration
 }
 
-func (in *Replication) GetSpecifiedOCMConfig() []OCMConfiguration {
-	return in.Spec.OCMConfig
+func (repl *Replication) GetSpecifiedOCMConfig() []OCMConfiguration {
+	return repl.Spec.OCMConfig
 }
 
-func (in *Replication) GetPropagatedOCMConfig() []OCMConfiguration {
-	var propagatedConfigs []OCMConfiguration
-	for _, ocmconfig := range in.Status.EffectiveOCMConfig {
-		if ocmconfig.Policy == ConfigurationPolicyPropagate {
-			propagatedConfigs = append(propagatedConfigs, ocmconfig)
-		}
-	}
-
-	return propagatedConfigs
+func (repl *Replication) GetEffectiveOCMConfig() []OCMConfiguration {
+	return repl.Status.EffectiveOCMConfig
 }
 
 // GetVID unique identifier of the object.

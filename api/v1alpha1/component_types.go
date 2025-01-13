@@ -172,15 +172,8 @@ func (in *Component) GetSpecifiedOCMConfig() []OCMConfiguration {
 	return in.Spec.OCMConfig
 }
 
-func (in *Component) GetPropagatedOCMConfig() []OCMConfiguration {
-	var propagatedConfigs []OCMConfiguration
-	for _, ocmconfig := range in.Status.EffectiveOCMConfig {
-		if ocmconfig.Policy == ConfigurationPolicyPropagate {
-			propagatedConfigs = append(propagatedConfigs, ocmconfig)
-		}
-	}
-
-	return propagatedConfigs
+func (in *Component) GetEffectiveOCMConfig() []OCMConfiguration {
+	return in.Status.EffectiveOCMConfig
 }
 
 func (in *Component) GetVerifications() []Verification {
