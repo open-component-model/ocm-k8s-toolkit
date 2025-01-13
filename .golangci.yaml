@@ -52,6 +52,9 @@ issues:
     - source: "https://"
       linters:
         - lll
+    - source: "^// \\+kubebuilder:*"
+      linters:
+        - lll
     - path: pkg/defaults/
       linters:
         - lll
