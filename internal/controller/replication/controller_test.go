@@ -343,9 +343,9 @@ var _ = Describe("Replication Controller", func() {
 			replication := newTestReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
 			Expect(k8sClient.Create(ctx, replication)).To(Succeed())
 
-			// Wait until first reconciliation is run
+			// Wait until there is something in the history
 			Eventually(Object(replication), "30s").WithContext(ctx).Should(
-				HaveField("Status.Conditions", Not(BeNil())))
+				HaveField("Status.History", Not(BeEmpty())))
 
 			// Check that the reconciliation consistently fails (due to physically non-existing component version).
 			// The assumption here is that after the first error k8s will apply a backoff strategy that will trigger
