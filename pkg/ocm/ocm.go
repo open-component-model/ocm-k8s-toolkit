@@ -202,7 +202,8 @@ func GetEffectiveConfig(ctx context.Context, client ctrl.Client, obj v1alpha1.Co
 			for _, ref := range resource.GetEffectiveOCMConfig() {
 				if ref.Policy == v1alpha1.ConfigurationPolicyPropagate {
 					// do not propagate the policy of the parent resource but set
-					// the policy specified in the respective config
+					// the policy specified in the respective config (of the
+					// object being reconciled)
 					ref.Policy = config.Policy
 					refs = append(refs, ref)
 				}
