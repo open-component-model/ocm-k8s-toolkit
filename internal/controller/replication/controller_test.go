@@ -41,7 +41,7 @@ import (
 	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
 	"ocm.software/ocm/api/ocm/extensions/repositories/genericocireg"
 	"ocm.software/ocm/api/utils/accessio"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
+	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
@@ -344,7 +344,7 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Create(ctx, replication)).To(Succeed())
 
 			// Wait until first reconciliation is run
-			Eventually(komega.Object(replication), "5m").Should(
+			Eventually(Object(replication), "30s").WithContext(ctx).Should(
 				HaveField("Status.Conditions", Not(BeNil())))
 
 			// Check that the reconciliation consistently fails (due to physically non-existing component version).
@@ -354,16 +354,12 @@ var _ = Describe("Replication Controller", func() {
 			expectedErrorMsg := "cannot lookup component version in source repository: component version \"" + compOCMName + ":" + compVersion + "\" not found"
 
 			Eventually(func() bool {
-				// Expect replication to fail
-				Expect(conditions.IsReady(replication)).To(BeFalse())
-
-				// Expect history to only contain one entry
-				Expect(len(replication.Status.History)).To(Equal(1))
+				Expect(conditions.IsReady(replication)).To(BeFalse(), "Expect replication to fail")
+				Expect(len(replication.Status.History)).To(Equal(1), "Expect history to only contain one entry")
 
 				// Get history entry
 				historyEntry := replication.Status.History[0]
 
-				// Check for expected error message
 				Expect(historyEntry.Error).To(HavePrefix(expectedErrorMsg))
 
 				// If the current StartTime is after the stored StartTime, we know that another Reconciliation was
@@ -377,7 +373,7 @@ var _ = Describe("Replication Controller", func() {
 				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
 
 				return false
-			}, "10s").Should(BeTrue())
+			}, "10s").WithContext(ctx).Should(BeTrue())
 
 			// Only one history entry with the error is expected, despite multiple reconciliation attempts.
 			Expect(len(replication.Status.History)).To(Equal(1))
