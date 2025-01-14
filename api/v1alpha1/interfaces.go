@@ -13,16 +13,16 @@ type ConfigRefProvider interface {
 	client.Object
 
 	// GetSpecifiedOCMConfig returns the configurations specifically specified
-	// in the spec of the Component.
+	// in the spec of the ocm k8s object.
 	// CAREFUL: The configurations retrieved from this method might reference
-	// other configurable OCM objects (OCMRepository, Component, Resource). In
-	// that case the EffectiveOCMConfig (referencing Secrets or
-	// ConfigMaps) propagated by the referenced OCM objects have to be resolved
-	// (see ocm.GetEffectiveConfig).
+	// other configurable OCM objects (OCMRepository, Component, Resource,
+	// Replication). In that case the EffectiveOCMConfig (referencing Secrets or
+	// ConfigMaps) propagated by the referenced ocm k8s objects have to be
+	// resolved (see ocm.GetEffectiveConfig).
 	GetSpecifiedOCMConfig() []OCMConfiguration
 
-	// GetPropagatedOCMConfig returns the effective configurations propagated by the
-	// Component.
+	// GetEffectiveOCMConfig returns the effective configurations propagated by
+	// the ocm k8s object.
 	GetEffectiveOCMConfig() []OCMConfiguration
 }
 
