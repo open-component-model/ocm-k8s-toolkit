@@ -16,8 +16,8 @@ spec:
     secretRef:
       name: ocm-pk-secret
   ocmConfig:
-    - apiVersion: v1
-      kind: OCMRepository
+    - apiVersion: delivery.ocm.software/v1alpha1
+      kind: Replication
       name: repo
   interval: 10m
   suspend: false
