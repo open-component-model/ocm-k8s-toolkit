@@ -41,6 +41,7 @@ import (
 	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
 	"ocm.software/ocm/api/ocm/extensions/repositories/genericocireg"
 	"ocm.software/ocm/api/utils/accessio"
+	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
@@ -342,30 +343,41 @@ var _ = Describe("Replication Controller", func() {
 			replication := newTestReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
 			Expect(k8sClient.Create(ctx, replication)).To(Succeed())
 
+			// Wait until first reconciliation is run
+			Eventually(komega.Object(replication), "5m").Should(
+				HaveField("Status.Conditions", Not(BeNil())))
+
 			// Check that the reconciliation consistently fails (due to physically non-existing component version).
 			// The assumption here is that after the first error k8s will apply a backoff strategy that will trigger
-			// a couple of more reconciliation attempts during the waiting time.
-			waitingTime := 3 * time.Second // interval during which to collect failed reconciliation attempts
-			errorCounter := 0
-			var errorTimestamp metav1.Time
-			errorMsg := "cannot lookup component version in source repository: component version \"" + compOCMName + ":" + compVersion + "\" not found"
-			Eventually(func() int {
-				replication = &v1alpha1.Replication{}
-				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
+			// a couple of more reconciliation attempts
+			prevStartTime := replication.Status.History[0].StartTime
+			expectedErrorMsg := "cannot lookup component version in source repository: component version \"" + compOCMName + ":" + compVersion + "\" not found"
+
+			Eventually(func() bool {
+				// Expect replication to fail
 				Expect(conditions.IsReady(replication)).To(BeFalse())
 
-				i := len(replication.Status.History) - 1
-				if i >= 0 && replication.Status.History[i].EndTime.After(errorTimestamp.Time) {
-					Expect(replication.Status.History[i].Error).To(HavePrefix(errorMsg))
-					errorCounter++
-					errorTimestamp = replication.Status.History[i].EndTime
+				// Expect history to only contain one entry
+				Expect(len(replication.Status.History)).To(Equal(1))
+
+				// Get history entry
+				historyEntry := replication.Status.History[0]
+
+				// Check for expected error message
+				Expect(historyEntry.Error).To(HavePrefix(expectedErrorMsg))
+
+				// If the current StartTime is after the stored StartTime, we know that another Reconciliation was
+				// processed
+				if historyEntry.StartTime.After(prevStartTime.Time) {
+					return true
 				}
 
-				return errorCounter
-			}, waitingTime).Should(Equal(2)) // It is enough to know that reconciliation ran at least 2 times.
+				// Get an update of the replication object
+				replication = &v1alpha1.Replication{}
+				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
 
-			// Check that there have been multiple reconciliation attempts.
-			Expect(errorCounter).To(BeNumerically(">", 1))
+				return false
+			}, "10s").Should(BeTrue())
 
 			// Only one history entry with the error is expected, despite multiple reconciliation attempts.
 			Expect(len(replication.Status.History)).To(Equal(1))
