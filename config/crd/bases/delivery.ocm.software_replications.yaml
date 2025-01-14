@@ -87,23 +87,23 @@ spec:
                         Policy affects the propagation behavior of the configuration. If set to
                         ConfigurationPolicyPropagate other ocm api objects can reference this
                         object to reuse this configuration.
+                      enum:
+                      - Propagate
+                      - DoNotPropagate
                       type: string
-                      x-kubernetes-validations:
-                      - message: policy must be one of "Propagate", "DoNotPropagate"
-                        rule: self == "Propagate" || self == "DoNotPropagate"
                   required:
                   - kind
                   - name
                   type: object
                   x-kubernetes-validations:
-                  - message: apiVersion must be one of "v1", "delivery.ocm.software/v1alpha1"
-                    rule: '!has(self.apiVersion) || self.apiVersion == "v1" || self.apiVersion
-                      == "delivery.ocm.software/v1alpha1" || self.apiVersion == ""'
-                  - message: kind must be one of "Secret", "ConfigMap", "OCMRepository",
-                      "Component", "Resource"
-                    rule: self.kind == "Secret" || self.kind == "ConfigMap" || self.kind
+                  - message: apiVersion must be one of "v1" with kind "Secret" or
+                      "ConfigMap" or "delivery.ocm.software/v1alpha1" with the kind
+                      of an OCM kubernetes object
+                    rule: ((!has(self.apiVersion) || self.apiVersion == "" || self.apiVersion
+                      == "v1") && (self.kind == "Secret" || self.kind == "ConfigMap"))
+                      || (self.apiVersion == "delivery.ocm.software/v1alpha1" && (self.kind
                       == "OCMRepository" || self.kind == "Component" || self.kind
-                      == "Resource"
+                      == "Resource" || self.kind == "Replication"))
                 type: array
               suspend:
                 description: |-
@@ -252,23 +252,23 @@ spec:
                         Policy affects the propagation behavior of the configuration. If set to
                         ConfigurationPolicyPropagate other ocm api objects can reference this
                         object to reuse this configuration.
+                      enum:
+                      - Propagate
+                      - DoNotPropagate
                       type: string
-                      x-kubernetes-validations:
-                      - message: policy must be one of "Propagate", "DoNotPropagate"
-                        rule: self == "Propagate" || self == "DoNotPropagate"
                   required:
                   - kind
                   - name
                   type: object
                   x-kubernetes-validations:
-                  - message: apiVersion must be one of "v1", "delivery.ocm.software/v1alpha1"
-                    rule: '!has(self.apiVersion) || self.apiVersion == "v1" || self.apiVersion
-                      == "delivery.ocm.software/v1alpha1" || self.apiVersion == ""'
-                  - message: kind must be one of "Secret", "ConfigMap", "OCMRepository",
-                      "Component", "Resource"
-                    rule: self.kind == "Secret" || self.kind == "ConfigMap" || self.kind
+                  - message: apiVersion must be one of "v1" with kind "Secret" or
+                      "ConfigMap" or "delivery.ocm.software/v1alpha1" with the kind
+                      of an OCM kubernetes object
+                    rule: ((!has(self.apiVersion) || self.apiVersion == "" || self.apiVersion
+                      == "v1") && (self.kind == "Secret" || self.kind == "ConfigMap"))
+                      || (self.apiVersion == "delivery.ocm.software/v1alpha1" && (self.kind
                       == "OCMRepository" || self.kind == "Component" || self.kind
-                      == "Resource"
+                      == "Resource" || self.kind == "Replication"))
                 type: array
               history:
                 description: History holds the history of individual 'ocm transfer'
