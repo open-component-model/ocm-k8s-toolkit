@@ -19,7 +19,6 @@ package component
 import (
 	"context"
 	"fmt"
-	corev1 "k8s.io/api/core/v1"
 	"net/http"
 	"os"
 	"time"
@@ -34,6 +33,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -402,6 +402,7 @@ var _ = Describe("Component Controller", func() {
 			configs []*corev1.ConfigMap
 			secrets []*corev1.Secret
 		)
+
 		BeforeEach(func() {
 			By("creating a repository with name")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {

@@ -20,7 +20,6 @@ import (
 	common "ocm.software/ocm/api/utils/misc"
 	"ocm.software/ocm/api/utils/runtime"
 	"ocm.software/ocm/api/utils/semverutils"
-
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
