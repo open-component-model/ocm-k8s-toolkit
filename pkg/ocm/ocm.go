@@ -64,10 +64,10 @@ func ConfigureContext(ctx context.Context, octx ocm.Context, client ctrl.Client,
 		if len(verifications) > 1 {
 			return fmt.Errorf("only one verification list is supported")
 		}
-		signinfo := signingattr.Get(octx)
+		signInfo := signingattr.Get(octx)
 
 		for _, v := range verifications[0] {
-			signinfo.RegisterPublicKey(v.Signature, v.PublicKey)
+			signInfo.RegisterPublicKey(v.Signature, v.PublicKey)
 		}
 	}
 
