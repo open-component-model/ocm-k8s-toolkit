@@ -357,9 +357,8 @@ var _ = Describe("Replication Controller", func() {
 				Expect(conditions.IsReady(replication)).To(BeFalse(), "Expect replication to fail")
 				Expect(len(replication.Status.History)).To(Equal(1), "Expect history to only contain one entry")
 
-				// Get history entry
 				historyEntry := replication.Status.History[0]
-
+				Expect(historyEntry.Success).To(BeFalse())
 				Expect(historyEntry.Error).To(HavePrefix(expectedErrorMsg))
 
 				// If the current StartTime is after the stored StartTime, we know that another Reconciliation was
@@ -374,10 +373,6 @@ var _ = Describe("Replication Controller", func() {
 
 				return false
 			}, "10s").WithContext(ctx).Should(BeTrue())
-
-			// Only one history entry with the error is expected, despite multiple reconciliation attempts.
-			Expect(len(replication.Status.History)).To(Equal(1))
-			Expect(replication.Status.History[0].Success).To(BeFalse())
 
 			// Check that the other fields are properly set.
 			Expect(replication.Status.History[0].Component).To(Equal(compOCMName))
