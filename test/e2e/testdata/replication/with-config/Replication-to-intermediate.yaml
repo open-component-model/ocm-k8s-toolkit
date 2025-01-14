@@ -10,8 +10,13 @@ spec:
   ocmConfig:
     - kind: ConfigMap
       name: transfer-options
-    - kind: OCMRepository
+    - apiVersion: delivery.ocm.software/v1alpha1
+      kind: OCMRepository
       name: intermediate-repository
+      namespace: e2e-replication-controller-test
+    - apiVersion: delivery.ocm.software/v1alpha1
+      kind: Component
+      name: another-podinfo
       namespace: e2e-replication-controller-test
   interval: 2m0s
   targetRepositoryRef:
