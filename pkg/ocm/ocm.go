@@ -41,7 +41,10 @@ func ConfigureContext(ctx context.Context, octx ocm.Context, client ctrl.Client,
 			obj = &corev1.Secret{}
 		case "ConfigMap":
 			obj = &corev1.ConfigMap{}
+		default:
+			return fmt.Errorf("unsupported configuration kind: %s", config.Kind)
 		}
+
 		err := client.Get(ctx, ctrl.ObjectKey{
 			Namespace: config.Namespace,
 			Name:      config.Name,
@@ -83,6 +86,8 @@ func ConfigureContextForSecretOrConfigMap(ctx context.Context, octx ocm.Context,
 		err = ConfigureContextForSecret(ctx, octx, o)
 	case *corev1.ConfigMap:
 		err = ConfigureContextForConfigMaps(ctx, octx, o)
+	default:
+		return fmt.Errorf("unsupported configuration object type: %T", obj)
 	}
 	if err != nil {
 		return fmt.Errorf("configure context failed for %s "+
@@ -111,8 +116,8 @@ func ConfigureContextForSecret(_ context.Context, octx ocm.Context, secret *core
 		if len(ocmConfigBytes) > 0 {
 			cfg, err := octx.ConfigContext().GetConfigForData(ocmConfigBytes, runtime.DefaultYAMLEncoding)
 			if err != nil {
-				return fmt.Errorf("failed to deserialize ocm config data "+
-					"in secret %s/%s: %w", secret.Namespace, secret.Name, err)
+				return fmt.Errorf("failed to deserialize ocm config data in secret "+
+					"%s/%s: %w", secret.Namespace, secret.Name, err)
 			}
 
 			err = octx.ConfigContext().ApplyConfig(cfg, fmt.Sprintf("ocm config secret: %s/%s",
@@ -138,8 +143,8 @@ func ConfigureContextForConfigMaps(_ context.Context, octx ocm.Context, configma
 	if len(ocmConfigData) > 0 {
 		cfg, err := octx.ConfigContext().GetConfigForData([]byte(ocmConfigData), nil)
 		if err != nil {
-			return fmt.Errorf("failed to deserialize ocm config data "+
-				"in config map %s/%s: %w", configmap.Namespace, configmap.Name, err)
+			return fmt.Errorf("failed to deserialize ocm config data in config map "+
+				"%s/%s: %w", configmap.Namespace, configmap.Name, err)
 		}
 		err = octx.ConfigContext().ApplyConfig(cfg, fmt.Sprintf("%s/%s",
 			configmap.Namespace, configmap.Name))
