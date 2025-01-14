@@ -7,6 +7,7 @@ spec:
   ocmConfig:
     - kind: ConfigMap
       name: creds-intermediate
+      policy: Propagate
   interval: 2m0s
   repositorySpec:
     baseUrl: http://protected-registry1-internal.default.svc.cluster.local:5001

@@ -10,6 +10,9 @@ spec:
   ocmConfig:
     - kind: ConfigMap
       name: transfer-options
+    - kind: OCMRepository
+      name: intermediate-repository
+      namespace: e2e-replication-controller-test
   interval: 2m0s
   targetRepositoryRef:
     name: intermediate-repository
