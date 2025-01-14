@@ -94,6 +94,7 @@ spec:
                   required:
                   - kind
                   - name
+                  - policy
                   type: object
                   x-kubernetes-validations:
                   - message: apiVersion must be one of "v1" with kind "Secret" or
@@ -259,6 +260,7 @@ spec:
                   required:
                   - kind
                   - name
+                  - policy
                   type: object
                   x-kubernetes-validations:
                   - message: apiVersion must be one of "v1" with kind "Secret" or
