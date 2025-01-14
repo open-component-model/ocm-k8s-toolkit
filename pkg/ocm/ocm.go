@@ -171,13 +171,13 @@ func GetEffectiveConfig(ctx context.Context, client ctrl.Client, obj v1alpha1.Co
 			config.Namespace = obj.GetNamespace()
 		}
 
-		var resource v1alpha1.ConfigRefProvider
 		if config.Kind == "Secret" || config.Kind == "ConfigMap" {
 			if config.APIVersion == "" {
 				config.APIVersion = corev1.SchemeGroupVersion.String()
 			}
 			refs = append(refs, config)
 		} else {
+			var resource v1alpha1.ConfigRefProvider
 			if config.APIVersion == "" {
 				return nil, fmt.Errorf("api version must be set for reference of kind %s", config.Kind)
 			}
