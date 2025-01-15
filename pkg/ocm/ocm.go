@@ -199,7 +199,7 @@ func GetEffectiveConfig(ctx context.Context, client ctrl.Client, obj v1alpha1.Co
 				return nil, fmt.Errorf("unsupported reference kind: %s", config.Kind)
 			}
 
-			if err := client.Get(ctx, ctrl.ObjectKey{Namespace: config.Namespace, Name: config.Name}, resource); err != nil || resource == nil {
+			if err := client.Get(ctx, ctrl.ObjectKey{Namespace: config.Namespace, Name: config.Name}, resource); err != nil {
 				return nil, fmt.Errorf("failed to fetch resource %s: %w", config.Name, err)
 			}
 
