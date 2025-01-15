@@ -25,7 +25,9 @@ jobs:
             ${{ runner.os }}-go-
       - name: Make manifests && generate
         run: |
-          make manifests && make generate
+          make manifests
+          make generate
+          make format
       - name: go mod tidy
         run: |
           go mod tidy
