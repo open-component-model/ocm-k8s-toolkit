@@ -8,9 +8,10 @@ import (
 	"text/template"
 
 	"github.com/containers/image/v5/pkg/compression"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	v1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"

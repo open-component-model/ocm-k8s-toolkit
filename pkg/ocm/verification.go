@@ -10,7 +10,6 @@ import (
 	"ocm.software/ocm/api/ocm/resolvers"
 	"ocm.software/ocm/api/ocm/tools/signing"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	corev1 "k8s.io/api/core/v1"

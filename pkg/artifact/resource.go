@@ -10,10 +10,11 @@ import (
 
 	"github.com/containers/image/v5/pkg/compression"
 	"github.com/fluxcd/pkg/runtime/conditions"
-	fluxtar "github.com/fluxcd/pkg/tar"
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	fluxtar "github.com/fluxcd/pkg/tar"
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/util"
