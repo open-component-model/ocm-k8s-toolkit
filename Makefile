@@ -82,7 +82,7 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 
 .PHONY: format
 format: gci fmt
-	gci write -s standard -s blank -s dot -s default -s alias -s localmodule --custom-order .
+	$(GCI) write -s standard -s blank -s dot -s default -s alias -s localmodule --custom-order .
 
 ##@ Build
 
@@ -163,7 +163,8 @@ KUBECTL ?= kubectl
 KUSTOMIZE ?= $(LOCALBIN)/kustomize-$(KUSTOMIZE_VERSION)
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
-GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
+GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
+GCI ?= $(LOCALBIN)/gci-$(GCI_VERSION)
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.1
@@ -195,7 +196,7 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 .PHONY: gci
 gci: $(GCI)
 $(GCI): $(LOCALBIN)
-	$(call go-install-tool,$(GCI),github.com/daixiang0,${GCI_VERSION})
+	$(call go-install-tool,$(GCI),github.com/daixiang0/gci,$(GCI_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary (ideally with version)
