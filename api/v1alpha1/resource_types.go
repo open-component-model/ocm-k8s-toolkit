@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"time"
 
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -30,24 +30,16 @@ const KindResource = "Resource"
 type ResourceSpec struct {
 	// ComponentRef is a reference to a Component.
 	// +required
-	ComponentRef v1.LocalObjectReference `json:"componentRef"`
+	ComponentRef corev1.LocalObjectReference `json:"componentRef"`
 
 	// Resource identifies the ocm resource to be fetched.
 	// +required
 	Resource ResourceID `json:"resource"`
 
+	// OCMConfig defines references to secrets, config maps or ocm api
+	// objects providing configuration data including credentials.
 	// +optional
-	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
-
-	// +optional
-	ConfigRefs []v1.LocalObjectReference `json:"configRefs,omitempty"`
-
-	// The secrets and configs referred to by SecretRef (or SecretRefs) and Config (or ConfigRefs) may contain ocm
-	// config data. The  ocm config allows to specify sets of configuration data
-	// (s. https://ocm.software/docs/cli-reference/help/configfile/). If the SecretRef (or SecretRefs) and ConfigRef and
-	// ConfigRefs contain ocm config sets, the user may specify which config set he wants to be effective.
-	// +optional
-	ConfigSet *string `json:"configSet,omitempty"`
+	OCMConfig []OCMConfiguration `json:"ocmConfig,omitempty"`
 
 	// Interval at which the resource is checked for updates.
 	// +required
@@ -73,37 +65,16 @@ type ResourceStatus struct {
 	// ArtifactRef points to the Artifact which represents the output of the
 	// last successful Resource sync.
 	// +optional
-	ArtifactRef v1.LocalObjectReference `json:"artifactRef,omitempty"`
+	ArtifactRef corev1.LocalObjectReference `json:"artifactRef,omitempty"`
 
 	// +optional
 	Resource *ResourceInfo `json:"resource,omitempty"`
 
-	// Propagate its effective secrets. Other controllers (e.g. Resource
-	// controller) may use this as default if they do not explicitly refer a
-	// secret.
-	// This is required to allow transitive defaulting (thus, e.g. Component
-	// defaults from OCMRepository and Resource defaults from Component) without
-	// having to traverse the entire chain.
+	// EffectiveOCMConfig specifies the entirety of config maps and secrets
+	// whose configuration data was applied to the Resource reconciliation,
+	// in the order the configuration data was applied.
 	// +optional
-	SecretRefs []v1.LocalObjectReference `json:"secretRefs,omitempty"`
-
-	// Propagate its effective configs. Other controllers (e.g. Component or
-	// Resource controller) may use this as default if they do not explicitly
-	// refer a config.
-	// This is required to allow transitive defaulting (thus, e.g. Component
-	// defaults from OCMRepository and Resource defaults from Component) without
-	// having to traverse the entire chain.
-	// +optional
-	ConfigRefs []v1.LocalObjectReference `json:"configRefs,omitempty"`
-
-	// Propagate its effective config set. Other controllers (e.g. Component or
-	// Resource controller) may use this as default if they do not explicitly
-	// specify a config set.
-	// This is required to allow transitive defaulting (thus, e.g. Component
-	// defaults from OCMRepository and Resource defaults from Component) without
-	// having to traverse the entire chain.
-	// +optional
-	ConfigSet string `json:"configSet,omitempty"`
+	EffectiveOCMConfig []OCMConfiguration `json:"effectiveOCMConfig,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -152,28 +123,12 @@ func (in Resource) GetRequeueAfter() time.Duration {
 	return in.Spec.Interval.Duration
 }
 
-func (in *Resource) GetSecretRefs() []v1.LocalObjectReference {
-	return in.Spec.SecretRefs
+func (in *Resource) GetSpecifiedOCMConfig() []OCMConfiguration {
+	return in.Spec.OCMConfig
 }
 
-func (in *Resource) GetEffectiveSecretRefs() []v1.LocalObjectReference {
-	return in.Status.SecretRefs
-}
-
-func (in *Resource) GetConfigRefs() []v1.LocalObjectReference {
-	return in.Spec.ConfigRefs
-}
-
-func (in *Resource) GetEffectiveConfigRefs() []v1.LocalObjectReference {
-	return in.Status.ConfigRefs
-}
-
-func (in *Resource) GetConfigSet() *string {
-	return in.Spec.ConfigSet
-}
-
-func (in *Resource) GetEffectiveConfigSet() string {
-	return in.Status.ConfigSet
+func (in *Resource) GetEffectiveOCMConfig() []OCMConfiguration {
+	return in.Status.EffectiveOCMConfig
 }
 
 // +kubebuilder:object:root=true

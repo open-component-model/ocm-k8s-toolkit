@@ -269,8 +269,13 @@ var _ = Describe("Replication Controller", func() {
 
 			By("Create and reconcile Replication resource")
 			replication := newTestReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
-			replication.Spec.ConfigRefs = []corev1.LocalObjectReference{
-				{Name: optResourceName},
+			replication.Spec.OCMConfig = []v1alpha1.OCMConfiguration{
+				{
+					NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+						Kind: "ConfigMap",
+						Name: optResourceName,
+					},
+				},
 			}
 			Expect(k8sClient.Create(ctx, replication)).To(Succeed())
 

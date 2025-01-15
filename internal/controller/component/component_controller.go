@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -175,9 +174,21 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
 
-	err := ocm.ConfigureOCMContext(ctx, r, octx, component, repository)
+	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), component)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ConfigureContextFailedReason, "Configuring Context failed")
+		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return ctrl.Result{}, nil
+	}
+	verifications, err := ocm.GetVerifications(ctx, r.GetClient(), component)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return ctrl.Result{}, nil
+	}
+	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs, verifications)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
 
 		return ctrl.Result{}, err
 	}
@@ -242,7 +253,7 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 	}
 
 	// Update status
-	r.setComponentStatus(component, v1alpha1.ComponentInfo{
+	r.setComponentStatus(component, configs, v1alpha1.ComponentInfo{
 		RepositorySpec: repository.Spec.RepositorySpec,
 		Component:      component.Spec.Component,
 		Version:        version,
@@ -408,14 +419,10 @@ func (r *Reconciler) normalizeComponentVersionName(name string) string {
 
 func (r *Reconciler) setComponentStatus(
 	component *v1alpha1.Component,
+	configs []v1alpha1.OCMConfiguration,
 	info v1alpha1.ComponentInfo,
 ) {
 	component.Status.Component = info
 
-	component.Status.ConfigRefs = slices.Clone(component.Spec.ConfigRefs)
-	component.Status.SecretRefs = slices.Clone(component.Spec.SecretRefs)
-
-	if component.Spec.ConfigSet != nil {
-		component.Status.ConfigSet = *component.Spec.ConfigSet
-	}
+	component.Status.EffectiveOCMConfig = configs
 }

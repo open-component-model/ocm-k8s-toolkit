@@ -42,31 +42,6 @@ spec:
               component:
                 description: Component is the name of the ocm component.
                 type: string
-              configRefs:
-                items:
-                  description: |-
-                    LocalObjectReference contains enough information to let you locate the
-                    referenced object inside the same namespace.
-                  properties:
-                    name:
-                      default: ""
-                      description: |-
-                        Name of the referent.
-                        This field is effectively required, but due to backwards compatibility is
-                        allowed to be empty. Instances of this type with an empty value here are
-                        almost certainly wrong.
-                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                      type: string
-                  type: object
-                  x-kubernetes-map-type: atomic
-                type: array
-              configSet:
-                description: |-
-                  The secrets and configs referred to by SecretRef (or SecretRefs) and Config (or ConfigRefs) may contain ocm
-                  config data. The  ocm config allows to specify sets of configuration data
-                  (s. https://ocm.software/docs/cli-reference/help/configfile/). If the SecretRef (or SecretRefs) and ConfigRef and
-                  ConfigRefs contain ocm config sets, the user may specify which config set he wants to be effective.
-                type: string
               downgradePolicy:
                 default: Deny
                 description: |-
@@ -89,6 +64,55 @@ spec:
                   Interval at which the repository will be checked for new component
                   versions.
                 type: string
+              ocmConfig:
+                description: |-
+                  OCMConfig defines references to secrets, config maps or ocm api
+                  objects providing configuration data including credentials.
+                items:
+                  description: |-
+                    OCMConfiguration defines a configuration applied to the reconciliation of an
+                    ocm k8s object as well as the policy for its propagation of this
+                    configuration.
+                  properties:
+                    apiVersion:
+                      description: API version of the referent, if not specified the
+                        Kubernetes preferred version will be used.
+                      type: string
+                    kind:
+                      description: Kind of the referent.
+                      type: string
+                    name:
+                      description: Name of the referent.
+                      type: string
+                    namespace:
+                      description: Namespace of the referent, when not specified it
+                        acts as LocalObjectReference.
+                      type: string
+                    policy:
+                      default: DoNotPropagate
+                      description: |-
+                        Policy affects the propagation behavior of the configuration. If set to
+                        ConfigurationPolicyPropagate other ocm api objects can reference this
+                        object to reuse this configuration.
+                      enum:
+                      - Propagate
+                      - DoNotPropagate
+                      type: string
+                  required:
+                  - kind
+                  - name
+                  - policy
+                  type: object
+                  x-kubernetes-validations:
+                  - message: apiVersion must be one of "v1" with kind "Secret" or
+                      "ConfigMap" or "delivery.ocm.software/v1alpha1" with the kind
+                      of an OCM kubernetes object
+                    rule: ((!has(self.apiVersion) || self.apiVersion == "" || self.apiVersion
+                      == "v1") && (self.kind == "Secret" || self.kind == "ConfigMap"))
+                      || (self.apiVersion == "delivery.ocm.software/v1alpha1" && (self.kind
+                      == "OCMRepository" || self.kind == "Component" || self.kind
+                      == "Resource" || self.kind == "Replication"))
+                type: array
               repositoryRef:
                 description: RepositoryRef is a reference to a OCMRepository.
                 properties:
@@ -99,24 +123,6 @@ spec:
                 required:
                 - name
                 type: object
-              secretRefs:
-                items:
-                  description: |-
-                    LocalObjectReference contains enough information to let you locate the
-                    referenced object inside the same namespace.
-                  properties:
-                    name:
-                      default: ""
-                      description: |-
-                        Name of the referent.
-                        This field is effectively required, but due to backwards compatibility is
-                        allowed to be empty. Instances of this type with an empty value here are
-                        almost certainly wrong.
-                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                      type: string
-                  type: object
-                  x-kubernetes-map-type: atomic
-                type: array
               semver:
                 description: Semver defines the constraint of the fetched version.
                   '>=v0.1'.
@@ -176,10 +182,9 @@ spec:
             properties:
               artifactRef:
                 description: |-
-                  The component controller generates an artifact which is a list of
-                  component descriptors. If the components were verified, other controllers
-                  (e.g. Resource controller) can use this without having to verify the
-                  signature again.
+                  ArtifactRef references the generated artifact containing a list of
+                  component descriptors. This list can be used by other controllers to
+                  avoid re-downloading (and potentially also re-verifying) the components.
                 properties:
                   name:
                     default: ""
@@ -266,71 +271,62 @@ spec:
                   - type
                   type: object
                 type: array
-              configRefs:
+              effectiveOCMConfig:
                 description: |-
-                  Propagate its effective configs. Other controllers (e.g. Component or
-                  Resource controller) may use this as default if they do not explicitly
-                  refer a config.
-                  This is required to allow transitive defaulting (thus, e.g. Component
-                  defaults from OCMRepository and Resource defaults from Component) without
-                  having to traverse the entire chain.
+                  EffectiveOCMConfig specifies the entirety of config maps and secrets
+                  whose configuration data was applied to the Component reconciliation,
+                  in the order the configuration data was applied.
                 items:
                   description: |-
-                    LocalObjectReference contains enough information to let you locate the
-                    referenced object inside the same namespace.
+                    OCMConfiguration defines a configuration applied to the reconciliation of an
+                    ocm k8s object as well as the policy for its propagation of this
+                    configuration.
                   properties:
-                    name:
-                      default: ""
-                      description: |-
-                        Name of the referent.
-                        This field is effectively required, but due to backwards compatibility is
-                        allowed to be empty. Instances of this type with an empty value here are
-                        almost certainly wrong.
-                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    apiVersion:
+                      description: API version of the referent, if not specified the
+                        Kubernetes preferred version will be used.
                       type: string
+                    kind:
+                      description: Kind of the referent.
+                      type: string
+                    name:
+                      description: Name of the referent.
+                      type: string
+                    namespace:
+                      description: Namespace of the referent, when not specified it
+                        acts as LocalObjectReference.
+                      type: string
+                    policy:
+                      default: DoNotPropagate
+                      description: |-
+                        Policy affects the propagation behavior of the configuration. If set to
+                        ConfigurationPolicyPropagate other ocm api objects can reference this
+                        object to reuse this configuration.
+                      enum:
+                      - Propagate
+                      - DoNotPropagate
+                      type: string
+                  required:
+                  - kind
+                  - name
+                  - policy
                   type: object
-                  x-kubernetes-map-type: atomic
+                  x-kubernetes-validations:
+                  - message: apiVersion must be one of "v1" with kind "Secret" or
+                      "ConfigMap" or "delivery.ocm.software/v1alpha1" with the kind
+                      of an OCM kubernetes object
+                    rule: ((!has(self.apiVersion) || self.apiVersion == "" || self.apiVersion
+                      == "v1") && (self.kind == "Secret" || self.kind == "ConfigMap"))
+                      || (self.apiVersion == "delivery.ocm.software/v1alpha1" && (self.kind
+                      == "OCMRepository" || self.kind == "Component" || self.kind
+                      == "Resource" || self.kind == "Replication"))
                 type: array
-              configSet:
-                description: |-
-                  Propagate its effective config set. Other controllers (e.g. Component or
-                  Resource controller) may use this as default if they do not explicitly
-                  specify a config set.
-                  This is required to allow transitive defaulting (thus, e.g. Component
-                  defaults from OCMRepository and Resource defaults from Component) without
-                  having to traverse the entire chain.
-                type: string
               observedGeneration:
                 description: |-
                   ObservedGeneration is the last observed generation of the ComponentStatus
                   object.
                 format: int64
                 type: integer
-              secretRefs:
-                description: |-
-                  Propagate its effective secrets. Other controllers (e.g. Resource
-                  controller) may use this as default if they do not explicitly refer a
-                  secret.
-                  This is required to allow transitive defaulting (thus, e.g. Component
-                  defaults from OCMRepository and Resource defaults from Component) without
-                  having to traverse the entire chain.
-                items:
-                  description: |-
-                    LocalObjectReference contains enough information to let you locate the
-                    referenced object inside the same namespace.
-                  properties:
-                    name:
-                      default: ""
-                      description: |-
-                        Name of the referent.
-                        This field is effectively required, but due to backwards compatibility is
-                        allowed to be empty. Instances of this type with an empty value here are
-                        almost certainly wrong.
-                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                      type: string
-                  type: object
-                  x-kubernetes-map-type: atomic
-                type: array
             type: object
         required:
         - spec

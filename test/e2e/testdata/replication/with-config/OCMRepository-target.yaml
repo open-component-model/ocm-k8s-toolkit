@@ -4,8 +4,10 @@ metadata:
   name: destination-repository
   namespace: e2e-replication-controller-test
 spec:
-  configRefs:
-  - name: creds-target
+  ocmConfig:
+    - kind: ConfigMap
+      name: creds-target
+      policy: Propagate
   interval: 2m0s
   repositorySpec:
     baseUrl: http://protected-registry2-internal.default.svc.cluster.local:5002

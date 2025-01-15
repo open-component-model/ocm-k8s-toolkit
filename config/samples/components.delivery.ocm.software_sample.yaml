@@ -8,17 +8,16 @@ spec:
     namespace: default
     name: open-component-model-repo
   component: ocm.software/ocmcli
-  enforceDowngradability: false
+  downgradePolicy: Deny
   semver: ">= 6.1.x-0"
   semverFilter: ".*-rc.*"
   verify:
   - signature: ocm
     secretRef:
       name: ocm-pk-secret
-  secretRefs:
-  - name: ocm-secret
-  configRefs:
-  - name: ocm-config
-  configSet: standard
+  ocmConfig:
+    - apiVersion: delivery.ocm.software/v1alpha1
+      kind: Replication
+      name: repo
   interval: 10m
   suspend: false
