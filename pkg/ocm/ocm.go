@@ -8,19 +8,21 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/mandelsoft/goutils/matcher"
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	corev1 "k8s.io/api/core/v1"
 	"ocm.software/ocm/api/credentials/extensions/repositories/dockerconfig"
 	"ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/compdesc"
 	"ocm.software/ocm/api/ocm/cpi"
 	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
-	utils "ocm.software/ocm/api/ocm/ocmutils"
 	"ocm.software/ocm/api/ocm/tools/signing"
-	common "ocm.software/ocm/api/utils/misc"
 	"ocm.software/ocm/api/utils/runtime"
 	"ocm.software/ocm/api/utils/semverutils"
+
+	corev1 "k8s.io/api/core/v1"
+	utils "ocm.software/ocm/api/ocm/ocmutils"
+	common "ocm.software/ocm/api/utils/misc"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
 // ConfigureContext adds all the configuration data found in the config maps and

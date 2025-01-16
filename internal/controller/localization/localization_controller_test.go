@@ -3,27 +3,29 @@ package localization
 import (
 	"bytes"
 	"context"
-	_ "embed"
 	"os"
 	"path/filepath"
 	"text/template"
 
-	"github.com/mandelsoft/vfs/pkg/memoryfs"
-	"github.com/mandelsoft/vfs/pkg/projectionfs"
-	"github.com/mandelsoft/vfs/pkg/vfs"
+	_ "embed"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
+
+	"github.com/mandelsoft/vfs/pkg/memoryfs"
+	"github.com/mandelsoft/vfs/pkg/osfs"
+	"github.com/mandelsoft/vfs/pkg/projectionfs"
+	"github.com/mandelsoft/vfs/pkg/vfs"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"ocm.software/ocm/api/utils/tarutils"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 	ocmbuilder "ocm.software/ocm/api/helper/builder"
-	"ocm.software/ocm/api/utils/tarutils"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
-
-	"github.com/mandelsoft/vfs/pkg/osfs"
 	environment "ocm.software/ocm/api/helper/env"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"

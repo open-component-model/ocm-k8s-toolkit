@@ -24,10 +24,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-containerregistry/pkg/crane"
-	"github.com/google/go-containerregistry/pkg/name"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/google/go-containerregistry/pkg/name"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/test/utils"
 )

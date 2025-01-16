@@ -23,6 +23,8 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
+      - name: Lint
+        run: make lint
       - name: Make manifests && generate
         run: |
           make manifests && make generate

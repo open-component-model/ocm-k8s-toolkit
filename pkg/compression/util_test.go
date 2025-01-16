@@ -9,10 +9,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	contcompression "github.com/containers/image/v5/pkg/compression"
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/ulikunitz/xz"
+
+	contcompression "github.com/containers/image/v5/pkg/compression"
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
 )

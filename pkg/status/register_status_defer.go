@@ -8,10 +8,11 @@ import (
 	"context"
 	"time"
 
-	eventv1 "github.com/fluxcd/pkg/apis/event/v1beta1"
 	"github.com/fluxcd/pkg/apis/meta"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
+
+	eventv1 "github.com/fluxcd/pkg/apis/event/v1beta1"
 	kuberecorder "k8s.io/client-go/tools/record"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/event"
