@@ -35,14 +35,19 @@ linters-settings:
     ignored-functions:
       - "os.WriteFile" # File Permissions are self-explanatory bitsets
       - "os.OpenFile" # File Permissions are self-explanatory bitsets
+  gci:
+    sections:
+      - standard
+      - blank
+      - dot
+      - default
+      - alias
+      - localmodule
+    custom-order: true
 
 issues:
-  exclude-dirs:
-    - "./*/mock"
-  exclude-files:
-    - pkg/ocm/fakes/fakes.go
-    - pkg/cache/fakes/cache.go
-    - pkg/untar/untar.go
+  # exclude-dirs:
+  # exclude-files:
   max-same-issues: 0
   max-issues-per-linter: 0
   exclude-rules:
@@ -96,7 +101,6 @@ linters:
     - err113
     - exhaustruct
     - forbidigo
-    - gci
     - gochecknoglobals
     - gochecknoinits
     - godox
