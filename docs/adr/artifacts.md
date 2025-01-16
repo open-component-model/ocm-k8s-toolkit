@@ -120,14 +120,21 @@ Cons:
 
 #### Option 4: Use `OCIRepository` implementation from `FluxCD`
 
-See [definition][oci-repository-type]
+See [definition][oci-repository-type]. The type is part of the FluxCDs `source-controller`, which also
+provides a control-loop for that resource.
 
 Pros:
 - No transformer needed for `FluxCD`s consumers Helm- and Kustomize-Controller 
 - Fits good, if we use an (internal) OCI registry
+- Control-loop for `OCIRepository` is already implemented
 
 Cons:
 - Probably contains too much unnecessary information
+- Integrating FluxCDs `source-controller` would be a hard dependency on that repository. It would be mandatory
+to deploy the `source-controller`
+- It is not possible to start the `source-controller` and only watch the `OCIRepository` type. It would
+start all other control-loops for `kustomize`, `helm`, `git`, and more objects. This seems a bit of an
+overkill
 - ...
 
 ## (Internal) OCI Registry
