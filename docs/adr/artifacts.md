@@ -140,7 +140,20 @@ overkill
 ## (Internal) OCI Registry
 ...
 
-### Option 1: Use implementation from ocm-controllers v1
+### Option 1: Let the use provide a registry that is OCI compliant
+
+Pros:
+- Not our responsibility
+- Users can customize their OCI registry like they want
+- ...
+
+Cons:
+- We do not "control" the resource and issues caused by another OCI registry could be hard to fix/support
+- ...
+
+### Option 2: Deploy an OCI image registry with our controllers
+
+### Option 2.1: Use implementation from ocm-controllers v1
 
 Pros:
 - Already implemented.
@@ -149,7 +162,7 @@ Pros:
 Cons:
 - ...
 
-### Option 2: Use [`zot`](https://github.com/project-zot/zot)
+### Option 2.2: Use [`zot`](https://github.com/project-zot/zot)
 
 Pros:
 - Is the newest shot
