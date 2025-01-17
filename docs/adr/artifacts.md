@@ -134,7 +134,9 @@ Cons:
 to deploy the `source-controller`
 - It is not possible to start the `source-controller` and only watch the `OCIRepository` type. It would
 start all other control-loops for `kustomize`, `helm`, `git`, and more objects. This seems a bit of an
-overkill
+overkill.
+- Using the `OCIRepository` control-loop would basically "clone" every blob from the OCI registry in FluxCD
+local storage (plain http server). 
 - ...
 
 ## (Internal) OCI Registry
