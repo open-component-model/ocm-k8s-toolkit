@@ -78,58 +78,56 @@ transformation, they also can be used as a caching mechanism to reduce unnecessa
 
 The following sections discusses several options.
 
-#### Option 1: Omit the `artifact`/`snapshot` concept
+#### Option 1: Omit the `artifact`/`snapshot` concept (Rejected)
 
 Instead of using an intermediate Custom Resource as `artifact` or `snapshot`, one could update the status of the source
 resource that is creating the blob could point to the location of that blob itself.
 
 Pros:
 - No additional custom resource needed.
-- ...
 
 Cons:
 - Probably more complex to consume the blobs as the consumer must know the identity of the source resource and the
 resulting blob.
 - No selective watch for changes in the blob possible. The reconciliation would always trigger, when something on the
 status of the source resources is changed.
-- ...
+
+Since no selective watch for changes would be possible, this option is not feasible.
 
 #### Option 2: Use the `snapshot` implementation
 
 Pros:
 - Already implemented (and probably tested).
 - Implemented for an OCI registry
-- ...
 
 Cons:
 - Status fields feel unnecessary.
-- Require a transformer to make the artifacts consumable by `FluxCD`s Helm- and Kustomize-Controller
-- ...
+- Require a transformer to make the artifacts consumable by `FluxCD`s Helm- and Kustomize-Controller (is probably
+required either way).
+- Implemented in `open-component-model/ocm-controller` which will be archived, when the `ocm-controller` v2 go
+productive. Thus, the `snapshot` implementation must be copied in this repository.
 
 #### Option 3: Use the `artifact` implementation
 
 Pros:
 - Already implemented (and a bit tested)
-- ...
+- Rather easy and simple
 
 Cons:
 - In another GitHub organization that will be archived in the future as the initial purpose has vanished.
 - Implemented for a plain http-server and not for OCI registry (check 
-[storage implementation][controller-manager-storage])
-- ...
+[storage implementation][controller-manager-storage]). Thus, missing dedicated control-loop.
 
-#### Option 4: Use `OCIRepository` implementation from `FluxCD`
+#### Option 4: Use `OCIRepository` implementation from `FluxCD` (rejected)
 
 See [definition][oci-repository-type]. The type is part of the FluxCDs `source-controller`, which also
 provides a control-loop for that resource.
 
 Pros:
 - No transformer needed for `FluxCD`s consumers Helm- and Kustomize-Controller 
-- Fits good, if we use an (internal) OCI registry
 - Control-loop for `OCIRepository` is already implemented
 
 Cons:
-- Probably contains too much unnecessary information
 - Integrating FluxCDs `source-controller` would be a hard dependency on that repository. It would be mandatory
 to deploy the `source-controller`
 - It is not possible to start the `source-controller` and only watch the `OCIRepository` type. It would
@@ -137,7 +135,24 @@ start all other control-loops for `kustomize`, `helm`, `git`, and more objects. 
 overkill.
 - Using the `OCIRepository` control-loop would basically "clone" every blob from the OCI registry in FluxCD
 local storage (plain http server). 
-- ...
+
+Using `OCIRepository` as intermediate `storage`-pointer CR is not an option as the control-loop of that resource would
+"clone" any OCI Registry blob to its own local storage.
+
+#### Option 5: Create a new custom resource
+
+Pros:
+- Greenfield approach.
+- Orientation on `snapshot` and `artifact` ease the implementation.
+
+Cons:
+- New implementation is required.
+
+
+### Things to consider/ask
+
+- Do we need a control-loop for the CR?
+
 
 ## (Internal) OCI Registry
 ...
