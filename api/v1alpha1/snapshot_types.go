@@ -1,9 +1,10 @@
 package v1alpha1
 
 import (
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // SnapshotWriter defines any object which produces a snapshot
@@ -62,12 +63,12 @@ func (in *Snapshot) SetObservedGeneration(v int64) {
 
 // TODO: Check purpose
 //// GetComponentVersion returns the component version for the snapshot.
-//func (in Snapshot) GetComponentVersion() string {
+// func (in Snapshot) GetComponentVersion() string {
 //	return in.Spec.Identity[ComponentVersionKey]
 //}
 //
 //// GetComponentResourceVersion returns the resource version for the snapshot.
-//func (in Snapshot) GetComponentResourceVersion() string {
+// func (in Snapshot) GetComponentResourceVersion() string {
 //	return in.Spec.Identity[ResourceVersionKey]
 //}
 
