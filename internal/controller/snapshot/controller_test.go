@@ -7,11 +7,13 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 )
 
 var _ = Describe("Snapshot Controller", func() {
@@ -31,11 +33,18 @@ var _ = Describe("Snapshot Controller", func() {
 			err := k8sClient.Get(ctx, typeNamespacedName, snapshot)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &deliveryv1alpha1.Snapshot{
+					TypeMeta: metav1.TypeMeta{},
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: deliveryv1alpha1.SnapshotSpec{
+						Identity: ocmmetav1.Identity{
+							"name": "some-name",
+						},
+						Digest: "digest",
+						Tag:    "tag",
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
@@ -53,8 +62,10 @@ var _ = Describe("Snapshot Controller", func() {
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &Reconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				BaseReconciler: &ocm.BaseReconciler{
+					Client: k8sClient,
+					Scheme: k8sClient.Scheme(),
+				},
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
