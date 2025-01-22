@@ -1,4 +1,4 @@
-# Use Single Layer OCI Artifacts for blobs
+# Use Single Layer OCI Artifacts for (intermediate) blobs
 
 * Deciders: @frewilhelm @ikhandamirov
 
@@ -21,9 +21,14 @@ Therefore, the original purpose of that Custom Resource `artifact` is not presen
 decided to not use a plain http-server but an internal OCI registry to store and publish its blobs that are produced by
 the OCM controllers as single layer OCI artifacts.
 
+The discussion concerns two major topics:
+- How to store and reference the single layer OCI artifacts.
+- How to setup the internal OCI registry and which one to use.
+
 There are several options on how to proceed with the replacement and implementation that are discussed below.
 
 ## Artifact
+
 An artifact in the current context describes a resource that holds an identity to a blob and a pointer where to find
 the blob (currently a URL). In that sense, a producer can create an artifact and store this information and a consumer
 can search for artifacts with the specific identity to find out its location.
