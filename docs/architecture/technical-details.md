@@ -1,9 +1,5 @@
 # Technical Deepdive
 
-## OCM Controller with FluxCD Deployment
-
-![diagram](../assets/ocm-controller-with-flux.2.svg)
-
 ## Resource Resolution and Verification
 
 As a result of a successful reconciliation, the *component controller* produces
