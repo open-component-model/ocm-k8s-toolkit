@@ -98,7 +98,7 @@ by the consumer resource (see [watch of the resource controller][watch-resource-
 - Since there is a "real" blob in the storage, it should have a respective entity to represent it, e.g.
 `artifact`/`snapshot`
 
-#### Option 2: Use the `snapshot` implementation
+#### Option 2: Use the `snapshot` implementation (accepted)
 
 Pros:
 - Already implemented (and probably tested).
@@ -133,6 +133,7 @@ provides a control-loop for that resource.
 Pros:
 - No transformer needed for `FluxCD`s consumers Helm- and Kustomize-Controller 
 - Control-loop for `OCIRepository` is already implemented
+- `OCIRepository` is an integration point with Flux and Argo
 
 Cons:
 - Integrating FluxCDs `source-controller` would be a hard dependency on that repository. It would be mandatory
@@ -146,7 +147,7 @@ local storage (plain http server).
 Using `OCIRepository` as intermediate `storage`-pointer CR is not an option as the control-loop of that resource would
 "clone" any OCI Registry blob to its own local storage.
 
-#### Option 5: Create a new custom resource
+#### Option 5: Create a new custom resource (rejected)
 
 Pros:
 - Greenfield approach.
@@ -155,11 +156,23 @@ Pros:
 Cons:
 - New implementation is required.
 
+Creating a new custom resource seems like an overkill, considering that the `snapshot` implementation covers a lot of
+our use-cases. Thus, it seems more reasonable to go with the `snapshot` implementation and adjust/refactor that.
 
-### Things to consider/ask
+### Conclusion
 
-- Do we need a control-loop for the CR?
+- Option 1: Omitting a dedicated resource for the storage objects is not a good design-choice.
+- Option 2: The `snapshot` implementation fits our purposes and is already implemented.
+- Option 3: The current `artifact` implementation is not feasible as it was written for another purpose.
+- Option 4: The FluxCDs `OCIRepository` resource has major implications to our environment that are not beneficial.
+- Option 5: Creating a new custom resource feels like an overkill since it requires a new implementation.
 
+Therefore, option 2 is chosen as it is reasonable to use the already implemented `snapshot` resource and adjust it to
+our purposes.
+
+This approach requires a transformer to make the final resource consumable. For this, the FluxCDs `OCIRepository`
+resource seems predestined, since `OCIRepository` can be consumed by FluxCDs `source-controller` (most use-cases) as
+well as by ArgoCD.
 
 ## (Internal) OCI Registry
 ...
