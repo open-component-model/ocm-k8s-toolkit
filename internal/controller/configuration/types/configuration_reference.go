@@ -1,6 +1,8 @@
 package types
 
-import "github.com/open-component-model/ocm-k8s-toolkit/pkg/artifact"
+import (
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
+)
 
 // ConfigurationReference can be used both as a source (ConfigurationSource),
 // and as a target (ConfigurationTarget) for configuration.
@@ -10,12 +12,12 @@ type ConfigurationReference interface {
 }
 
 // ConfigurationSource is a source of localization.
-// It contains instructions on how to localize an artifact.Content.
+// It contains instructions on how to localize an snapshot.Content.
 type ConfigurationSource interface {
-	artifact.Content
+	snapshot.Content
 }
 
 // ConfigurationTarget is a target for configuration.
 type ConfigurationTarget interface {
-	artifact.Content
+	snapshot.Content
 }

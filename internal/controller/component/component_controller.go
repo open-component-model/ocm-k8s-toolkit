@@ -20,57 +20,99 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/goutils/sliceutils"
-	"github.com/openfluxcd/controller-manager/storage"
+	"github.com/opencontainers/go-digest"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/resolvers"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/yaml"
 
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	ocmctx "ocm.software/ocm/api/ocm"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
 // Reconciler reconciles a Component object.
 type Reconciler struct {
 	*ocm.BaseReconciler
-	Storage *storage.Storage
+	Registry snapshot.RegistryType
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+	const (
+		ocmRepositoryKey = "spec.ocmRepositoryRef.name"
+	)
+
+	// Create an index to watch for OCMRepository changes.
+	if err := mgr.GetFieldIndexer().IndexField(context.TODO(), &v1alpha1.Component{}, ocmRepositoryKey, func(rawObj client.Object) []string {
+		component, ok := rawObj.(*v1alpha1.Component)
+		if !ok {
+			return nil
+		}
+
+		ns := component.Spec.RepositoryRef.Namespace
+		if ns == "" {
+			ns = component.GetNamespace()
+		}
+
+		return []string{fmt.Sprintf("%s/%s", ns, component.Spec.RepositoryRef.Name)}
+	}); err != nil {
+		return fmt.Errorf("failed setting index fields: %w", err)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Component{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&v1alpha1.OCMRepository{}, handler.EnqueueRequestsFromMapFunc(r.findOCMRepositories(ocmRepositoryKey))).
+		Owns(&v1alpha1.Snapshot{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
+}
+
+func (r *Reconciler) findOCMRepositories(key string) handler.MapFunc {
+	return func(ctx context.Context, obj client.Object) []reconcile.Request {
+		repository := &v1alpha1.OCMRepositoryList{}
+		if err := r.List(ctx, repository, &client.ListOptions{
+			FieldSelector: fields.OneTermEqualSelector(key, client.ObjectKeyFromObject(obj).String()),
+		}); err != nil {
+			return []reconcile.Request{}
+		}
+
+		requests := make([]reconcile.Request, len(repository.Items))
+		for i, item := range repository.Items {
+			requests[i] = reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      item.GetName(),
+					Namespace: item.GetNamespace(),
+				},
+			}
+		}
+
+		return requests
+	}
 }
 
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=components,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=components/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=components/finalizers,verbs=update
-
-// +kubebuilder:rbac:groups=openfluxcd.ocm.software,resources=artifacts,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=openfluxcd.ocm.software,resources=artifacts/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=openfluxcd.ocm.software,resources=artifacts/finalizers,verbs=update
 
 // +kubebuilder:rbac:groups="",resources=secrets;configmaps;serviceaccounts,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=serviceaccounts/token,verbs=create
@@ -105,7 +147,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, component *v1alpha1.Co
 	if component.GetDeletionTimestamp() != nil {
 		logger.Info("component is being deleted and cannot be used", "name", component.Name)
 
-		return ctrl.Result{}, nil
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	if component.Spec.Suspend {
@@ -134,14 +176,20 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 		err := errors.New("repository is being deleted, please do not use it")
 		logger.Error(err, "repository is being deleted, please do not use it", "name", component.Spec.RepositoryRef.Name)
 
+		// Triggered through cache
 		return ctrl.Result{}, nil
 	}
 
+	// Note: Marking the component as not ready, when the ocmrepository is not ready is not completely valid. As the
+	// was potentially ready, then the ocmrepository changed, but that does not necessarily mean that the component is
+	// not ready as well.
+	// However, as the component is hard-dependant on the ocmrepository, we decided to mark it not ready as well.
 	if !conditions.IsReady(repo) {
 		logger.Info("repository is not ready", "name", component.Spec.RepositoryRef.Name)
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositoryIsNotReadyReason, "repository is not ready yet")
 
-		return ctrl.Result{Requeue: true}, nil
+		// Triggered through cache
+		return ctrl.Result{}, nil
 	}
 
 	return r.reconcileOCM(ctx, component, repo)
@@ -167,6 +215,7 @@ func (r *Reconciler) reconcileOCM(ctx context.Context, component *v1alpha1.Compo
 	return result, nil
 }
 
+//nolint:funlen // we do not want to cut function at an arbitrary point
 func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context, component *v1alpha1.Component, repository *v1alpha1.OCMRepository) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
@@ -178,14 +227,16 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
 
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, err
 	}
+
 	verifications, err := ocm.GetVerifications(ctx, r.GetClient(), component)
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
 
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, err
 	}
+
 	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs, verifications)
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
@@ -198,7 +249,7 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 		logger.Error(err, "failed to parse repository spec")
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositorySpecInvalidReason, "RepositorySpec is invalid")
 
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, err
 	}
 
 	repo, err := session.LookupRepository(octx, spec)
@@ -238,26 +289,72 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 		return ctrl.Result{}, err
 	}
 
-	err = r.Storage.ReconcileStorage(ctx, component)
+	// Store descriptors and create snapshot
+	logger.Info("pushing descriptors to storage")
+	ociRepositoryName, err := snapshot.CreateRepositoryName(component.Spec.RepositoryRef.Name, component.GetName())
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.StorageReconcileFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to reconcileComponent storage: %w", err)
-	}
-
-	err = r.createArtifactForDescriptors(ctx, octx, component, cv, descriptors)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CreateOCIRepositoryNameFailedReason, err.Error())
 
 		return ctrl.Result{}, err
 	}
 
-	// Update status
-	r.setComponentStatus(component, configs, v1alpha1.ComponentInfo{
+	ociRepository, err := r.Registry.NewRepository(ctx, ociRepositoryName)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CreateOCIRepositoryFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+
+	descriptorsBytes, err := yaml.Marshal(descriptors)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.MarshalFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+
+	manifestDigest, err := ociRepository.PushSnapshot(ctx, version, descriptorsBytes)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.PushSnapshotFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("creating snapshot")
+	snapshotCR := snapshot.Create(
+		component,
+		ociRepositoryName,
+		manifestDigest.String(),
+		&v1alpha1.BlobInfo{
+			Digest: digest.FromBytes(descriptorsBytes).String(),
+			Tag:    version,
+			Size:   int64(len(descriptorsBytes)),
+		},
+	)
+
+	if _, err = controllerutil.CreateOrUpdate(ctx, r.GetClient(), snapshotCR, func() error {
+		if err := controllerutil.SetControllerReference(component, snapshotCR, r.GetScheme()); err != nil {
+			return fmt.Errorf("failed to set controller reference: %w", err)
+		}
+
+		component.Status.SnapshotRef = corev1.LocalObjectReference{
+			Name: snapshotCR.GetName(),
+		}
+
+		return nil
+	}); err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CreateSnapshotFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("updating status")
+	component.Status.Component = v1alpha1.ComponentInfo{
 		RepositorySpec: repository.Spec.RepositorySpec,
 		Component:      component.Spec.Component,
 		Version:        version,
-	})
+	}
+
+	component.Status.EffectiveOCMConfig = configs
 
 	status.MarkReady(r.EventRecorder, component, "Applied version %s", version)
 
@@ -355,74 +452,4 @@ func (r *Reconciler) verifyComponentVersionAndListDescriptors(ctx context.Contex
 	}
 
 	return descriptors, nil
-}
-
-func (r *Reconciler) createArtifactForDescriptors(ctx context.Context, octx ocmctx.Context,
-	component *v1alpha1.Component, cv ocmctx.ComponentVersionAccess, descriptors *ocm.Descriptors,
-) error {
-	logger := log.FromContext(ctx)
-
-	// Create temp working dir
-	tmpDir, err := os.MkdirTemp("", fmt.Sprintf("%s-%s-%s-", component.Kind, component.Namespace, component.Name))
-	if err != nil {
-		return reconcile.TerminalError(fmt.Errorf("failed to create temporary working directory: %w", err))
-	}
-	octx.Finalizer().With(func() error {
-		if err = os.RemoveAll(tmpDir); err != nil {
-			ctrl.LoggerFrom(ctx).Error(err, "failed to remove temporary working directory")
-		}
-
-		return nil
-	})
-
-	content, err := yaml.Marshal(descriptors)
-	if err != nil {
-		return reconcile.TerminalError(fmt.Errorf("failed to marshal content: %w", err))
-	}
-
-	const perm = 0o655
-	if err := os.WriteFile(filepath.Join(tmpDir, v1alpha1.OCMComponentDescriptorList), content, perm); err != nil {
-		return reconcile.TerminalError(fmt.Errorf("failed to write file: %w", err))
-	}
-
-	revision := r.normalizeComponentVersionName(cv.GetName()) + "-" + cv.GetVersion()
-	if err := r.Storage.ReconcileArtifact(
-		ctx,
-		component,
-		revision,
-		tmpDir,
-		revision+".tar.gz",
-		func(art *artifactv1.Artifact, _ string) error {
-			// Archive directory to storage
-			if err := r.Storage.Archive(art, tmpDir, nil); err != nil {
-				return fmt.Errorf("unable to archive artifact to storage: %w", err)
-			}
-
-			component.Status.ArtifactRef = corev1.LocalObjectReference{
-				Name: art.Name,
-			}
-
-			return nil
-		},
-	); err != nil {
-		return fmt.Errorf("failed to reconcileComponent artifact: %w", err)
-	}
-
-	logger.Info("successfully reconciled component", "name", component.Name)
-
-	return nil
-}
-
-func (r *Reconciler) normalizeComponentVersionName(name string) string {
-	return strings.ReplaceAll(name, "/", "-")
-}
-
-func (r *Reconciler) setComponentStatus(
-	component *v1alpha1.Component,
-	configs []v1alpha1.OCMConfiguration,
-	info v1alpha1.ComponentInfo,
-) {
-	component.Status.Component = info
-
-	component.Status.EffectiveOCMConfig = configs
 }

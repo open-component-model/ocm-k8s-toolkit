@@ -100,11 +100,11 @@ type ComponentStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// ArtifactRef references the generated artifact containing a list of
+	// SnapshotRef references the generated snapshot containing a list of
 	// component descriptors. This list can be used by other controllers to
 	// avoid re-downloading (and potentially also re-verifying) the components.
 	// +optional
-	ArtifactRef corev1.LocalObjectReference `json:"artifactRef,omitempty"`
+	SnapshotRef corev1.LocalObjectReference `json:"snapshotRef,omitempty"`
 
 	// Component specifies the concrete version of the component that was
 	// fetched after based on the semver constraints during the last successful
@@ -178,6 +178,10 @@ func (in *Component) GetEffectiveOCMConfig() []OCMConfiguration {
 
 func (in *Component) GetVerifications() []Verification {
 	return in.Spec.Verify
+}
+
+func (in *Component) GetSnapshotName() string {
+	return in.Status.SnapshotRef.Name
 }
 
 // +kubebuilder:object:root=true

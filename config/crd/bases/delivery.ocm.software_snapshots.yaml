@@ -4,21 +4,29 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.0
-  name: configuredresources.delivery.ocm.software
+  name: snapshots.delivery.ocm.software
 spec:
   group: delivery.ocm.software
   names:
-    kind: ConfiguredResource
-    listKind: ConfiguredResourceList
-    plural: configuredresources
-    singular: configuredresource
+    kind: Snapshot
+    listKind: SnapshotList
+    plural: snapshots
+    shortNames:
+    - snap
+    singular: snapshot
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].message
+      name: Status
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ConfiguredResource is the Schema for the configuredresources
-          API.
+        description: Snapshot is the Schema for the snapshots API.
         properties:
           apiVersion:
             description: |-
@@ -38,66 +46,45 @@ spec:
           metadata:
             type: object
           spec:
-            description: ConfiguredResourceSpec defines the desired state of ConfiguredResource.
+            description: SnapshotSpec defines the desired state of Snapshot.
             properties:
-              config:
-                description: Config that is to be used to configure the target
-                minProperties: 1
+              blob:
+                description: Blob
                 properties:
-                  apiVersion:
-                    description: API version of the referent, if not specified the
-                      Kubernetes preferred version will be used.
+                  digest:
+                    description: Digest is the digest of the blob in the form of '<algorithm>:<checksum>'.
                     type: string
-                  kind:
-                    description: Kind of the referent.
-                    type: string
-                  name:
-                    description: Name of the referent.
-                    type: string
-                  namespace:
-                    description: Namespace of the referent, when not specified it
-                      acts as LocalObjectReference.
+                  size:
+                    description: |-
+                      Size is the number of bytes of the blob.
+                      Can be used to determine how to file should be handled when downloaded (memory/disk)
+                    format: int64
+                    type: integer
+                  tag:
+                    description: Tag/Version of the blob
                     type: string
                 required:
-                - kind
-                - name
+                - digest
+                - size
+                - tag
                 type: object
-              interval:
-                description: Interval at which to refresh the configuration
+              digest:
+                description: Manifest digest (required to delete the manifest and
+                  prepare OCI artifact for GC)
+                type: string
+              repository:
+                description: OCI repository name
                 type: string
               suspend:
-                description: Suspend all localization behaviors, but keep existing
-                  localizations in place
+                description: Suspend stops all operations on this object.
                 type: boolean
-              target:
-                description: Target that is to be configured.
-                minProperties: 1
-                properties:
-                  apiVersion:
-                    description: API version of the referent, if not specified the
-                      Kubernetes preferred version will be used.
-                    type: string
-                  kind:
-                    description: Kind of the referent.
-                    type: string
-                  name:
-                    description: Name of the referent.
-                    type: string
-                  namespace:
-                    description: Namespace of the referent, when not specified it
-                      acts as LocalObjectReference.
-                    type: string
-                required:
-                - kind
-                - name
-                type: object
             required:
-            - config
-            - interval
-            - target
+            - blob
+            - digest
+            - repository
             type: object
           status:
-            description: ConfiguredResourceStatus defines the observed state of ConfiguredResource.
+            description: SnapshotStatus defines the observed state of Snapshot.
             properties:
               conditions:
                 items:
@@ -156,25 +143,9 @@ spec:
                   type: object
                 type: array
               observedGeneration:
+                description: ObservedGeneration is the last reconciled generation.
                 format: int64
                 type: integer
-              snapshotRef:
-                description: |-
-                  The configuration reconcile loop generates a snapshot, which contains the
-                  ConfiguredResourceSpec.Target ConfigurationReference after configuration.
-                  It is filled once the Snapshot is created and the configuration completed.
-                properties:
-                  name:
-                    default: ""
-                    description: |-
-                      Name of the referent.
-                      This field is effectively required, but due to backwards compatibility is
-                      allowed to be empty. Instances of this type with an empty value here are
-                      almost certainly wrong.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
             type: object
         type: object
     served: true

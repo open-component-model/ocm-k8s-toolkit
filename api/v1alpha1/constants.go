@@ -24,9 +24,6 @@ const (
 	OCMConfigKey = ".ocmconfig"
 	// OCMLabelDowngradable defines the secret.
 	OCMLabelDowngradable = "ocm.software/ocm-k8s-toolkit/downgradable"
-	// OCMComponentDescriptorList defines the file name of the component descriptor list exposed as artifact by the
-	// component controller.
-	OCMComponentDescriptorList = "component-descriptor-list.yaml"
 )
 
 // Log levels.
@@ -37,11 +34,13 @@ const (
 
 // Finalizers for controllers.
 const (
-	// ArtifactFinalizer is the finalizer that is added to artifacts created by the ocm controllers.
-	ArtifactFinalizer = "finalizers.ocm.software/artifact"
+	// SnapshotFinalizer is the finalizter that is added to snapshot created by the ocm controllers.
+	SnapshotFinalizer = "finalizers.ocm.software/snapshot"
 )
 
-// External CRDs.
+// OCI related constants.
 const (
-	ArtifactCrd = "https://github.com/openfluxcd/artifact/releases/download/v0.1.1/openfluxcd.ocm.software_artifacts.yaml"
+	OCISchemaVersion = 2
+	// Based on https://github.com/opencontainers/distribution-spec/blob/7872490e9d4943b20f11e21475bc13fd2e02b7d8/spec.md?plain=1#L157.
+	OCIRepositoryNameConstraints = "[a-z0-9]+((\\.|_|__|-+)[a-z0-9]+)*(\\/[a-z0-9]+((\\.|_|__|-+)[a-z0-9]+)*)*"
 )

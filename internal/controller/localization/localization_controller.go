@@ -9,7 +9,6 @@ import (
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"ocm.software/ocm/api/ocm/compdesc"
@@ -23,8 +22,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sTypes "k8s.io/apimachinery/pkg/types"
 	ocmctx "ocm.software/ocm/api/ocm"
 	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -32,9 +31,9 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	localizationclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/client"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/types"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/artifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/index"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/util"
 )
@@ -42,8 +41,8 @@ import (
 // Reconciler reconciles a LocalizationRules object.
 type Reconciler struct {
 	*ocm.BaseReconciler
-	*storage.Storage
 	LocalizationClient localizationclient.Client
+	Registry           snapshot.RegistryType
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -84,6 +83,8 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
+	logger := log.FromContext(ctx)
+
 	localization := &v1alpha1.LocalizedResource{}
 	if err := r.Get(ctx, req.NamespacedName, localization); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -93,25 +94,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, nil
 	}
 
-	if !localization.GetDeletionTimestamp().IsZero() {
-		// TODO: This is a temporary solution until a artifact-reconciler is written to handle the deletion of artifacts
-		if err := ocm.RemoveArtifactForCollectable(ctx, r.Client, r.Storage, localization); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to remove artifact: %w", err)
-		}
-
-		if removed := controllerutil.RemoveFinalizer(localization, v1alpha1.ArtifactFinalizer); removed {
-			if err := r.Update(ctx, localization); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
-			}
-		}
-
-		return ctrl.Result{}, nil
-	}
-
-	if added := controllerutil.AddFinalizer(localization, v1alpha1.ArtifactFinalizer); added {
-		if err := r.Update(ctx, localization); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
-		}
+	if localization.GetDeletionTimestamp() != nil {
+		logger.Info("localization is being deleted and cannot be used", "name", localization.Name)
 
 		return ctrl.Result{Requeue: true}, nil
 	}
@@ -137,10 +121,6 @@ func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, localization
 func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1.LocalizedResource) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	if err := r.Storage.ReconcileStorage(ctx, localization); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to reconcile storage: %w", err)
-	}
-
 	if localization.Spec.Target.Namespace == "" {
 		localization.Spec.Target.Namespace = localization.Namespace
 	}
@@ -152,7 +132,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		return ctrl.Result{}, fmt.Errorf("failed to fetch target: %w", err)
 	}
 
-	targetBackedByComponent, ok := target.(LocalizableArtifactContent)
+	targetBackedByComponent, ok := target.(LocalizableSnapshotContent)
 	if !ok {
 		err = fmt.Errorf("target is not backed by a component and cannot be localized")
 		status.MarkNotReady(r.EventRecorder, localization, v1alpha1.TargetFetchFailedReason, err.Error())
@@ -171,7 +151,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		return ctrl.Result{}, fmt.Errorf("failed to fetch config: %w", err)
 	}
 
-	rules, err := localizeRules(ctx, r.Client, r.Storage, targetBackedByComponent, cfg)
+	rules, err := localizeRules(ctx, r.Client, r.Registry, targetBackedByComponent, cfg)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, localization, v1alpha1.LocalizationRuleGenerationFailedReason, err.Error())
 
@@ -251,38 +231,36 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		return ctrl.Result{}, fmt.Errorf("configured resource containing localization is not yet ready")
 	}
 
-	art := &artifactv1.Artifact{}
-	if err := r.Get(ctx, client.ObjectKey{
-		Namespace: configuredResource.GetNamespace(),
-		Name:      configuredResource.Status.ArtifactRef.Name,
-	}, art); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to fetch artifact: %w", err)
+	snapshotCR := &v1alpha1.Snapshot{}
+	if err := r.Get(ctx, k8sTypes.NamespacedName{Namespace: configuredResource.GetNamespace(), Name: configuredResource.GetSnapshotName()}, snapshotCR); err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), localization, v1alpha1.GetSnapshotFailedReason, err.Error())
+
+		return ctrl.Result{}, err
 	}
 
-	artOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, art, func() error {
-		if err := controllerutil.SetOwnerReference(localization, art, r.Scheme); err != nil {
-			return fmt.Errorf("failed to set indirect owner reference on artifact: %w", err)
+	snapshotOp, err := controllerutil.CreateOrUpdate(ctx, r.Client, snapshotCR, func() error {
+		if err := controllerutil.SetOwnerReference(localization, snapshotCR, r.Scheme); err != nil {
+			return fmt.Errorf("failed to set indirect owner reference on snapshot: %w", err)
 		}
 
-		if art.GetAnnotations() == nil {
-			art.SetAnnotations(map[string]string{})
+		if snapshotCR.GetAnnotations() == nil {
+			snapshotCR.SetAnnotations(map[string]string{})
 		}
-		a := art.GetAnnotations()
-		a["ocm.software/artifact-purpose"] = "localization"
+		a := snapshotCR.GetAnnotations()
+		a["ocm.software/snapshot-purpose"] = "localization"
 		a["ocm.software/localization"] = fmt.Sprintf("%s/%s", localization.GetNamespace(), localization.GetName())
-		art.SetAnnotations(a)
+		snapshotCR.SetAnnotations(a)
 
 		return nil
 	})
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, localization, v1alpha1.ReconcileArtifactFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, localization, v1alpha1.CreateSnapshotFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to create or update artifact: %w", err)
 	}
-	logger.V(1).Info(fmt.Sprintf("artifact %s", artOp))
+	logger.V(1).Info(fmt.Sprintf("snapshot %s", snapshotOp))
 
-	localization.Status.ArtifactRef = configuredResource.Status.ArtifactRef
-	localization.Status.Digest = configuredResource.Status.Digest
+	localization.Status.SnapshotRef = configuredResource.Status.SnapshotRef
 	localization.Status.ConfiguredResourceRef = &v1alpha1.ObjectKey{
 		Name:      configuredResource.GetName(),
 		Namespace: configuredResource.GetNamespace(),
@@ -296,8 +274,8 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 func localizeRules(
 	ctx context.Context,
 	c client.Client,
-	s *storage.Storage,
-	content LocalizableArtifactContent,
+	r snapshot.RegistryType,
+	content LocalizableSnapshotContent,
 	cfg types.LocalizationConfig,
 ) (
 	[]v1alpha1.ConfigurationRule,
@@ -308,7 +286,7 @@ func localizeRules(
 		return nil, fmt.Errorf("failed to parse localization config: %w", err)
 	}
 
-	componentSet, componentDescriptor, err := ComponentDescriptorAndSetFromResource(ctx, c, s, content.GetComponent())
+	componentSet, componentDescriptor, err := ComponentDescriptorAndSetFromResource(ctx, c, r, content.GetComponent())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get content descriptor and set: %w", err)
 	}
@@ -317,7 +295,7 @@ func localizeRules(
 
 	localizedRules := make([]v1alpha1.ConfigurationRule, len(rules))
 	for i, rule := range rules {
-		// TODO Decide what the hell to do with GoTemplates
+		// TODO: Decide what the hell to do with GoTemplates
 		if rule.GoTemplate != nil {
 			localizedRules[i] = v1alpha1.ConfigurationRule{
 				GoTemplate: (*v1alpha1.ConfigurationRuleGoTemplate)(rule.GoTemplate),
@@ -355,28 +333,35 @@ func localizeRules(
 	return localizedRules, nil
 }
 
-// LocalizableArtifactContent is an artifact content that is backed by a component and resource, allowing it
+// LocalizableSnapshotContent is an artifact content that is backed by a component and resource, allowing it
 // to be localized (by resolving relative references from the resource & component into absolute values).
-type LocalizableArtifactContent interface {
-	artifact.Content
+type LocalizableSnapshotContent interface {
+	snapshot.Content
 	GetComponent() *v1alpha1.Component
 	GetResource() *v1alpha1.Resource
 }
 
 func ComponentDescriptorAndSetFromResource(
 	ctx context.Context,
-	clnt client.Reader,
-	strg *storage.Storage,
+	reader client.Reader,
+	registry snapshot.RegistryType,
 	baseComponent *v1alpha1.Component,
 ) (compdesc.ComponentVersionResolver, *compdesc.ComponentDescriptor, error) {
-	art, err := util.GetNamespaced[artifactv1.Artifact](ctx, clnt, baseComponent.Status.ArtifactRef, baseComponent.Namespace)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to Get artifact: %w", err)
+	snapshotResource := &v1alpha1.Snapshot{}
+	if err := reader.Get(ctx, k8sTypes.NamespacedName{Namespace: baseComponent.GetNamespace(), Name: baseComponent.GetSnapshotName()}, snapshotResource); err != nil {
+		return nil, nil, fmt.Errorf("failed to get snapshot: %w", err)
 	}
-	componentSet, err := ocm.GetComponentSetForArtifact(strg, art)
+
+	repository, err := registry.NewRepository(ctx, snapshotResource.Spec.Repository)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to Get component version set: %w", err)
+		return nil, nil, fmt.Errorf("failed to create repository: %w", err)
 	}
+
+	componentSet, err := ocm.GetComponentSetForSnapshot(ctx, repository, snapshotResource)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get component version set: %w", err)
+	}
+
 	componentDescriptor, err := componentSet.LookupComponentVersion(baseComponent.Spec.Component, baseComponent.Status.Component.Version)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to lookup component version: %w", err)

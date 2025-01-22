@@ -29,6 +29,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive,stylecheck // ginkgo...
 
+	// TODO: Replacement required!
 	"github.com/openfluxcd/artifact/test/utils"
 )
 

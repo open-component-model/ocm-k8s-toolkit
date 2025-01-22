@@ -1,4 +1,4 @@
-package artifact
+package snapshot
 
 import (
 	"bytes"
