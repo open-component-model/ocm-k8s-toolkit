@@ -36,6 +36,7 @@ rules:
   - ocmrepositories
   - replications
   - resources
+  - snapshots
   verbs:
   - create
   - delete
@@ -53,6 +54,7 @@ rules:
   - ocmrepositories/finalizers
   - replications/finalizers
   - resources/finalizers
+  - snapshots/finalizers
   verbs:
   - update
 - apiGroups:
@@ -64,6 +66,7 @@ rules:
   - ocmrepositories/status
   - replications/status
   - resources/status
+  - snapshots/status
   verbs:
   - get
   - patch
