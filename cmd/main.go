@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	// +kubebuilder:scaffold:imports
 	"context"
 	"crypto/tls"
 	"flag"
@@ -51,7 +52,6 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/resource"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	// +kubebuilder:scaffold:imports
 )
 
 var (
