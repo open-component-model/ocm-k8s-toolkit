@@ -10,10 +10,13 @@ Finally, the resource controller, or if specified the configuration controller, 
 the resource that is consumed by the deployers.
 
 Initially, it was planned to use a Custom Resource `artifact` type to represent these artifacts.
-This `artifact` type was [defined][artifact-definition] to point to a URL and hold a human-readable identifier
+This `artifact` type was [defined][artifact-definition] to point to a URL and holds a "human-readable" identifier
 `Revision` of a blob stored in a http-server inside the controller.
 
-The `artifact` idea was part of a bigger [RFC][fluxcd-rfc] for `FluxCD` which was unfortunately rejected.
+The `artifact` idea was part of a bigger [RFC][fluxcd-rfc] for `FluxCD`. Unfortunately, a possible implementation was
+postponed to an unspecified time in the future and the implementation details were also unclear.
+This was tantamount to a rejection.
+
 Therefore, the original purpose of that Custom Resource `artifact` is not present anymore. Additionally, the team
 decided to not use a plain http-server but an internal OCI registry to store and publish its blobs that are produced by
 the OCM controllers as single layer OCI artifacts.
@@ -22,7 +25,7 @@ There are several options on how to proceed with the replacement and implementat
 
 ## Artifact
 An artifact in the current context describes a resource that holds an identity to a blob and a pointer where to find
-the blob (currently a URL). It that sense, a producer can create an artifact and store these information and a consumer
+the blob (currently a URL). In that sense, a producer can create an artifact and store this information and a consumer
 can search for artifacts with the specific identity to find out its location.
 
 In the current implementation the artifact is defined in the [openfluxcd/artifact repository][artifact-definition].
@@ -62,7 +65,7 @@ transformation, they also can be used as a caching mechanism to reduce unnecessa
 
 [`ArtifactSpec`][artifact-spec]
 - URL: HTTP address of the artifact as exposed by the controller managing the source
-- Revision: Human-readable identifier traceable in the origin source system (commit SHA, tag, version, ...)
+- Revision: "Human-readable" identifier traceable in the origin source system (commit SHA, tag, version, ...)
 - Digest: Digest of the file that is stored (algo:checksum)
   - Used to verify the artifact (see [artifact-digest-verify-ref][artifact-digest-verify-ref])
 - LastUpdateTime: Timestamp of the last update of the artifact
@@ -90,9 +93,10 @@ Cons:
 - Probably more complex to consume the blobs as the consumer must know the identity of the source resource and the
 resulting blob.
 - No selective watch for changes in the blob possible. The reconciliation would always trigger, when something on the
-status of the source resources is changed.
-
-Since no selective watch for changes would be possible, this option is not feasible.
+status of the source resources is changed. (Probably not true, since we watch the source resource that is referenced
+by the consumer resource (see [watch of the resource controller][watch-resource-controller] ))
+- Since there is a "real" blob in the storage, it should have a respective entity to represent it, e.g.
+`artifact`/`snapshot`
 
 #### Option 2: Use the `snapshot` implementation
 
@@ -107,7 +111,7 @@ required either way).
 - Implemented in `open-component-model/ocm-controller` which will be archived, when the `ocm-controller` v2 go
 productive. Thus, the `snapshot` implementation must be copied in this repository.
 
-#### Option 3: Use the `artifact` implementation
+#### Option 3: Use the `artifact` implementation (rejected)
 
 Pros:
 - Already implemented (and a bit tested)
@@ -117,6 +121,9 @@ Cons:
 - In another GitHub organization that will be archived in the future as the initial purpose has vanished.
 - Implemented for a plain http-server and not for OCI registry (check 
 [storage implementation][controller-manager-storage]). Thus, missing dedicated control-loop.
+- Requires an integration point for Flux and Argo.
+
+Basically rejected because we could only use the `Artifact` type definition and not the implementation for the storage.
 
 #### Option 4: Use `OCIRepository` implementation from `FluxCD` (rejected)
 
@@ -157,7 +164,7 @@ Cons:
 ## (Internal) OCI Registry
 ...
 
-### Option 1: Let the use provide a registry that is OCI compliant
+### Option 1: Let the user provide a registry that is OCI compliant
 
 Pros:
 - Not our responsibility
@@ -209,3 +216,4 @@ Cons:
 [artifact-digest-verify-ref]: https://github.com/openfluxcd/controller-manager/blob/d83030b764ab4f143d4b9a815227ad3cdfd9433f/storage/storage.go#L478
 [oci-repository-type]: https://github.com/fluxcd/source-controller/blob/529eee0ed1afc6063acd9750aa598d90ae3399ed/api/v1beta2/ocirepository_types.go#L296
 [controller-manager-storage]: https://github.com/openfluxcd/controller-manager/blob/d83030b764ab4f143d4b9a815227ad3cdfd9433f/storage/storage.go
+[watch-resource-controller]: https://github.com/open-component-model/ocm-k8s-toolkit/blob/108ac97815258cef41cf8f340c99b45f7bdd5023/internal/controller/resource/resource_controller.go#L86
