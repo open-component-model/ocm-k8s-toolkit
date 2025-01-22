@@ -1,67 +1,67 @@
-#name: CI
-#
-#on:
-#  pull_request:
-#    paths-ignore:
-#      - '**.md'
-#      - 'docs/**'
-#  workflow_call:
-#
-#  push:
-#    branches:
-#      - main
-#
-#permissions:
-#  contents: read # for actions/checkout to fetch code
-#
-#jobs:
-#  tests:
-#    runs-on: ubuntu-latest
-#    steps:
-#      - name: Checkout
-#        uses: actions/checkout@v4
-#      - name: Setup Go
-#        uses: actions/setup-go@v5
-#        with:
-#          go-version-file: '${{ github.workspace }}/go.mod'
-#          cache: false
-#
-#      - name: Get Go environment
-#        run: |
-#          echo "go_cache=$(go env GOCACHE)" >> $GITHUB_ENV
-#          echo "go_modcache=$(go env GOMODCACHE)" >> $GITHUB_ENV
-#      - name: Set up cache
-#        # https://github.com/actions/setup-go/issues/358 - cache is not working with setup-go for multiple jobs
-#        uses: actions/cache@v4
-#        with:
-#          path: |
-#            ${{ env.go_cache }}
-#            ${{ env.go_modcache }}
-#          key: ${{ env.cache_name }}-${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ hashFiles('**/go.mod') }}
-#          restore-keys: |
-#            ${{ env.cache_name }}-${{ runner.os }}-go-
-#        env:
-#          cache_name: controller-tests
-#
-#      - name: Restore K8s Cache
-#        id: cache-k8s-restore
-#        uses: actions/cache/restore@v4
-#        with:
-#          path: |
-#            bin/k8s
-#          key: ${{ runner.os }}-k8s
-#
-#      - name: Run tests
-#        run: make test
-#
-#      - name: Save K8s Cache
-#        id: cache-k8s-save
-#        uses: actions/cache/save@v4
-#        with:
-#          path: |
-#            bin/k8s
-#          key: ${{ steps.cache-k8s-restore.outputs.cache-primary-key }}
-#
+name: CI
+
+on:
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_call:
+
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read # for actions/checkout to fetch code
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: '${{ github.workspace }}/go.mod'
+          cache: false
+
+      - name: Get Go environment
+        run: |
+          echo "go_cache=$(go env GOCACHE)" >> $GITHUB_ENV
+          echo "go_modcache=$(go env GOMODCACHE)" >> $GITHUB_ENV
+      - name: Set up cache
+        # https://github.com/actions/setup-go/issues/358 - cache is not working with setup-go for multiple jobs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.go_cache }}
+            ${{ env.go_modcache }}
+          key: ${{ env.cache_name }}-${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ hashFiles('**/go.mod') }}
+          restore-keys: |
+            ${{ env.cache_name }}-${{ runner.os }}-go-
+        env:
+          cache_name: controller-tests
+
+      - name: Restore K8s Cache
+        id: cache-k8s-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            bin/k8s
+          key: ${{ runner.os }}-k8s
+
+      - name: Run tests
+        run: make test
+
+      - name: Save K8s Cache
+        id: cache-k8s-save
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            bin/k8s
+          key: ${{ steps.cache-k8s-restore.outputs.cache-primary-key }}
+
 #  e2e-tests:
 #    runs-on: large_runner
 #    steps:
