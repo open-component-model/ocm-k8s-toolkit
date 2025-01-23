@@ -1,8 +1,12 @@
 # Use Single Layer OCI Artifacts for (intermediate) blobs
 
+* Status: proposed
 * Deciders: @frewilhelm @ikhandamirov
+* Approvers: 
 
-## Background
+Technical Story: https://github.com/open-component-model/ocm-project/issues/333
+
+## Context and Problem Statement
 
 The controllers in this repository create artifacts/blobs that are used by one another. For example, the
 component-controller creates an artifact containing the component descriptors from the specified component version.
@@ -16,16 +20,28 @@ This `artifact` type was [defined][artifact-definition] to point to a URL and ho
 The `artifact` idea was part of a bigger [RFC][fluxcd-rfc] for `FluxCD`. Unfortunately, a possible implementation was
 postponed to an unspecified time in the future and the implementation details were also unclear.
 This was tantamount to a rejection.
+(^ ongoing discussion if it is rejected or not)
 
 Therefore, the original purpose of that Custom Resource `artifact` is not present anymore. Additionally, the team
 decided to not use a plain http-server but an internal OCI registry to store and publish its blobs that are produced by
 the OCM controllers as single layer OCI artifacts.
 
-The discussion concerns two major topics:
+Arguments (meeting notes from 26.11.2024):
+- An OCI registry is a responsibility less to maintain 
+- Stop support at the level of the distribution spec of OCI
+- OCI registries could provide GC
+- We will need an abstraction that handles OCI registries anyway
+
+The following discussion concerns two major topics:
 - How to store and reference the single layer OCI artifacts.
 - How to setup the internal OCI registry and which one to use.
 
 There are several options on how to proceed with the replacement and implementation that are discussed below.
+
+## Decision Drivers
+
+- Reduce maintenance effort.
+- Fit into our use-cases (especially with FluxCD)
 
 ## Artifact
 
@@ -74,10 +90,8 @@ transformation, they also can be used as a caching mechanism to reduce unnecessa
 - Digest: Digest of the file that is stored (algo:checksum)
   - Used to verify the artifact (see [artifact-digest-verify-ref][artifact-digest-verify-ref])
 - LastUpdateTime: Timestamp of the last update of the artifact
-- Size: Number of bytes in the file
-  - Purpose?
-    - Maybe to check the size before downloading it? Maybe there are different option to download a bigger file?
-- Metadata: Holds upstream information, e.g. OCI annotations (as map[string]string) (did we ever use that?) (Purpose?)
+- Size: Number of bytes in the file (decide beforehand on how to download the files)
+- Metadata: Holds upstream information, e.g. OCI annotations (as map[string]string)
 
 [`ArtifactStatus`][artifact-status]
 - No fields
@@ -95,11 +109,6 @@ Pros:
 - No additional custom resource needed.
 
 Cons:
-- Probably more complex to consume the blobs as the consumer must know the identity of the source resource and the
-resulting blob.
-- No selective watch for changes in the blob possible. The reconciliation would always trigger, when something on the
-status of the source resources is changed. (Probably not true, since we watch the source resource that is referenced
-by the consumer resource (see [watch of the resource controller][watch-resource-controller] ))
 - Since there is a "real" blob in the storage, it should have a respective entity to represent it, e.g.
 `artifact`/`snapshot`
 
@@ -110,9 +119,8 @@ Pros:
 - Implemented for an OCI registry
 
 Cons:
-- Status fields feel unnecessary.
-- Require a transformer to make the artifacts consumable by `FluxCD`s Helm- and Kustomize-Controller (is probably
-required either way).
+- Require a transformer to make the artifacts consumable by FluxCDs Helm- and Kustomize-Controller. E.g. by using
+FluxCDs `source-controller` and its CR `OCIRepository`.
 - Implemented in `open-component-model/ocm-controller` which will be archived, when the `ocm-controller` v2 go
 productive. Thus, the `snapshot` implementation must be copied in this repository.
 
@@ -123,10 +131,9 @@ Pros:
 - Rather easy and simple
 
 Cons:
-- In another GitHub organization that will be archived in the future as the initial purpose has vanished.
 - Implemented for a plain http-server and not for OCI registry (check 
 [storage implementation][controller-manager-storage]). Thus, missing dedicated control-loop.
-- Requires an integration point for Flux and Argo.
+- Would require a custom deployment of controller of FluxCD
 
 Basically rejected because we could only use the `Artifact` type definition and not the implementation for the storage.
 
