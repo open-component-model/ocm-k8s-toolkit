@@ -3,9 +3,8 @@ name: CI
 on:
   pull_request:
     paths-ignore:
-      - 'CODE_OF_CONDUCT.md'
-      - 'README.md'
-      - 'Contributing.md'
+      - '**.md'
+      - 'docs/**'
   workflow_call:
 
   push:
@@ -16,24 +15,6 @@ permissions:
   contents: read # for actions/checkout to fetch code
 
 jobs:
-  golangci-lint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: '${{ github.workspace }}/go.mod'
-      - id: get-golangci-lint-version
-        run: |
-          version=$(grep 'GOLANGCI_LINT_VERSION\s*?' Makefile | awk -F '=' '{print $2}' | tr -d ' ')
-          echo "GOLANGCI_LINT_VERSION=${version}" >> $GITHUB_ENV
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: ${{ env.GOLANGCI_LINT_VERSION }}
-
   tests:
     runs-on: ubuntu-latest
     steps:

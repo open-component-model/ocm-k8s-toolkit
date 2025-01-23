@@ -23,15 +23,15 @@ import (
 	"os"
 
 	"github.com/fluxcd/pkg/runtime/patch"
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
-	ctrl "sigs.k8s.io/controller-runtime"
+	"github.com/openfluxcd/controller-manager/storage"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	"github.com/openfluxcd/controller-manager/storage"
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	configurationclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/client"

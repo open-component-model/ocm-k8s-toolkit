@@ -23,27 +23,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
-	corev1 "k8s.io/api/core/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
-	ocmctx "ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/compdesc"
-	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	"ocm.software/ocm/api/ocm/extensions/download"
 	"ocm.software/ocm/api/ocm/resolvers"
 	"ocm.software/ocm/api/ocm/selectors"
 	"ocm.software/ocm/api/ocm/tools/signing"
 	"ocm.software/ocm/api/utils/blobaccess"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -51,6 +43,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	ocmctx "ocm.software/ocm/api/ocm"
+	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
@@ -231,7 +231,16 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
 
-	if err := ocm.ConfigureOCMContext(ctx, r, octx, resource, component); err != nil {
+	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), resource)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.ConfigureContextFailedReason, err.Error())
+
 		return ctrl.Result{}, err
 	}
 
@@ -313,7 +322,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	}
 
 	// Update status
-	if err = setResourceStatus(ctx, resource, resourceAccess); err != nil {
+	if err = setResourceStatus(ctx, configs, resource, resourceAccess); err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.StatusSetFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to set resource status: %w", err)
@@ -546,7 +555,7 @@ func reconcileArtifact(
 }
 
 // setResourceStatus updates the resource status with the all required information.
-func setResourceStatus(ctx context.Context, resource *v1alpha1.Resource, resourceAccess ocmctx.ResourceAccess) error {
+func setResourceStatus(ctx context.Context, configs []v1alpha1.OCMConfiguration, resource *v1alpha1.Resource, resourceAccess ocmctx.ResourceAccess) error {
 	log.FromContext(ctx).V(1).Info("updating resource status")
 
 	// Get the access spec from the resource access
@@ -569,8 +578,7 @@ func setResourceStatus(ctx context.Context, resource *v1alpha1.Resource, resourc
 		Digest:        resourceAccess.Meta().Digest.String(),
 	}
 
-	resource.Status.ConfigRefs = slices.Clone(resource.Spec.ConfigRefs)
-	resource.Status.SecretRefs = slices.Clone(resource.Spec.SecretRefs)
+	resource.Status.EffectiveOCMConfig = configs
 
 	return nil
 }

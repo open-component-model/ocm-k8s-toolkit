@@ -25,14 +25,15 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	"k8s.io/apimachinery/pkg/fields"
 	"ocm.software/ocm/api/datacontext"
-	ocmctx "ocm.software/ocm/api/ocm"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	ocmctx "ocm.software/ocm/api/ocm"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
@@ -125,8 +126,16 @@ func (r *Reconciler) reconcileRepository(ctx context.Context, octx ocmctx.Contex
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
 
-	err := ocm.ConfigureOCMContext(ctx, r, octx, ocmRepo, ocmRepo)
+	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), ocmRepo)
 	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), ocmRepo, v1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return ctrl.Result{}, nil
+	}
+	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), ocmRepo, v1alpha1.ConfigureContextFailedReason, err.Error())
+
 		return ctrl.Result{}, err
 	}
 
@@ -135,7 +144,7 @@ func (r *Reconciler) reconcileRepository(ctx context.Context, octx ocmctx.Contex
 		return ctrl.Result{}, err
 	}
 
-	r.fillRepoStatusFromSpec(ocmRepo)
+	r.fillRepoStatusFromSpec(ocmRepo, configs)
 
 	status.MarkReady(r.EventRecorder, ocmRepo, "Successfully reconciled")
 
@@ -166,10 +175,10 @@ func (r *Reconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRe
 	return nil
 }
 
-func (r *Reconciler) fillRepoStatusFromSpec(ocmRepo *v1alpha1.OCMRepository) {
-	ocmRepo.SetEffectiveConfigSet()
-	ocmRepo.SetEffectiveConfigRefs()
-	ocmRepo.SetEffectiveSecretRefs()
+func (r *Reconciler) fillRepoStatusFromSpec(ocmRepo *v1alpha1.OCMRepository,
+	configs []v1alpha1.OCMConfiguration,
+) {
+	ocmRepo.Status.EffectiveOCMConfig = configs
 }
 
 // SetupWithManager sets up the controller with the Manager.

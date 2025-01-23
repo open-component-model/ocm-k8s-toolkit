@@ -9,8 +9,9 @@ import (
 	"os"
 
 	"github.com/containers/image/v5/pkg/compression"
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 )
 
 type WriterToStorageFromArtifact interface {

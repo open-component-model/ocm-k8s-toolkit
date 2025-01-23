@@ -7,8 +7,9 @@ spec:
   componentRef:
     name: ocm-comp
     namespace: default
-  configRefs:
-  - name: transfer-options
+  ocmConfig:
+    - kind: ConfigMap
+      name: transfer-options
   interval: 10min
   targetRepositoryRef:
     name: ocm-repo

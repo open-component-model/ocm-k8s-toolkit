@@ -9,4 +9,10 @@ spec:
   repositoryRef:
     name: origin-repository
     namespace: e2e-replication-controller-test
+  ocmConfig:
+    - apiVersion: delivery.ocm.software/v1alpha1
+      kind: OCMRepository
+      name: origin-repository
+      namespace: e2e-replication-controller-test
+      policy: Propagate
   semver: 6.6.2

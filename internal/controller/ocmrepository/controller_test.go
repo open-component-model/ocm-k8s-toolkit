@@ -5,23 +5,25 @@ import (
 	"os"
 	"time"
 
-	"github.com/fluxcd/pkg/apis/meta"
-	"github.com/fluxcd/pkg/runtime/conditions"
 	. "github.com/mandelsoft/goutils/testutils"
-	"github.com/mandelsoft/vfs/pkg/osfs"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	. "ocm.software/ocm/api/helper/builder"
-	environment "ocm.software/ocm/api/helper/env"
+
+	"github.com/fluxcd/pkg/apis/meta"
+	"github.com/fluxcd/pkg/runtime/conditions"
+	"github.com/mandelsoft/vfs/pkg/osfs"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
 	"ocm.software/ocm/api/ocm/extensions/repositories/ocireg"
 	"ocm.software/ocm/api/utils/accessio"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
+
+	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	environment "ocm.software/ocm/api/helper/env"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
@@ -138,9 +140,9 @@ var _ = Describe("OCMRepository Controller", func() {
 		})
 	})
 
-	Describe("Reconsiling a valid OCMRepository", func() {
+	Describe("Reconciling a valid OCMRepository", func() {
 
-		Context("When SecretRefs and ConfigRefs properly set", func() {
+		Context("When ConfigRefs properly set", func() {
 			It("OCMRepository can be reconciled", func() {
 
 				By("creating secret and config objects")
@@ -152,35 +154,122 @@ var _ = Describe("OCMRepository Controller", func() {
 				repoName := TestOCMRepositoryObj + "-all-fields"
 				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, repoName, &specdata)
 
-				By("adding SecretRefs")
-				ocmRepo.Spec.SecretRefs = append(ocmRepo.Spec.SecretRefs, corev1.LocalObjectReference{Name: secrets[0].Name})
-				ocmRepo.Spec.SecretRefs = append(ocmRepo.Spec.SecretRefs, corev1.LocalObjectReference{Name: secrets[1].Name})
-				ocmRepo.Spec.SecretRefs = append(ocmRepo.Spec.SecretRefs, corev1.LocalObjectReference{Name: secrets[2].Name})
-
-				By("adding ConfigRefs")
-				ocmRepo.Spec.ConfigRefs = append(ocmRepo.Spec.ConfigRefs, corev1.LocalObjectReference{Name: configs[0].Name})
-				ocmRepo.Spec.ConfigRefs = append(ocmRepo.Spec.ConfigRefs, corev1.LocalObjectReference{Name: configs[1].Name})
-				ocmRepo.Spec.ConfigRefs = append(ocmRepo.Spec.ConfigRefs, corev1.LocalObjectReference{Name: configs[2].Name})
-
-				By("adding ConfigSet")
-				configSet := "set1"
-				ocmRepo.Spec.ConfigSet = &configSet
+				By("adding config and secret refs")
+				ocmRepo.Spec.OCMConfig = append(ocmRepo.Spec.OCMConfig, []v1alpha1.OCMConfiguration{
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "Secret",
+							Name:       secrets[0].Name,
+							Namespace:  secrets[0].Namespace,
+						},
+					},
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "Secret",
+							Name:       secrets[1].Name,
+						},
+						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+					},
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							Kind: "Secret",
+							Name: secrets[2].Name,
+						},
+						Policy: v1alpha1.ConfigurationPolicyPropagate,
+					},
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "ConfigMap",
+							Name:       configs[0].Name,
+							Namespace:  configs[0].Namespace,
+						},
+					},
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "ConfigMap",
+							Name:       configs[1].Name,
+						},
+						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+					},
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							Kind: "ConfigMap",
+							Name: configs[2].Name,
+						},
+						Policy: v1alpha1.ConfigurationPolicyPropagate,
+					},
+				}...)
 
 				By("creating OCMRepository object")
 				Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
 
-				By("check that the SecretRefs and ConfigRefs are in the status")
-				Eventually(komega.Object(ocmRepo), "1m").Should(And(
+				By("check that the ConfigRefs are in the status")
+				expectedEffectiveOCMConfig := []v1alpha1.OCMConfiguration{
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "Secret",
+							Name:       secrets[0].Name,
+							Namespace:  secrets[0].Namespace,
+						},
+						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+					},
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "Secret",
+							Name:       secrets[1].Name,
+							Namespace:  secrets[1].Namespace,
+						},
+						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+					},
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "Secret",
+							Name:       secrets[2].Name,
+							Namespace:  secrets[2].Namespace,
+						},
+						Policy: v1alpha1.ConfigurationPolicyPropagate,
+					},
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "ConfigMap",
+							Name:       configs[0].Name,
+							Namespace:  configs[0].Namespace,
+						},
+						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+					},
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "ConfigMap",
+							Name:       configs[1].Name,
+							Namespace:  configs[1].Namespace,
+						},
+						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+					},
+					{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "ConfigMap",
+							Name:       configs[2].Name,
+							Namespace:  configs[2].Namespace,
+						},
+						Policy: v1alpha1.ConfigurationPolicyPropagate,
+					},
+				}
+				Eventually(komega.Object(ocmRepo), "15s").Should(And(
 					HaveField("Status.Conditions", ContainElement(
 						And(HaveField("Type", Equal(meta.ReadyCondition)), HaveField("Status", Equal(metav1.ConditionTrue))),
 					)),
-					HaveField("Status.SecretRefs", ContainElement(Equal(ocmRepo.Spec.SecretRefs[0]))),
-					HaveField("Status.SecretRefs", ContainElement(Equal(ocmRepo.Spec.SecretRefs[1]))),
-					HaveField("Status.SecretRefs", ContainElement(Equal(ocmRepo.Spec.SecretRefs[2]))),
-					HaveField("Status.ConfigRefs", ContainElement(Equal(ocmRepo.Spec.ConfigRefs[0]))),
-					HaveField("Status.ConfigRefs", ContainElement(Equal(ocmRepo.Spec.ConfigRefs[1]))),
-					HaveField("Status.ConfigRefs", ContainElement(Equal(ocmRepo.Spec.ConfigRefs[2]))),
-					HaveField("Status.ConfigSet", Equal(*ocmRepo.Spec.ConfigSet)),
+					HaveField("Status.EffectiveOCMConfig", ConsistOf(expectedEffectiveOCMConfig)),
+					HaveField("GetEffectiveOCMConfig()", ConsistOf(expectedEffectiveOCMConfig)),
 				))
 
 				By("cleanup secret and config objects")
@@ -252,7 +341,6 @@ var _ = Describe("OCMRepository Controller", func() {
 				}).WithTimeout(10 * time.Second).Should(Succeed())
 			})
 		})
-
 	})
 })
 

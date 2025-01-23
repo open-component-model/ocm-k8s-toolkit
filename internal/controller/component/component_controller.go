@@ -22,28 +22,27 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
-
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/goutils/sliceutils"
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	"github.com/openfluxcd/controller-manager/storage"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
-	ocmctx "ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/resolvers"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/yaml"
+
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
+	ocmctx "ocm.software/ocm/api/ocm"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
@@ -175,9 +174,21 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
 
-	err := ocm.ConfigureOCMContext(ctx, r, octx, component, repository)
+	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), component)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ConfigureContextFailedReason, "Configuring Context failed")
+		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return ctrl.Result{}, nil
+	}
+	verifications, err := ocm.GetVerifications(ctx, r.GetClient(), component)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return ctrl.Result{}, nil
+	}
+	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs, verifications)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
 
 		return ctrl.Result{}, err
 	}
@@ -242,7 +253,7 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 	}
 
 	// Update status
-	r.setComponentStatus(component, v1alpha1.ComponentInfo{
+	r.setComponentStatus(component, configs, v1alpha1.ComponentInfo{
 		RepositorySpec: repository.Spec.RepositorySpec,
 		Component:      component.Spec.Component,
 		Version:        version,
@@ -408,14 +419,10 @@ func (r *Reconciler) normalizeComponentVersionName(name string) string {
 
 func (r *Reconciler) setComponentStatus(
 	component *v1alpha1.Component,
+	configs []v1alpha1.OCMConfiguration,
 	info v1alpha1.ComponentInfo,
 ) {
 	component.Status.Component = info
 
-	component.Status.ConfigRefs = slices.Clone(component.Spec.ConfigRefs)
-	component.Status.SecretRefs = slices.Clone(component.Spec.SecretRefs)
-
-	if component.Spec.ConfigSet != nil {
-		component.Status.ConfigSet = *component.Spec.ConfigSet
-	}
+	component.Status.EffectiveOCMConfig = configs
 }

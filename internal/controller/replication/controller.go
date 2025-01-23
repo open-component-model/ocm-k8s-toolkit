@@ -21,18 +21,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/fluxcd/pkg/runtime/conditions"
+	"github.com/fluxcd/pkg/runtime/patch"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
-	ocmctx "ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/ocmutils/check"
 	"ocm.software/ocm/api/ocm/tools/transfer"
 	"ocm.software/ocm/api/ocm/tools/transfer/transferhandler"
 	"ocm.software/ocm/api/ocm/tools/transfer/transferhandler/standard"
-	ocmutils "ocm.software/ocm/api/utils/misc"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -40,8 +37,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/fluxcd/pkg/runtime/conditions"
-	"github.com/fluxcd/pkg/runtime/patch"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ocmctx "ocm.software/ocm/api/ocm"
+	ocmutils "ocm.software/ocm/api/utils/misc"
+	ctrl "sigs.k8s.io/controller-runtime"
+
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
@@ -161,11 +161,18 @@ func (r *Reconciler) reconcile(ctx context.Context, replication *v1alpha1.Replic
 		return ctrl.Result{RequeueAfter: replication.GetRequeueAfter()}, nil
 	}
 
-	historyRecord, err := r.transfer(ctx, replication, comp, repo)
+	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), replication)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), replication, v1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+
+	historyRecord, err := r.transfer(ctx, configs, replication, comp, repo)
 	if err != nil {
 		historyRecord.Error = err.Error()
 		historyRecord.EndTime = metav1.Now()
-		r.setReplicationStatus(replication, historyRecord)
+		r.setReplicationStatus(configs, replication, historyRecord)
 
 		logger.Info("error transferring component", "component", comp.Name, "targetRepository", repo.Name)
 		status.MarkNotReady(r.EventRecorder, replication, v1alpha1.ReplicationFailedReason, err.Error())
@@ -174,13 +181,13 @@ func (r *Reconciler) reconcile(ctx context.Context, replication *v1alpha1.Replic
 	}
 
 	// Update status
-	r.setReplicationStatus(replication, historyRecord)
+	r.setReplicationStatus(configs, replication, historyRecord)
 	status.MarkReady(r.EventRecorder, replication, "Successfully replicated %s to %s", comp.Name, repo.Name)
 
 	return ctrl.Result{RequeueAfter: replication.GetRequeueAfter()}, nil
 }
 
-func (r *Reconciler) transfer(ctx context.Context,
+func (r *Reconciler) transfer(ctx context.Context, configs []v1alpha1.OCMConfiguration,
 	replication *v1alpha1.Replication, comp *v1alpha1.Component, targetOCMRepo *v1alpha1.OCMRepository,
 ) (historyRecord v1alpha1.TransferStatus, retErr error) {
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
@@ -202,9 +209,11 @@ func (r *Reconciler) transfer(ctx context.Context,
 		TargetRepositorySpec: string(targetOCMRepo.Spec.RepositorySpec.Raw),
 	}
 
-	err := r.ConfigureOCMContext(ctx, octx, replication, comp, targetOCMRepo)
+	err := ocm.ConfigureContext(ctx, octx, r.GetClient(), configs)
 	if err != nil {
-		return historyRecord, fmt.Errorf("cannot configure OCM context: %w", err)
+		status.MarkNotReady(r.GetEventRecorder(), replication, v1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return historyRecord, fmt.Errorf("cannot configure context: %w", err)
 	}
 
 	sourceRepo, err := session.LookupRepositoryForConfig(octx, comp.Status.Component.RepositorySpec.Raw)
@@ -280,44 +289,10 @@ func (r *Reconciler) validate(session ocmctx.Session, repo ocmctx.Repository, co
 	return nil
 }
 
-func (r *Reconciler) ConfigureOCMContext(ctx context.Context, octx ocmctx.Context,
-	replication *v1alpha1.Replication, comp *v1alpha1.Component, targetOCMRepo *v1alpha1.OCMRepository,
-) error {
-	sourceOCMRepo := &v1alpha1.OCMRepository{}
-	if err := r.Get(ctx, types.NamespacedName{
-		Namespace: comp.Spec.RepositoryRef.Namespace,
-		Name:      comp.Spec.RepositoryRef.Name,
-	}, sourceOCMRepo); err != nil {
-		return fmt.Errorf("failed to configure ocmcontext: %w", err)
-	}
-
-	err := ocm.ConfigureOCMContext(ctx, r, octx, comp, sourceOCMRepo)
-	if err != nil {
-		return fmt.Errorf("failed to configure ocmcontext: %w", err)
-	}
-
-	err = ocm.ConfigureOCMContext(ctx, r, octx, targetOCMRepo, targetOCMRepo)
-	if err != nil {
-		return fmt.Errorf("failed to configure ocmcontext: %w", err)
-	}
-
-	err = ocm.ConfigureOCMContext(ctx, r, octx, replication, replication)
-	if err != nil {
-		return fmt.Errorf("failed to configure ocmcontext: %w", err)
-	}
-
-	return nil
-}
-
-func (r *Reconciler) setReplicationStatus(replication *v1alpha1.Replication, historyRecord v1alpha1.TransferStatus) {
+func (r *Reconciler) setReplicationStatus(configs []v1alpha1.OCMConfiguration, replication *v1alpha1.Replication, historyRecord v1alpha1.TransferStatus) {
 	replication.AddHistoryRecord(historyRecord)
 
-	replication.Status.ConfigRefs = slices.Clone(replication.Spec.ConfigRefs)
-	replication.Status.SecretRefs = slices.Clone(replication.Spec.SecretRefs)
-
-	if replication.Spec.ConfigSet != nil {
-		replication.Status.ConfigSet = *replication.Spec.ConfigSet
-	}
+	replication.Status.EffectiveOCMConfig = configs
 }
 
 // SetupWithManager sets up the controller with the Manager.
