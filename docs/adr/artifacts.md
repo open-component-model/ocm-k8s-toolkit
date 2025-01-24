@@ -190,8 +190,10 @@ Creating a new custom resource seems like an overkill, considering that the `sna
 our use-cases. Thus, it seems more reasonable to go with the `snapshot` implementation and adjust/refactor that.
 
 
-## (Internal) OCI Registry (How to setup the internal OCI registry and which one to use)
-...
+## (Internal) OCI Registry
+
+This in-cluster HTTPS-based registry is used by the OCM controllers to store resources locally. It should never be accessible from outside, thus it is transparent to the users of the OCM controller. At the same time the registry is accessible for Flux, running in the same cluster.
+
 
 ### Considered Options
 
@@ -199,6 +201,13 @@ our use-cases. Thus, it seems more reasonable to go with the `snapshot` implemen
 * Option 2: Deploy an OCI image registry with our controllers
   * Option 2.1: Use implementation from ocm-controllers v1
   * Option 2.2: Use [`zot`](https://github.com/project-zot/zot)
+
+### Registry Selection Criteria
+
+- Ease of deployment
+- HTTPS support
+- Garbage collection
+-  ...
 
 ### Decision Outcome
 
@@ -214,24 +223,30 @@ Chosen option: "???", because...
 
 ### Pros and Cons of the Options
 
-#### Option 1: Let the user provide a registry that is OCI compliant
+### Option 1: Let the user provide a registry that is OCI compliant
 
 Pros:
 - Not our responsibility
 - Users can customize their OCI registry like they want
-- ...
 
 Cons:
 - We do not "control" the resource and issues caused by another OCI registry could be hard to fix/support
-- ...
+- Most people need to operate a registry than and the majority would not have experience maintaining a production grade stable oci registry as a service
+- Giving a possibility to the user to provide/configure an own registry does not eliminate the need to provide a default registry (option 2), especially to those users who do not want to customize an own registry.
 
 #### Option 2: Deploy an OCI image registry with our controllers
 
-##### Option 2.1: Use implementation from ocm-controllers v1
+Pros:
+- Simplifies deployment choices and stability guarantees for us.
+
+Cons:
+- ...
+
+##### Option 2.1: Use implementation from ocm-controllers v1 ([distribution registry](https://github.com/distribution/distribution))
 
 Pros:
-- Already implemented.
-- ...
+- Faster implementation time, as deployment can be copied from v1 implementation
+- Mature technology (almost legacy)
 
 Cons:
 - ...
@@ -239,12 +254,13 @@ Cons:
 ###### Option 2.2: Use [`zot`](https://github.com/project-zot/zot)
 
 Pros:
-- Is the newest shot
-- FluxCD mentions that they want to use a `zot` OCI registry in the future
+- Newer technology, aiming at minimal deployment, embedding into other products, inline garbage collection and storage deduplication
+- Nice documentation
+- FluxCD team mentioned (verbally) that they want to use a `zot` OCI registry in the future (though no 100% guarantee or any evidence that they started working on this so far)
 - ...
 
 Cons:
-- Implement from scratch (probably not true)
+- Longer implementation time, as it involves learing how to deploy and operate a new registry
 - ...
 
 # Links
