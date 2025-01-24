@@ -40,10 +40,10 @@ There are several options on how to proceed with the replacement and implementat
 
 ## Decision Drivers
 
-- Reduce maintenance effort.
+- Reduce maintenance effort
 - Fit into our use-cases (especially with FluxCD)
 
-## Artifact
+## Artifact (How to store and reference the single layer OCI artifacts)
 
 An artifact in the current context describes a resource that holds an identity to a blob and a pointer where to find
 the blob (currently a URL). In that sense, a producer can create an artifact and store this information and a consumer
@@ -68,9 +68,7 @@ transformation, they also can be used as a caching mechanism to reduce unnecessa
 [`SnapshotSpec`][snapshot-spec]
 - Identity: OCM Identity (map[string]string) (Created by [constructIdentity()][snapshot-create-identity])
 - Digest: OCI Layer Digest (Based on [go-containerregistry OCI implementation][go-containerregistry-digest])
-  - Probably to check if the blob that the `snapshot` is pointing to is already equal to a newly created blob
 - Tag: The version (e.g. `latest`, `v1.0.0`, ..., see [reference][snapshot-version-ref]
-  - Purpose?
 - (Suspend)
 
 [`SnapshotStatus`][snapshot-status]
@@ -96,11 +94,31 @@ transformation, they also can be used as a caching mechanism to reduce unnecessa
 [`ArtifactStatus`][artifact-status]
 - No fields
 
-### Options
+### Considered Options
 
-The following sections discusses several options.
+* Option 1: Omit the `artifact`/`snapshot` concept
+* Option 2: Use the `snapshot` implementation
+* Option 3: Use the `artifact` implementation 
+* Option 4: Use `OCIRepository` implementation from `FluxCD`
+* Option 5: Create a new custom resource
 
-#### Option 1: Omit the `artifact`/`snapshot` concept (Rejected)
+### Decision Outcome
+
+Chosen option: "Option 2: Use the `snapshot` implementation", because it is already implemented in the
+`ocm-controllers` v1 and fits our use-cases most.
+
+#### Positive Consequences
+
+- Most of the functionality is already implemented, can be copied, and adjusted/refactored to our design.
+
+#### Negative Consequences
+
+- Requires a transformer that transforms the `snapshot` resource in something that, for example, FluxCDs
+`source-controller` can consume. For this, the FluxCDs `OCIRepository` resource seems predestined.
+
+### Pros and Cons of the Options
+
+#### Option 1: Omit the `artifact`/`snapshot` concept
 
 Instead of using an intermediate Custom Resource as `artifact` or `snapshot`, one could update the status of the source
 resource that is creating the blob could point to the location of that blob itself.
@@ -112,7 +130,7 @@ Cons:
 - Since there is a "real" blob in the storage, it should have a respective entity to represent it, e.g.
 `artifact`/`snapshot`
 
-#### Option 2: Use the `snapshot` implementation (accepted)
+#### Option 2: Use the `snapshot` implementation
 
 Pros:
 - Already implemented (and probably tested).
@@ -124,7 +142,7 @@ FluxCDs `source-controller` and its CR `OCIRepository`.
 - Implemented in `open-component-model/ocm-controller` which will be archived, when the `ocm-controller` v2 go
 productive. Thus, the `snapshot` implementation must be copied in this repository.
 
-#### Option 3: Use the `artifact` implementation (rejected)
+#### Option 3: Use the `artifact` implementation
 
 Pros:
 - Already implemented (and a bit tested)
@@ -137,7 +155,7 @@ Cons:
 
 Basically rejected because we could only use the `Artifact` type definition and not the implementation for the storage.
 
-#### Option 4: Use `OCIRepository` implementation from `FluxCD` (rejected)
+#### Option 4: Use `OCIRepository` implementation from `FluxCD`
 
 See [definition][oci-repository-type]. The type is part of the FluxCDs `source-controller`, which also
 provides a control-loop for that resource.
@@ -159,7 +177,7 @@ local storage (plain http server).
 Using `OCIRepository` as intermediate `storage`-pointer CR is not an option as the control-loop of that resource would
 "clone" any OCI Registry blob to its own local storage.
 
-#### Option 5: Create a new custom resource (rejected)
+#### Option 5: Create a new custom resource
 
 Pros:
 - Greenfield approach.
@@ -171,25 +189,32 @@ Cons:
 Creating a new custom resource seems like an overkill, considering that the `snapshot` implementation covers a lot of
 our use-cases. Thus, it seems more reasonable to go with the `snapshot` implementation and adjust/refactor that.
 
-### Conclusion
 
-- Option 1: Omitting a dedicated resource for the storage objects is not a good design-choice.
-- Option 2: The `snapshot` implementation fits our purposes and is already implemented.
-- Option 3: The current `artifact` implementation is not feasible as it was written for another purpose.
-- Option 4: The FluxCDs `OCIRepository` resource has major implications to our environment that are not beneficial.
-- Option 5: Creating a new custom resource feels like an overkill since it requires a new implementation.
-
-Therefore, option 2 is chosen as it is reasonable to use the already implemented `snapshot` resource and adjust it to
-our purposes.
-
-This approach requires a transformer to make the final resource consumable. For this, the FluxCDs `OCIRepository`
-resource seems predestined, since `OCIRepository` can be consumed by FluxCDs `source-controller` (most use-cases) as
-well as by ArgoCD.
-
-## (Internal) OCI Registry
+## (Internal) OCI Registry (How to setup the internal OCI registry and which one to use)
 ...
 
-### Option 1: Let the user provide a registry that is OCI compliant
+### Considered Options
+
+* Option 1: Let the user provide a registry that is OCI compliant 
+* Option 2: Deploy an OCI image registry with our controllers
+  * Option 2.1: Use implementation from ocm-controllers v1
+  * Option 2.2: Use [`zot`](https://github.com/project-zot/zot)
+
+### Decision Outcome
+
+Chosen option: "???", because... 
+
+#### Positive Consequences
+
+* …
+
+#### Negative Consequences
+
+* …
+
+### Pros and Cons of the Options
+
+#### Option 1: Let the user provide a registry that is OCI compliant
 
 Pros:
 - Not our responsibility
@@ -200,9 +225,9 @@ Cons:
 - We do not "control" the resource and issues caused by another OCI registry could be hard to fix/support
 - ...
 
-### Option 2: Deploy an OCI image registry with our controllers
+#### Option 2: Deploy an OCI image registry with our controllers
 
-### Option 2.1: Use implementation from ocm-controllers v1
+##### Option 2.1: Use implementation from ocm-controllers v1
 
 Pros:
 - Already implemented.
@@ -211,7 +236,7 @@ Pros:
 Cons:
 - ...
 
-### Option 2.2: Use [`zot`](https://github.com/project-zot/zot)
+###### Option 2.2: Use [`zot`](https://github.com/project-zot/zot)
 
 Pros:
 - Is the newest shot
@@ -222,10 +247,9 @@ Cons:
 - Implement from scratch (probably not true)
 - ...
 
-## Links
+# Links
 - Epic [#75](https://github.com/open-component-model/ocm-k8s-toolkit/issues/75)
 - Issue [#90](https://github.com/open-component-model/ocm-k8s-toolkit/issues/90)
-
 
 [artifact-definition]: https://github.com/openfluxcd/artifact/blob/d9db932260eb5f847737bcae3589b653398780ae/api/v1alpha1/artifact_types.go#L30
 [fluxcd-rfc]: https://github.com/fluxcd/flux2/discussions/5058
