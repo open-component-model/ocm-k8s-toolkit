@@ -17,10 +17,9 @@ Initially, it was planned to use a Custom Resource `artifact` type to represent 
 This `artifact` type was [defined][artifact-definition] to point to a URL and holds a "human-readable" identifier
 `Revision` of a blob stored in a http-server inside the controller.
 
-The `artifact` idea was part of a bigger [RFC][fluxcd-rfc] for `FluxCD`. Unfortunately, a possible implementation was
-postponed to an unspecified time in the future and the implementation details were also unclear.
-This was tantamount to a rejection.
-(^ ongoing discussion if it is rejected or not)
+The `artifact` idea was part of a bigger [RFC][fluxcd-rfc] for `FluxCD`. Unfortunately, the change would be difficult
+to communicate and potentially prompt security audits on FluxCDs customer side. Thus, the proposal was not acceptable
+in the given format due to the differences on the watch on the `artifact` resource. This was tantamount to a rejection.
 
 Therefore, the original purpose of that Custom Resource `artifact` is not present anymore. Additionally, the team
 decided to not use a plain http-server but an internal OCI registry to store and publish its blobs that are produced by
@@ -35,8 +34,6 @@ Arguments (meeting notes from 26.11.2024):
 The following discussion concerns two major topics:
 - How to store and reference the single layer OCI artifacts.
 - How to setup the internal OCI registry and which one to use.
-
-There are several options on how to proceed with the replacement and implementation that are discussed below.
 
 ## Decision Drivers
 
