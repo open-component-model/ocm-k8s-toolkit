@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zot-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zot
+  template:
+    metadata:
+      labels:
+        app: zot
+    spec:
+      containers:
+      - name: zot-registry
+        image: ghcr.io/project-zot/zot:latest
+        ports:
+        - containerPort: 5000
+        volumeMounts:
+        - name: zot-config-volume
+          mountPath: /etc/zot/config.yaml
+          subPath: config.yaml
+        - name: zot-storage
+          mountPath: /tmp/zot
+      volumes:
+      - name: zot-config-volume
+        configMap:
+          name: zot-config
+      - name: zot-storage
+        emptyDir: {}
+# Manual test if the registry is running:
+# % kubectl run -i --tty --rm debug --image=busybox --restart=Never -- /bin/sh
+# # wget -qO- http://ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000/v2/_catalog
+# {"repositories":[]}
+# # exit

@@ -1,0 +1,5 @@
+# base/kustomization.yaml
+resources:
+  - deployment.yaml
+  - service.yaml
+  - configmap.yaml
