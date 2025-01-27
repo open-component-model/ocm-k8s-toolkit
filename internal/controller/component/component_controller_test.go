@@ -19,7 +19,6 @@ package component
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"time"
 
@@ -30,25 +29,17 @@ import (
 
 	"github.com/fluxcd/pkg/apis/meta"
 	"github.com/fluxcd/pkg/runtime/conditions"
-	"github.com/fluxcd/pkg/tar"
-	"github.com/mandelsoft/filepath/pkg/filepath"
 	"github.com/mandelsoft/vfs/pkg/osfs"
-	"github.com/mandelsoft/vfs/pkg/vfs"
-	"k8s.io/apimachinery/pkg/types"
-	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
-	"ocm.software/ocm/api/utils/accessio"
-	"ocm.software/ocm/api/utils/accessobj"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
-	"sigs.k8s.io/yaml"
-
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	environment "ocm.software/ocm/api/helper/env"
+	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
+	"ocm.software/ocm/api/utils/accessio"
+	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 )
 
 const (
@@ -143,36 +134,19 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that artifact has been created successfully")
+			By("check that snapshot has been created successfully")
 
 			Eventually(komega.Object(component), "15s").Should(
-				HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+				HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
 
-			artifact := &artifactv1.Artifact{
+			By("checking if the snapshot can be received")
+			snapshot := &v1alpha1.Snapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: component.Namespace,
-					Name:      component.Status.ArtifactRef.Name,
+					Name:      component.Status.SnapshotRef.Name,
 				},
 			}
-			Eventually(komega.Get(artifact)).Should(Succeed())
-
-			By("check if the component descriptor list can be retrieved from the artifact server")
-			r := Must(http.Get(artifact.Spec.URL))
-
-			tmpdir := Must(os.MkdirTemp("/tmp", "descriptors-"))
-			DeferCleanup(func() error {
-				return os.RemoveAll(tmpdir)
-			})
-			MustBeSuccessful(tar.Untar(r.Body, tmpdir))
-
-			repo := Must(ctf.Open(env, accessobj.ACC_WRITABLE, ctfpath, vfs.FileMode(vfs.O_RDWR), env))
-			cv := Must(repo.LookupComponentVersion(Component, Version1))
-			expecteddescs := Must(ocm.ListComponentDescriptors(ctx, cv, repo))
-
-			data := Must(os.ReadFile(filepath.Join(tmpdir, v1alpha1.OCMComponentDescriptorList)))
-			descs := &ocm.Descriptors{}
-			MustBeSuccessful(yaml.Unmarshal(data, descs))
-			Expect(descs).To(YAMLEqual(expecteddescs))
+			Eventually(komega.Get(snapshot)).Should(Succeed())
 		})
 
 		It("does not reconcile when the repository is not ready", func() {
@@ -199,9 +173,9 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that no artifact has been created")
+			By("check that no snapshot has been created")
 			Eventually(komega.Object(component), "15s").Should(
-				HaveField("Status.ArtifactRef.Name", BeEmpty()))
+				HaveField("Status.SnapshotRef.Name", BeEmpty()))
 		})
 
 		It("grabs the new version when it becomes available", func() {
@@ -224,10 +198,10 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that artifact has been created successfully")
+			By("check that snapshot has been created successfully")
 
 			Eventually(komega.Object(component), "15s").Should(
-				HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+				HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 			Expect(component.Status.Component.Version).To(Equal(Version1))
@@ -281,9 +255,9 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that artifact has been created successfully")
+			By("check that snapshot has been created successfully")
 
-			Eventually(komega.Object(component), "15s").Should(HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+			Eventually(komega.Object(component), "15s").Should(HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
@@ -330,8 +304,8 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that artifact has been created successfully")
-			Eventually(komega.Object(component), "15s").Should(HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+			By("check that snapshot has been created successfully")
+			Eventually(komega.Object(component), "15s").Should(HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
@@ -376,10 +350,10 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that artifact has been created successfully")
+			By("check that snapshot has been created successfully")
 
 			Eventually(komega.Object(component), "15s").Should(
-				HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+				HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 			Expect(component.Status.Component.Version).To(Equal("0.0.3"))

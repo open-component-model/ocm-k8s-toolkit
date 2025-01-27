@@ -16,37 +16,28 @@ package component
 import (
 	"context"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
-	"time"
 
-	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/openfluxcd/controller-manager/server"
+	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"sigs.k8s.io/yaml"
-
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
-	corev1 "k8s.io/api/core/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/mocks"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 )
 
@@ -54,11 +45,6 @@ import (
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
-
-const (
-	ARTIFACT_PATH   = "ocm-k8s-artifactstore--*"
-	ARTIFACT_SERVER = "localhost:8080"
-)
 
 var cfg *rest.Config
 var k8sClient client.Client
@@ -76,25 +62,9 @@ var _ = BeforeSuite(func() {
 
 	By("bootstrapping test environment")
 
-	// Get external artifact CRD
-	resp, err := http.Get(v1alpha1.ArtifactCrd)
-	Expect(err).NotTo(HaveOccurred())
-	DeferCleanup(func() error {
-		return resp.Body.Close()
-	})
-
-	crdByte, err := io.ReadAll(resp.Body)
-	Expect(err).NotTo(HaveOccurred())
-
-	artifactCRD := &apiextensionsv1.CustomResourceDefinition{}
-	err = yaml.Unmarshal(crdByte, artifactCRD)
-	Expect(err).NotTo(HaveOccurred())
-
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
-
-		CRDs: []*apiextensionsv1.CustomResourceDefinition{artifactCRD},
 
 		// The BinaryAssetsDirectory is only required if you want to run the tests directly
 		// without call the makefile target test. If not informed it will look for the
@@ -106,7 +76,7 @@ var _ = BeforeSuite(func() {
 	}
 
 	// cfg is defined in this file globally.
-	cfg, err = testEnv.Start()
+	cfg, err := testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 	DeferCleanup(testEnv.Stop)
@@ -130,10 +100,8 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	tmpdir := Must(os.MkdirTemp("", ARTIFACT_PATH))
-	address := ARTIFACT_SERVER
-	storage := Must(server.NewStorage(k8sClient, testEnv.Scheme, tmpdir, address, 0, 0))
-	artifactServer := Must(server.NewArtifactServer(tmpdir, address, time.Millisecond))
+	mockRegistry, err := mocks.NewRegistry("")
+	Expect(err).NotTo(HaveOccurred())
 
 	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
@@ -144,7 +112,7 @@ var _ = BeforeSuite(func() {
 				IncludeObject: true,
 			},
 		},
-		Storage: storage,
+		Registry: mockRegistry,
 	}).SetupWithManager(k8sManager)).To(Succeed())
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -157,10 +125,6 @@ var _ = BeforeSuite(func() {
 	}
 	Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 
-	go func() {
-		defer GinkgoRecover()
-		Expect(artifactServer.Start(ctx)).To(Succeed())
-	}()
 	go func() {
 		defer GinkgoRecover()
 		Expect(k8sManager.Start(ctx)).To(Succeed())

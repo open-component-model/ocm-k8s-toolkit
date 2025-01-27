@@ -62,9 +62,13 @@ type ResourceStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// ArtifactRef points to the Artifact which represents the output of the
-	// last successful Resource sync.
+	// SnapshotRef references the generated snapshot containing a list of
+	// component descriptors. This list can be used by other controllers to
+	// avoid re-downloading (and potentially also re-verifying) the components.
 	// +optional
+	SnapshotRef corev1.LocalObjectReference `json:"snapshotRef,omitempty"`
+
+	// TODO: Remove
 	ArtifactRef corev1.LocalObjectReference `json:"artifactRef,omitempty"`
 
 	// +optional
@@ -129,6 +133,10 @@ func (in *Resource) GetSpecifiedOCMConfig() []OCMConfiguration {
 
 func (in *Resource) GetEffectiveOCMConfig() []OCMConfiguration {
 	return in.Status.EffectiveOCMConfig
+}
+
+func (in *Resource) GetSnapshotName() string {
+	return in.Status.SnapshotRef.Name
 }
 
 // +kubebuilder:object:root=true
