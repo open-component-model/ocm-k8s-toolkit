@@ -19,8 +19,8 @@ spec:
         - containerPort: 5000
         volumeMounts:
         - name: zot-config-volume
-          mountPath: /etc/zot/config.yaml
-          subPath: config.yaml
+          mountPath: /etc/zot/config.json
+          subPath: config.json
         - name: zot-storage
           mountPath: /tmp/zot
       volumes:
