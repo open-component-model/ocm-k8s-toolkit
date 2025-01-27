@@ -4,24 +4,31 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 )
 
 // SnapshotWriter defines any object which produces a snapshot
 // +k8s:deepcopy-gen=false
 type SnapshotWriter interface {
 	client.Object
-	GetSnapshotDigest() string
 	GetSnapshotName() string
+	GetKind() string
+	GetNamespace() string
+	GetName() string
 }
 
 // SnapshotSpec defines the desired state of Snapshot.
 type SnapshotSpec struct {
-	Identity ocmmetav1.Identity `json:"identity"`
+	// OCI repository name
+	// +required
+	Repository string `json:"repository"`
 
+	// Manifest digest
+	// +required
 	Digest string `json:"digest"`
 
-	Tag string `json:"tag"`
+	// Blob
+	// +required
+	Blob BlobInfo `json:"blob"`
 
 	// Suspend stops all operations on this object.
 	// +optional
@@ -41,10 +48,6 @@ type SnapshotStatus struct {
 	// +optional
 	LastReconciledTag string `json:"tag,omitempty"`
 
-	// RepositoryURL has the concrete URL pointing to the local registry including the service name.
-	// +optional
-	RepositoryURL string `json:"repositoryURL,omitempty"`
-
 	// ObservedGeneration is the last reconciled generation.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
@@ -60,17 +63,6 @@ func (in *Snapshot) GetVID() map[string]string {
 func (in *Snapshot) SetObservedGeneration(v int64) {
 	in.Status.ObservedGeneration = v
 }
-
-// TODO: Check purpose
-//// GetComponentVersion returns the component version for the snapshot.
-// func (in Snapshot) GetComponentVersion() string {
-//	return in.Spec.Identity[ComponentVersionKey]
-//}
-//
-//// GetComponentResourceVersion returns the resource version for the snapshot.
-// func (in Snapshot) GetComponentResourceVersion() string {
-//	return in.Spec.Identity[ResourceVersionKey]
-//}
 
 // GetDigest returns the last reconciled digest for the snapshot.
 func (in Snapshot) GetDigest() string {

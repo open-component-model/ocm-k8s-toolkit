@@ -96,7 +96,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, ocmRepo *v1alpha1.OCMR
 	}
 
 	if ocmRepo.Spec.Suspend {
-		logger.Info("component is suspended, skipping reconciliation")
+		logger.Info("OCMRepository is suspended, skipping reconciliation")
 
 		return ctrl.Result{}, nil
 	}

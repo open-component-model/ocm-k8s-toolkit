@@ -52,6 +52,7 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/resource"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
+	snapshotRegistry "github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 )
 
 var (
@@ -67,7 +68,7 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 }
 
-//nolint:funlen // this is the main function
+//nolint:funlen,maintidx // this is the main function
 func main() {
 	var (
 		metricsAddr              string
@@ -171,10 +172,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	// TODO: Replace
 	storage, artifactServer, err := server.NewArtifactStore(mgr.GetClient(), mgr.GetScheme(),
 		storagePath, storageAddr, storageAdvAddr, artifactRetentionTTL, artifactRetentionRecords)
 	if err != nil {
 		setupLog.Error(err, "unable to initialize storage")
+		os.Exit(1)
+	}
+
+	// TODO: Adjust hardcode with CLI param
+	registry, err := snapshotRegistry.NewRegistry("ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000")
+	registry.PlainHTTP = true
+	if err != nil {
+		setupLog.Error(err, "unable to initialize registry object")
+		os.Exit(1)
+	}
+
+	if err := registry.Ping(ctx); err != nil {
+		setupLog.Error(err, "unable to ping OCI registry")
 		os.Exit(1)
 	}
 
@@ -184,7 +199,7 @@ func main() {
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
-		Storage: storage,
+		Registry: registry,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Component")
 		os.Exit(1)

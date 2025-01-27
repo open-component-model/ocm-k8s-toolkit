@@ -20,39 +20,37 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/goutils/sliceutils"
-	"github.com/openfluxcd/controller-manager/storage"
+	"github.com/opencontainers/go-digest"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/resolvers"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/yaml"
 
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	ocmctx "ocm.software/ocm/api/ocm"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
 // Reconciler reconciles a Component object.
 type Reconciler struct {
 	*ocm.BaseReconciler
-	Storage *storage.Storage
+	Registry snapshot.RegistryType
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -167,6 +165,7 @@ func (r *Reconciler) reconcileOCM(ctx context.Context, component *v1alpha1.Compo
 	return result, nil
 }
 
+//nolint:funlen // we do not want to cut function at an arbitrary point
 func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context, component *v1alpha1.Component, repository *v1alpha1.OCMRepository) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
@@ -238,26 +237,67 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 		return ctrl.Result{}, err
 	}
 
-	err = r.Storage.ReconcileStorage(ctx, component)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.StorageReconcileFailedReason, err.Error())
+	// Store descriptors and create snapshot
+	// TODO: Can I check beforehand if the CD is already downloaded and in the OCI Registry (cached)?
+	//       Compare digest/hash from manifest of the CD from the source storage
 
-		return ctrl.Result{}, fmt.Errorf("failed to reconcileComponent storage: %w", err)
-	}
-
-	err = r.createArtifactForDescriptors(ctx, octx, component, cv, descriptors)
+	ociRepositoryName, err := snapshot.CreateRepositoryName(component.Spec.RepositoryRef.Name, component.GetName())
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, err.Error())
 
 		return ctrl.Result{}, err
 	}
 
-	// Update status
-	r.setComponentStatus(component, configs, v1alpha1.ComponentInfo{
+	ociRepository, err := r.Registry.NewRepository(ctx, ociRepositoryName)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+
+	descriptorBytes, err := yaml.Marshal(descriptors)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+
+	manifestDigest, err := ociRepository.PushSnapshot(ctx, version, descriptorBytes)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+
+	// Create snapshot
+	snapshotCR := snapshot.Create(component, ociRepositoryName, manifestDigest.String(), version, digest.FromBytes(descriptorBytes).String(), int64(len(descriptorBytes)))
+
+	if _, err = controllerutil.CreateOrUpdate(ctx, r.GetClient(), &snapshotCR, func() error {
+		if snapshotCR.ObjectMeta.CreationTimestamp.IsZero() {
+			if err := controllerutil.SetControllerReference(component, &snapshotCR, r.GetScheme()); err != nil {
+				return fmt.Errorf("failed to set controller reference: %w", err)
+			}
+		}
+
+		return nil
+	}); err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+
+	// Update component status
+	component.Status.Component = v1alpha1.ComponentInfo{
 		RepositorySpec: repository.Spec.RepositorySpec,
 		Component:      component.Spec.Component,
 		Version:        version,
-	})
+	}
+
+	component.Status.SnapshotRef = corev1.LocalObjectReference{
+		Name: snapshotCR.GetName(),
+	}
+
+	component.Status.EffectiveOCMConfig = configs
 
 	status.MarkReady(r.EventRecorder, component, "Applied version %s", version)
 
@@ -355,74 +395,4 @@ func (r *Reconciler) verifyComponentVersionAndListDescriptors(ctx context.Contex
 	}
 
 	return descriptors, nil
-}
-
-func (r *Reconciler) createArtifactForDescriptors(ctx context.Context, octx ocmctx.Context,
-	component *v1alpha1.Component, cv ocmctx.ComponentVersionAccess, descriptors *ocm.Descriptors,
-) error {
-	logger := log.FromContext(ctx)
-
-	// Create temp working dir
-	tmpDir, err := os.MkdirTemp("", fmt.Sprintf("%s-%s-%s-", component.Kind, component.Namespace, component.Name))
-	if err != nil {
-		return reconcile.TerminalError(fmt.Errorf("failed to create temporary working directory: %w", err))
-	}
-	octx.Finalizer().With(func() error {
-		if err = os.RemoveAll(tmpDir); err != nil {
-			ctrl.LoggerFrom(ctx).Error(err, "failed to remove temporary working directory")
-		}
-
-		return nil
-	})
-
-	content, err := yaml.Marshal(descriptors)
-	if err != nil {
-		return reconcile.TerminalError(fmt.Errorf("failed to marshal content: %w", err))
-	}
-
-	const perm = 0o655
-	if err := os.WriteFile(filepath.Join(tmpDir, v1alpha1.OCMComponentDescriptorList), content, perm); err != nil {
-		return reconcile.TerminalError(fmt.Errorf("failed to write file: %w", err))
-	}
-
-	revision := r.normalizeComponentVersionName(cv.GetName()) + "-" + cv.GetVersion()
-	if err := r.Storage.ReconcileArtifact(
-		ctx,
-		component,
-		revision,
-		tmpDir,
-		revision+".tar.gz",
-		func(art *artifactv1.Artifact, _ string) error {
-			// Archive directory to storage
-			if err := r.Storage.Archive(art, tmpDir, nil); err != nil {
-				return fmt.Errorf("unable to archive artifact to storage: %w", err)
-			}
-
-			component.Status.ArtifactRef = corev1.LocalObjectReference{
-				Name: art.Name,
-			}
-
-			return nil
-		},
-	); err != nil {
-		return fmt.Errorf("failed to reconcileComponent artifact: %w", err)
-	}
-
-	logger.Info("successfully reconciled component", "name", component.Name)
-
-	return nil
-}
-
-func (r *Reconciler) normalizeComponentVersionName(name string) string {
-	return strings.ReplaceAll(name, "/", "-")
-}
-
-func (r *Reconciler) setComponentStatus(
-	component *v1alpha1.Component,
-	configs []v1alpha1.OCMConfiguration,
-	info v1alpha1.ComponentInfo,
-) {
-	component.Status.Component = info
-
-	component.Status.EffectiveOCMConfig = configs
 }
