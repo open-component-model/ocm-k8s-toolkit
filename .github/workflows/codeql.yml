@@ -95,7 +95,6 @@ jobs:
       # Required to upload SARIF files
       security-events: write
       # only required for workflows in private repositories
-      actions: read
       contents: read
     # call reusable workflow from central '.github' repo
     uses: open-component-model/.github/.github/workflows/code-scan.yml@main
