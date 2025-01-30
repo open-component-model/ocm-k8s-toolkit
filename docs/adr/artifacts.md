@@ -237,7 +237,7 @@ Pros:
 Cons:
 - Seldom releases (latest stable from October 2, 2023)
 
-###### Option 2.2: Use [`zot`](https://github.com/project-zot/zot)
+##### Option 2.2: Use [`zot`](https://github.com/project-zot/zot)
 
 Pros:
 - Newer technology, focusing on embedding into other products, inline garbage collection and storage deduplication
