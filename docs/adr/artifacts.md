@@ -206,7 +206,7 @@ Chosen option:
 - Option 2.2, i.e. the decision is to use `zot` as the in-cluster OCI registry for OCM controllers
 - Once there is an installer for OCM controller, it should provide the users with a possibility to configure an own registry instead of embedded `zot`, either an in-cluster or an external one
 
-To select the registry, no comprehensive benchmarking tests have been performed. The decision is based on the impression that `zot` is meanwhile being more actively maintained and will incorporate innovation faster. The registry comes with an (extensive feature set)[https://zotregistry.dev/v2.1.2/general/features/], sufficient for the OCM controllers use case. The first tests have shown that OCM controllers are able to work with `zot`.
+To select the registry, no comprehensive benchmarking tests have been performed. The decision is based on the impression that `zot` is meanwhile being more actively maintained and will incorporate innovation faster. The registry comes with an [extensive feature set](https://zotregistry.dev/v2.1.2/general/features/), sufficient for the OCM controllers use case. The first tests have shown that OCM controllers are able to work with `zot`.
 
 
 ### Pros and Cons of the Options
