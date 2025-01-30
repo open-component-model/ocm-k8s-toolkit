@@ -199,24 +199,15 @@ This in-cluster HTTPS-based registry is used by the OCM controllers to store res
   * Option 2.1: Use implementation from ocm-controllers v1
   * Option 2.2: Use [`zot`](https://github.com/project-zot/zot)
 
-### Registry Selection Criteria
-
-- Ease of deployment
-- HTTPS support
-- Garbage collection
--  ...
 
 ### Decision Outcome
 
-Chosen option: "???", because... 
+Chosen option:
+- Option 2.2, i.e. the decision is to use `zot` as the in-cluster OCI registry for OCM controllers
+- Once there is an installer for OCM controller, it should provide the users with a possibility to configure an own registry instead of embedded `zot`, either an in-cluster or an external one
 
-#### Positive Consequences
+To select the registry, no comprehensive benchmarking tests have been performed. The decision is based on the impression that `zot` is meanwhile being more actively maintained and will incorporate innovation faster. The registry comes with an (extensive feature set)[https://zotregistry.dev/v2.1.2/general/features/], sufficient for the OCM controllers use case. The first tests have shown that OCM controllers are able to work with `zot`.
 
-* …
-
-#### Negative Consequences
-
-* …
 
 ### Pros and Cons of the Options
 
@@ -236,29 +227,28 @@ Cons:
 Pros:
 - Simplifies deployment choices and stability guarantees for us.
 
-Cons:
-- ...
-
 ##### Option 2.1: Use implementation from ocm-controllers v1 ([distribution registry](https://github.com/distribution/distribution))
 
 Pros:
 - Faster implementation time, as deployment can be copied from v1 implementation
 - Mature technology (almost legacy)
+- Smaller image size (25 MB)
 
 Cons:
-- ...
+- Seldom releases (latest stable from October 2, 2023)
 
 ###### Option 2.2: Use [`zot`](https://github.com/project-zot/zot)
 
 Pros:
-- Newer technology, aiming at minimal deployment, embedding into other products, inline garbage collection and storage deduplication
+- Newer technology, focusing on embedding into other products, inline garbage collection and storage deduplication
 - Nice documentation
 - FluxCD team mentioned (verbally) that they want to use a `zot` OCI registry in the future (though no 100% guarantee or any evidence that they started working on this so far)
-- ...
+- Being actively maintained (several stable releases per year)
 
 Cons:
-- Longer implementation time, as it involves learing how to deploy and operate a new registry
-- ...
+- Potentially longer implementation time, as it involves learing how to deploy, configure and operate a new registry
+- To support Docker images, the ergistry must be run in compartibility mode
+- Bigger image size: 69 MB the minimal version and 208 MB the full version
 
 # Links
 - Epic [#75](https://github.com/open-component-model/ocm-k8s-toolkit/issues/75)
