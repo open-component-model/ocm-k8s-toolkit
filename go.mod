@@ -10,7 +10,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/containers/image/v5 v5.33.1
-	github.com/fluxcd/pkg/apis/event v0.13.0
+	github.com/fluxcd/pkg/apis/event v0.15.0
 	github.com/fluxcd/pkg/apis/meta v1.9.0
 	github.com/fluxcd/pkg/runtime v0.52.0
 	github.com/fluxcd/pkg/tar v0.10.0
@@ -30,7 +30,7 @@ require (
 	k8s.io/apimachinery v0.32.1
 	k8s.io/client-go v0.32.1
 	ocm.software/ocm v0.19.0
-	sigs.k8s.io/controller-runtime v0.20.0
+	sigs.k8s.io/controller-runtime v0.20.1
 	sigs.k8s.io/yaml v1.4.0
 )
 
