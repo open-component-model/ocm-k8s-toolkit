@@ -70,7 +70,8 @@ spec:
                 - tag
                 type: object
               digest:
-                description: Manifest digest
+                description: Manifest digest (required to delete the manifest and
+                  prepare OCI artifact for GC)
                 type: string
               repository:
                 description: OCI repository name

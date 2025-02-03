@@ -37,8 +37,13 @@ const (
 
 // Finalizers for controllers.
 const (
+	// TODO: Remove ArtifactFinalizer
+
 	// ArtifactFinalizer is the finalizer that is added to artifacts created by the ocm controllers.
 	ArtifactFinalizer = "finalizers.ocm.software/artifact"
+
+	// SnapshotFinalizer is the finalizter that is added to snapshot created by the ocm controllers.
+	SnapshotFinalizer = "finalizers.ocm.software/snapshot"
 )
 
 // External CRDs.
