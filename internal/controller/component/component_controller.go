@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/fluxcd/pkg/apis/meta"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/goutils/sliceutils"
@@ -135,9 +136,13 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 		return ctrl.Result{}, nil
 	}
 
+	// Note: Marking the component as not ready, when the ocmrepository is not ready is not completely valid. As the
+	// was potentially ready, then the ocmrepository changed, but that does not necessarily mean that the component is
+	// not ready as well.
+	// However, as the component is hard-dependant on the ocmrepository, we decided to mark it not ready as well.
 	if !conditions.IsReady(repo) {
-		logger.Info("repository is not ready", "name", component.Spec.RepositoryRef.Name)
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositoryIsNotReadyReason, "repository is not ready yet")
+		conditions.Delete(component, meta.ReconcilingCondition)
+		conditions.MarkFalse(component, meta.ReadyCondition, v1alpha1.RepositoryIsNotReadyReason, "repository is not ready")
 
 		return ctrl.Result{Requeue: true}, nil
 	}
