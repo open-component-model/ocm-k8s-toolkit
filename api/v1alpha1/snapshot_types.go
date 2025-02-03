@@ -22,7 +22,7 @@ type SnapshotSpec struct {
 	// +required
 	Repository string `json:"repository"`
 
-	// Manifest digest
+	// Manifest digest (required to delete the manifest and prepare OCI artifact for GC)
 	// +required
 	Digest string `json:"digest"`
 
@@ -66,7 +66,7 @@ func (in *Snapshot) SetObservedGeneration(v int64) {
 
 // GetDigest returns the last reconciled digest for the snapshot.
 func (in Snapshot) GetDigest() string {
-	return in.Status.LastReconciledDigest
+	return in.Spec.Digest
 }
 
 // GetConditions returns the status conditions of the object.

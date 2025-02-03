@@ -38,3 +38,9 @@ func (r *Repository) FetchSnapshot(ctx context.Context, _ string) ([]byte, error
 
 	return []byte{}, nil
 }
+
+func (r *Repository) DeleteSnapshot(ctx context.Context, _ string) error {
+	log.FromContext(ctx).Info("mocking snapshot delete")
+
+	return nil
+}

@@ -24,6 +24,8 @@ type RepositoryType interface {
 	PushSnapshot(ctx context.Context, reference string, blob []byte) (digest.Digest, error)
 
 	FetchSnapshot(ctx context.Context, reference string) ([]byte, error)
+
+	DeleteSnapshot(ctx context.Context, digest string) error
 }
 
 type Repository struct {
@@ -38,18 +40,6 @@ func (r *Repository) PushSnapshot(ctx context.Context, tag string, blob []byte) 
 		MediaType: ociV1.MediaTypeImageLayer,
 		Digest:    digest.FromBytes(blob),
 		Size:      int64(len(blob)),
-	}
-
-	// Check if blob is already present
-	exists, err := r.Exists(ctx, blobDescriptor)
-	if err != nil {
-		return "", fmt.Errorf("error checking existence of blob: %w", err)
-	}
-
-	if exists {
-		logger.Info("blob already exists", "descriptor", blobDescriptor)
-
-		return "", nil
 	}
 
 	logger.Info("pushing blob", "descriptor", blobDescriptor)
@@ -114,8 +104,17 @@ func (r *Repository) PushSnapshot(ctx context.Context, tag string, blob []byte) 
 	return manifestDigest, nil
 }
 
-func (*Repository) FetchSnapshot(_ context.Context, _ string) ([]byte, error) {
+func (r *Repository) FetchSnapshot(_ context.Context, _ string) ([]byte, error) {
 	return []byte{}, nil
+}
+
+func (r *Repository) DeleteSnapshot(ctx context.Context, digestString string) error {
+	manifestDescriptor, _, err := r.FetchReference(ctx, digestString)
+	if err != nil {
+		return fmt.Errorf("error fetching manifest: %w", err)
+	}
+
+	return r.Delete(ctx, manifestDescriptor)
 }
 
 // CreateRepositoryName creates a name for an OCI repository and returns a hashed string from the passed arguments. The
