@@ -19,13 +19,17 @@ package component
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
 	. "github.com/mandelsoft/goutils/testutils"
+	"github.com/mandelsoft/vfs/pkg/vfs"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "ocm.software/ocm/api/helper/builder"
+	"ocm.software/ocm/api/utils/accessobj"
+	"sigs.k8s.io/yaml"
 
 	"github.com/fluxcd/pkg/apis/meta"
 	"github.com/fluxcd/pkg/runtime/conditions"
@@ -37,9 +41,12 @@ import (
 	environment "ocm.software/ocm/api/helper/env"
 	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
 	"ocm.software/ocm/api/utils/accessio"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 )
 
 const (
@@ -133,20 +140,30 @@ var _ = Describe("Component Controller", func() {
 				Status: v1alpha1.ComponentStatus{},
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+			DeferCleanup(func(ctx SpecContext) {
+				Expect(k8sClient.Delete(ctx, component, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
+			})
 
-			By("check that snapshot has been created successfully")
+			By("checking that the component has been reconciled successfully")
+			Eventually(komega.Object(component), "5m").Should(
+				HaveField("Status.ObservedGeneration", Equal(int64(1))))
 
-			Eventually(komega.Object(component), "15s").Should(
-				HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			By("checking that the snapshot has been created successfully")
+			Expect(component).To(HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			snapshotComponent := Must(snapshot.GetSnapshotForOwner(ctx, k8sClient, component))
 
-			By("checking if the snapshot can be received")
-			snapshot := &v1alpha1.Snapshot{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: component.Namespace,
-					Name:      component.Status.SnapshotRef.Name,
-				},
-			}
-			Eventually(komega.Get(snapshot)).Should(Succeed())
+			By("checking that the snapshot contains the correct content")
+			snapshotRepository := Must(registry.NewRepository(ctx, snapshotComponent.Spec.Repository))
+			snapshotComponentContentReader := Must(snapshotRepository.FetchSnapshot(ctx, snapshotComponent.GetDigest()))
+			snapshotComponentContent := Must(io.ReadAll(snapshotComponentContentReader))
+			snapshotDescriptors := &ocm.Descriptors{}
+			MustBeSuccessful(yaml.Unmarshal(snapshotComponentContent, snapshotDescriptors))
+
+			repo := Must(ctf.Open(env, accessobj.ACC_WRITABLE, ctfpath, vfs.FileMode(vfs.O_RDWR), env))
+			cv := Must(repo.LookupComponentVersion(Component, Version1))
+			expectedDescriptors := Must(ocm.ListComponentDescriptors(ctx, cv, repo))
+
+			Expect(snapshotDescriptors).To(YAMLEqual(expectedDescriptors))
 		})
 
 		It("does not reconcile when the repository is not ready", func() {
@@ -172,6 +189,9 @@ var _ = Describe("Component Controller", func() {
 				Status: v1alpha1.ComponentStatus{},
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+			DeferCleanup(func(ctx SpecContext) {
+				Expect(k8sClient.Delete(ctx, component, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
+			})
 
 			By("check that no snapshot has been created")
 			Eventually(komega.Object(component), "15s").Should(
@@ -197,11 +217,17 @@ var _ = Describe("Component Controller", func() {
 				Status: v1alpha1.ComponentStatus{},
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+			DeferCleanup(func(ctx SpecContext) {
+				Expect(k8sClient.Delete(ctx, component, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
+			})
 
-			By("check that snapshot has been created successfully")
+			By("checking that the component has been reconciled successfully")
+			Eventually(komega.Object(component), "5m").Should(
+				HaveField("Status.ObservedGeneration", Equal(int64(1))))
 
-			Eventually(komega.Object(component), "15s").Should(
-				HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			By("checking that the snapshot has been created successfully")
+			Expect(component).To(HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			Must(snapshot.GetSnapshotForOwner(ctx, k8sClient, component))
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 			Expect(component.Status.Component.Version).To(Equal(Version1))
@@ -254,10 +280,17 @@ var _ = Describe("Component Controller", func() {
 				Status: v1alpha1.ComponentStatus{},
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+			DeferCleanup(func(ctx SpecContext) {
+				Expect(k8sClient.Delete(ctx, component, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
+			})
 
-			By("check that snapshot has been created successfully")
+			By("checking that the component has been reconciled successfully")
+			Eventually(komega.Object(component), "5m").Should(
+				HaveField("Status.ObservedGeneration", Equal(int64(1))))
 
-			Eventually(komega.Object(component), "15s").Should(HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			By("checking that the snapshot has been created successfully")
+			Expect(component).To(HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			Must(snapshot.GetSnapshotForOwner(ctx, k8sClient, component))
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
@@ -303,9 +336,17 @@ var _ = Describe("Component Controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+			DeferCleanup(func(ctx SpecContext) {
+				Expect(k8sClient.Delete(ctx, component, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
+			})
 
-			By("check that snapshot has been created successfully")
-			Eventually(komega.Object(component), "15s").Should(HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			By("checking that the component has been reconciled successfully")
+			Eventually(komega.Object(component), "5m").Should(
+				HaveField("Status.ObservedGeneration", Equal(int64(1))))
+
+			By("checking that the snapshot has been created successfully")
+			Expect(component).To(HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			Must(snapshot.GetSnapshotForOwner(ctx, k8sClient, component))
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
@@ -349,11 +390,17 @@ var _ = Describe("Component Controller", func() {
 				Status: v1alpha1.ComponentStatus{},
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+			DeferCleanup(func(ctx SpecContext) {
+				Expect(k8sClient.Delete(ctx, component, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
+			})
 
-			By("check that snapshot has been created successfully")
+			By("checking that the component has been reconciled successfully")
+			Eventually(komega.Object(component), "5m").Should(
+				HaveField("Status.ObservedGeneration", Equal(int64(1))))
 
-			Eventually(komega.Object(component), "15s").Should(
-				HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			By("checking that the snapshot has been created successfully")
+			Expect(component).To(HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			Must(snapshot.GetSnapshotForOwner(ctx, k8sClient, component))
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
@@ -365,7 +412,7 @@ var _ = Describe("Component Controller", func() {
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 
 				return component.Status.Component.Version == "0.0.2"
-			}).WithTimeout(15 * time.Second).Should(BeTrue())
+			}).WithTimeout(60 * time.Second).Should(BeTrue())
 		})
 	})
 
@@ -558,6 +605,14 @@ var _ = Describe("Component Controller", func() {
 				Status: v1alpha1.ComponentStatus{},
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+
+			By("checking that the component has been reconciled successfully")
+			Eventually(komega.Object(component), "5m").Should(
+				HaveField("Status.ObservedGeneration", Equal(int64(1))))
+
+			By("checking that the snapshot has been created successfully")
+			Expect(component).To(HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			Must(snapshot.GetSnapshotForOwner(ctx, k8sClient, component))
 
 			Eventually(komega.Object(component), "15s").Should(
 				HaveField("Status.EffectiveOCMConfig", ConsistOf(

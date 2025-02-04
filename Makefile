@@ -189,7 +189,7 @@ $(ENVTEST): $(LOCALBIN)
 
 .PHONY: zot-registry
 zot-registry: $(LOCALBIN) # Download zot registry binary locally if necessary.
-	@wget "https://github.com/project-zot/zot/releases/download/$(ZOT_VERSION)/zot-$(OS)-$(ARCH)-minimal" \
+	wget "https://github.com/project-zot/zot/releases/download/$(ZOT_VERSION)/zot-$(OS)-$(ARCH)-minimal" \
 		-O $(LOCALBIN)/zot-registry \
 		&& chmod u+x $(LOCALBIN)/zot-registry
 

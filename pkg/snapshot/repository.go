@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/opencontainers/go-digest"
@@ -23,7 +24,7 @@ type RepositoryType interface {
 	// PushSnapshot pushes the blob to its repository. It returns the manifest-digest to retrieve the blob.
 	PushSnapshot(ctx context.Context, reference string, blob []byte) (digest.Digest, error)
 
-	FetchSnapshot(ctx context.Context, reference string) ([]byte, error)
+	FetchSnapshot(ctx context.Context, reference string) (io.ReadCloser, error)
 
 	DeleteSnapshot(ctx context.Context, digest string) error
 }
@@ -96,22 +97,46 @@ func (r *Repository) PushSnapshot(ctx context.Context, tag string, blob []byte) 
 		return "", fmt.Errorf("oci: error pushing manifest: %w", err)
 	}
 
-	// Tag manifest
+	logger.Info("tagging OCI manifest")
 	if err := r.Tag(ctx, manifestDescriptor, tag); err != nil {
 		return "", fmt.Errorf("oci: error tagging manifest: %w", err)
 	}
 
+	logger.Info("finished pushing snapshot")
+
 	return manifestDigest, nil
 }
 
-func (r *Repository) FetchSnapshot(_ context.Context, _ string) ([]byte, error) {
-	return []byte{}, nil
+func (r *Repository) FetchSnapshot(ctx context.Context, manifestDigest string) (io.ReadCloser, error) {
+	// Fetch manifest descriptor to get manifest.
+	manifestDescriptor, _, err := r.FetchReference(ctx, manifestDigest)
+	if err != nil {
+		return nil, fmt.Errorf("oci: error fetching manifest: %w", err)
+	}
+
+	// Fetch manifest to get layer[0] descriptor.
+	manifestReader, err := r.Fetch(ctx, manifestDescriptor)
+	if err != nil {
+		return nil, fmt.Errorf("oci: error fetching manifest: %w", err)
+	}
+
+	var manifest ociV1.Manifest
+	if err := json.NewDecoder(manifestReader).Decode(&manifest); err != nil {
+		return nil, fmt.Errorf("oci: error parsing manifest: %w", err)
+	}
+
+	// We only expect single layer artifacts.
+	if len(manifest.Layers) != 1 {
+		return nil, fmt.Errorf("oci: expected 1 layer, got %d", len(manifest.Layers))
+	}
+
+	return r.Fetch(ctx, manifest.Layers[0])
 }
 
-func (r *Repository) DeleteSnapshot(ctx context.Context, digestString string) error {
-	manifestDescriptor, _, err := r.FetchReference(ctx, digestString)
+func (r *Repository) DeleteSnapshot(ctx context.Context, manifestDigest string) error {
+	manifestDescriptor, _, err := r.FetchReference(ctx, manifestDigest)
 	if err != nil {
-		return fmt.Errorf("error fetching manifest: %w", err)
+		return fmt.Errorf("oci: error fetching manifest: %w", err)
 	}
 
 	return r.Delete(ctx, manifestDescriptor)
