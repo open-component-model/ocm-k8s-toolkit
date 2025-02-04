@@ -22,7 +22,6 @@ import (
 	"fmt"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/fluxcd/pkg/apis/meta"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/goutils/sliceutils"
@@ -59,21 +58,23 @@ var _ ocm.Reconciler = (*Reconciler)(nil)
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		// TODO: Check if we should watch for the snapshots that are created by this controller
 		For(&v1alpha1.Component{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
 }
 
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=components,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=components/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=delivery.ocm.software,resources=components/finalizers,verbs=update
-
-// +kubebuilder:rbac:groups=openfluxcd.ocm.software,resources=artifacts,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=openfluxcd.ocm.software,resources=artifacts/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=openfluxcd.ocm.software,resources=artifacts/finalizers,verbs=update
+// +kubebuilder:rbac:groups=delivery.ocm.software,resources=components/finalizers,verbs=updat
 
 // +kubebuilder:rbac:groups="",resources=secrets;configmaps;serviceaccounts,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=serviceaccounts/token,verbs=create
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+
+// TODO: Remove
+// +kubebuilder:rbac:groups=openfluxcd.ocm.software,resources=artifacts,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=openfluxcd.ocm.software,resources=artifacts/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=openfluxcd.ocm.software,resources=artifacts/finalizers,verbs=update
 
 // Reconcile the component object.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
@@ -141,8 +142,8 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 	// not ready as well.
 	// However, as the component is hard-dependant on the ocmrepository, we decided to mark it not ready as well.
 	if !conditions.IsReady(repo) {
-		conditions.Delete(component, meta.ReconcilingCondition)
-		conditions.MarkFalse(component, meta.ReadyCondition, v1alpha1.RepositoryIsNotReadyReason, "repository is not ready")
+		logger.Info("repository is not ready", "name", component.Spec.RepositoryRef.Name)
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositoryIsNotReadyReason, "repository is not ready yet")
 
 		return ctrl.Result{Requeue: true}, nil
 	}
@@ -246,36 +247,37 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 	// TODO: Can I check beforehand if the CD is already downloaded and in the OCI Registry (cached)?
 	//       Compare digest/hash from manifest of the CD from the source storage
 
+	logger.Info("pushing descriptors to storage")
 	ociRepositoryName, err := snapshot.CreateRepositoryName(component.Spec.RepositoryRef.Name, component.GetName())
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CreateOCIRepositoryNameFailedReason, err.Error())
 
 		return ctrl.Result{}, err
 	}
 
 	ociRepository, err := r.Registry.NewRepository(ctx, ociRepositoryName)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CreateOCIRepositoryFailedReason, err.Error())
 
 		return ctrl.Result{}, err
 	}
 
-	descriptorBytes, err := yaml.Marshal(descriptors)
+	descriptorsBytes, err := yaml.Marshal(descriptors)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.MarshalFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+
+	manifestDigest, err := ociRepository.PushSnapshot(ctx, version, descriptorsBytes)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, err.Error())
 
 		return ctrl.Result{}, err
 	}
 
-	manifestDigest, err := ociRepository.PushSnapshot(ctx, version, descriptorBytes)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, err.Error())
-
-		return ctrl.Result{}, err
-	}
-
-	// Create snapshot
-	snapshotCR := snapshot.Create(component, ociRepositoryName, manifestDigest.String(), version, digest.FromBytes(descriptorBytes).String(), int64(len(descriptorBytes)))
+	logger.Info("creating snapshot")
+	snapshotCR := snapshot.Create(component, ociRepositoryName, manifestDigest.String(), version, digest.FromBytes(descriptorsBytes).String(), int64(len(descriptorsBytes)))
 
 	if _, err = controllerutil.CreateOrUpdate(ctx, r.GetClient(), &snapshotCR, func() error {
 		if snapshotCR.ObjectMeta.CreationTimestamp.IsZero() {
@@ -284,22 +286,22 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 			}
 		}
 
+		component.Status.SnapshotRef = corev1.LocalObjectReference{
+			Name: snapshotCR.GetName(),
+		}
+
 		return nil
 	}); err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.ReconcileArtifactFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CreateSnapshotFailedReason, err.Error())
 
 		return ctrl.Result{}, err
 	}
 
-	// Update component status
+	logger.Info("updating status")
 	component.Status.Component = v1alpha1.ComponentInfo{
 		RepositorySpec: repository.Spec.RepositorySpec,
 		Component:      component.Spec.Component,
 		Version:        version,
-	}
-
-	component.Status.SnapshotRef = corev1.LocalObjectReference{
-		Name: snapshotCR.GetName(),
 	}
 
 	component.Status.EffectiveOCMConfig = configs

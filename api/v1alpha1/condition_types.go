@@ -63,8 +63,23 @@ const (
 	// ReconcileArtifactFailedReason is used when we fail in creating an Artifact.
 	ReconcileArtifactFailedReason = "ReconcileArtifactFailed"
 
+	// MarshalFailedReason is used when we fail to marshal a struct.
+	MarshalFailedReason = "MarshalFailed"
+
+	// CreateOCIRepositoryNameFailedReason is used when we fail to create an OCI repository name.
+	CreateOCIRepositoryNameFailedReason = "CreateOCIRepositoryNameFailed"
+
+	// CreateOCIRepositoryFailedReason is used when we fail to create a OCI repository.
+	CreateOCIRepositoryFailedReason = "CreateOCIRepositoryFailed"
+
+	// CreateSnapshotFailedReason is used when we fail to create a snapshot.
+	CreateSnapshotFailedReason = "CreateSnapshotFailed"
+
 	// GetArtifactFailedReason is used when we fail in getting an Artifact.
 	GetArtifactFailedReason = "GetArtifactFailed"
+
+	// GetSnapshotFailedReason is used when we fail in getting a Snapshot.
+	GetSnapshotFailedReason = "GetSnapshotFailed"
 
 	// ResolveResourceFailedReason is used when we fail in resolving a resource.
 	ResolveResourceFailedReason = "ResolveResourceFailed"
@@ -72,8 +87,29 @@ const (
 	// GetResourceAccessFailedReason is used when we fail in getting a resource access(es).
 	GetResourceAccessFailedReason = "GetResourceAccessFailed"
 
+	// GetBlobAccessFailedReason is used when we fail to get a blob access.
+	GetBlobAccessFailedReason = "GetBlobAccessFailed"
+
+	// VerifyResourceFailedReason is used when we fail to verify a resource.
+	VerifyResourceFailedReason = "VerifyResourceFailed"
+
+	// GetResourceFailedReason is used when we fail to get the resource.
+	GetResourceFailedReason = "GetResourceFailed"
+
+	// PushSnapshotFailedReason is used when we fail to push a snapshot.
+	PushSnapshotFailedReason = "PushSnapshotFailed"
+
+	// FetchSnapshotFailedReason is used when we fail to fetch a snapshot.
+	FetchSnapshotFailedReason = "FetchSnapshotFailed"
+
+	// DeleteSnapshotFailedReason is used when we fail to delete a snapshot.
+	DeleteSnapshotFailedReason = "DeleteSnapshotFailed"
+
 	// GetComponentForArtifactFailedReason is used when we fail in getting a component for an artifact.
 	GetComponentForArtifactFailedReason = "GetComponentForArtifactFailed"
+
+	// GetComponentForSnapshotFailedReason is used when we fail in getting a component for a snapshot.
+	GetComponentForSnapshotFailedReason = "GetComponentForSnapshotFailed"
 
 	// StatusSetFailedReason is used when we fail to set the component status.
 	StatusSetFailedReason = "StatusSetFailed"

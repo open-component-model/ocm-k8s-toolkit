@@ -7,7 +7,6 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,6 +15,7 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 )
 
+// TODO: Create tests
 var _ = Describe("Snapshot Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
@@ -33,17 +33,19 @@ var _ = Describe("Snapshot Controller", func() {
 			err := k8sClient.Get(ctx, typeNamespacedName, snapshot)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &deliveryv1alpha1.Snapshot{
-					TypeMeta: metav1.TypeMeta{},
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
 					},
 					Spec: deliveryv1alpha1.SnapshotSpec{
-						Identity: ocmmetav1.Identity{
-							"name": "some-name",
+						Repository: "test-repository",
+						Digest:     "sha256:test-digest",
+						Blob: deliveryv1alpha1.BlobInfo{
+							Digest: "sha256:test-digest",
+							Tag:    "1.0.0",
+							Size:   0,
 						},
-						Digest: "digest",
-						Tag:    "tag",
+						Suspend: false,
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())

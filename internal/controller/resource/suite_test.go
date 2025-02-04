@@ -19,6 +19,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -28,8 +29,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/openfluxcd/controller-manager/server"
-	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
@@ -47,6 +46,7 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 )
 
 // +kubebuilder:scaffold:imports
@@ -54,16 +54,13 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
-const (
-	ARTIFACT_PATH   = "ocm-k8s-artifactstore--*"
-	ARTIFACT_SERVER = "localhost:8081"
-)
-
 var cfg *rest.Config
 var k8sClient client.Client
 var k8sManager ctrl.Manager
 var testEnv *envtest.Environment
-var globStorage *storage.Storage
+var zotCmd *exec.Cmd
+var registry *snapshot.Registry
+var zotRootDir string
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -95,8 +92,6 @@ var _ = BeforeSuite(func() {
 			filepath.Join("..", "..", "..", "config", "crd", "bases"),
 		},
 		ErrorIfCRDPathMissing: true,
-
-		CRDs: []*apiextensionsv1.CustomResourceDefinition{artifactCRD},
 
 		// The BinaryAssetsDirectory is only required if you want to run the tests directly
 		// without call the makefile target test. If not informed it will look for the
@@ -132,10 +127,36 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	tmpdir := Must(os.MkdirTemp("", ARTIFACT_PATH))
-	address := ARTIFACT_SERVER
-	globStorage = Must(server.NewStorage(k8sClient, testEnv.Scheme, tmpdir, address, 0, 0))
-	artifactServer := Must(server.NewArtifactServer(tmpdir, address, time.Millisecond))
+	// Create zot-registry config file
+	zotRootDir = Must(os.MkdirTemp("", ""))
+	zotAddress := "0.0.0.0"
+	zotPort := "8081"
+	zotConfig := []byte(fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},"http":{"address":"%s","port": "%s"}}`, zotRootDir, zotAddress, zotPort))
+	zotConfigFile := filepath.Join(zotRootDir, "config.json")
+	MustBeSuccessful(os.WriteFile(zotConfigFile, zotConfig, 0644))
+
+	// Start zot-registry
+	zotCmd = exec.Command(filepath.Join("..", "..", "..", "bin", "zot-registry"), "serve", zotConfigFile)
+	err = zotCmd.Start()
+	Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Failed to start Zot"))
+
+	// Wait for Zot to be ready
+	Eventually(func() error {
+		resp, err := http.Get(fmt.Sprintf("http://%s:%s/v2/", zotAddress, zotPort))
+		if err != nil {
+			return fmt.Errorf("could not connect to Zot")
+		}
+
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		}
+
+		return nil
+	}, 30*time.Second, 1*time.Second).Should(Succeed(), "Zot registry did not start in time")
+
+	registry, err = snapshot.NewRegistry(fmt.Sprintf("%s:%s", zotAddress, zotPort))
+	registry.PlainHTTP = true
 
 	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
@@ -146,7 +167,7 @@ var _ = BeforeSuite(func() {
 				IncludeObject: true,
 			},
 		},
-		Storage: globStorage,
+		Registry: registry,
 	}).SetupWithManager(k8sManager)).To(Succeed())
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -154,10 +175,16 @@ var _ = BeforeSuite(func() {
 
 	go func() {
 		defer GinkgoRecover()
-		Expect(artifactServer.Start(ctx)).To(Succeed())
-	}()
-	go func() {
-		defer GinkgoRecover()
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
+})
+
+var _ = AfterSuite(func() {
+	if zotCmd != nil {
+		err := zotCmd.Process.Kill()
+		Expect(err).NotTo(HaveOccurred(), "Failed to stop Zot registry")
+
+		// Clean up root directory
+		MustBeSuccessful(os.RemoveAll(zotRootDir))
+	}
 })

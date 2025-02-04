@@ -2,6 +2,7 @@ package mocks
 
 import (
 	"context"
+	"io"
 
 	"github.com/opencontainers/go-digest"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -33,10 +34,10 @@ func (r *Repository) PushSnapshot(ctx context.Context, _ string, _ []byte) (dige
 	return digest.FromString("mock"), nil
 }
 
-func (r *Repository) FetchSnapshot(ctx context.Context, _ string) ([]byte, error) {
+func (r *Repository) FetchSnapshot(ctx context.Context, _ string) (io.ReadCloser, error) {
 	log.FromContext(ctx).Info("mocking snapshot fetch")
 
-	return []byte{}, nil
+	return nil, nil
 }
 
 func (r *Repository) DeleteSnapshot(ctx context.Context, _ string) error {

@@ -37,7 +37,7 @@ const (
 
 // Finalizers for controllers.
 const (
-	// TODO: Remove ArtifactFinalizer
+	// TODO: Remove ArtifactFinalizer.
 
 	// ArtifactFinalizer is the finalizer that is added to artifacts created by the ocm controllers.
 	ArtifactFinalizer = "finalizers.ocm.software/artifact"
