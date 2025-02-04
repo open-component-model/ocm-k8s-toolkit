@@ -122,6 +122,8 @@ var _ = Describe("Resource Controller", func() {
 				Expect(k8sClient.Delete(ctx, resource, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
 			})
 
+			// TODO: Check for removal
+
 			By("checking that the resource has been reconciled successfully")
 			Eventually(komega.Object(resource), "5m").Should(
 				HaveField("Status.ObservedGeneration", Equal(int64(1))))
