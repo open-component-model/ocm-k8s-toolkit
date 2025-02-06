@@ -27,6 +27,8 @@ type RepositoryType interface {
 	FetchSnapshot(ctx context.Context, reference string) (io.ReadCloser, error)
 
 	DeleteSnapshot(ctx context.Context, digest string) error
+
+	ExistsSnapshot(ctx context.Context, manifestDigest string) (bool, error)
 }
 
 type Repository struct {
@@ -140,6 +142,16 @@ func (r *Repository) DeleteSnapshot(ctx context.Context, manifestDigest string) 
 	}
 
 	return r.Delete(ctx, manifestDescriptor)
+}
+
+// ExistsSnapshot checks if the manifest and the referenced layer exists.
+func (r *Repository) ExistsSnapshot(ctx context.Context, manifestDigest string) (bool, error) {
+	manifestDescriptor, _, err := r.FetchReference(ctx, manifestDigest)
+	if err != nil {
+		return false, fmt.Errorf("oci: error fetching manifest: %w", err)
+	}
+
+	return r.Exists(ctx, manifestDescriptor)
 }
 
 // CreateRepositoryName creates a name for an OCI repository and returns a hashed string from the passed arguments. The

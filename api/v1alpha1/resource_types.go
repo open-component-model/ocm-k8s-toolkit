@@ -68,9 +68,6 @@ type ResourceStatus struct {
 	// +optional
 	SnapshotRef corev1.LocalObjectReference `json:"snapshotRef,omitempty"`
 
-	// TODO: Remove
-	ArtifactRef corev1.LocalObjectReference `json:"artifactRef,omitempty"`
-
 	// +optional
 	Resource *ResourceInfo `json:"resource,omitempty"`
 
