@@ -15,9 +15,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	ociV1 "github.com/opencontainers/image-spec/specs-go/v1"
-)
 
-const OCISchemaVersion = 2
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+)
 
 // A RepositoryType is a type that can push and fetch blobs.
 type RepositoryType interface {
@@ -27,6 +27,8 @@ type RepositoryType interface {
 	FetchSnapshot(ctx context.Context, reference string) (io.ReadCloser, error)
 
 	DeleteSnapshot(ctx context.Context, digest string) error
+
+	ExistsSnapshot(ctx context.Context, manifestDigest string) (bool, error)
 }
 
 type Repository struct {
@@ -70,7 +72,7 @@ func (r *Repository) PushSnapshot(ctx context.Context, tag string, blob []byte) 
 
 	// Prepare and upload manifest
 	manifest := ociV1.Manifest{
-		Versioned: specs.Versioned{SchemaVersion: OCISchemaVersion},
+		Versioned: specs.Versioned{SchemaVersion: v1alpha1.OCISchemaVersion},
 		MediaType: ociV1.MediaTypeImageManifest,
 		Config:    imageConfigDescriptor,
 		Layers:    []ociV1.Descriptor{blobDescriptor},
@@ -140,6 +142,16 @@ func (r *Repository) DeleteSnapshot(ctx context.Context, manifestDigest string) 
 	}
 
 	return r.Delete(ctx, manifestDescriptor)
+}
+
+// ExistsSnapshot checks if the manifest and the referenced layer exists.
+func (r *Repository) ExistsSnapshot(ctx context.Context, manifestDigest string) (bool, error) {
+	manifestDescriptor, _, err := r.FetchReference(ctx, manifestDigest)
+	if err != nil {
+		return false, fmt.Errorf("oci: error fetching manifest: %w", err)
+	}
+
+	return r.Exists(ctx, manifestDescriptor)
 }
 
 // CreateRepositoryName creates a name for an OCI repository and returns a hashed string from the passed arguments. The

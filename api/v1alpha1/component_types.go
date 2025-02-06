@@ -106,9 +106,6 @@ type ComponentStatus struct {
 	// +optional
 	SnapshotRef corev1.LocalObjectReference `json:"snapshotRef,omitempty"`
 
-	// TODO: Remove
-	ArtifactRef corev1.LocalObjectReference `json:"artifactRef,omitempty"`
-
 	// Component specifies the concrete version of the component that was
 	// fetched after based on the semver constraints during the last successful
 	// reconciliation.

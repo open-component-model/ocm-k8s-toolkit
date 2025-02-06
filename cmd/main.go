@@ -22,14 +22,12 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
-	"time"
 
 	// to ensure that exec-entrypoint and run can make use of them.
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"github.com/fluxcd/pkg/runtime/events"
-	"github.com/openfluxcd/controller-manager/server"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -68,20 +66,18 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 }
 
-//nolint:funlen,maintidx // this is the main function
+//nolint:funlen // this is the main function
 func main() {
 	var (
-		metricsAddr              string
-		enableLeaderElection     bool
-		probeAddr                string
-		secureMetrics            bool
-		enableHTTP2              bool
-		artifactRetentionTTL     = 60 * time.Second
-		artifactRetentionRecords = 2
-		storagePath              string
-		storageAddr              string
-		storageAdvAddr           string
-		eventsAddr               string
+		metricsAddr          string
+		enableLeaderElection bool
+		probeAddr            string
+		secureMetrics        bool
+		enableHTTP2          bool
+		storagePath          string
+		storageAddr          string
+		storageAdvAddr       string
+		eventsAddr           string
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metric endpoint binds to. "+
 		"Use the port :8080. If not set, it will be 0 in order to disable the metrics server")
@@ -172,14 +168,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// TODO: Replace
-	storage, artifactServer, err := server.NewArtifactStore(mgr.GetClient(), mgr.GetScheme(),
-		storagePath, storageAddr, storageAdvAddr, artifactRetentionTTL, artifactRetentionRecords)
-	if err != nil {
-		setupLog.Error(err, "unable to initialize storage")
-		os.Exit(1)
-	}
-
 	// TODO: Adjust hardcode with CLI param
 	registry, err := snapshotRegistry.NewRegistry("ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000")
 	registry.PlainHTTP = true
@@ -212,7 +200,6 @@ func main() {
 			EventRecorder: eventsRecorder,
 		},
 		Registry: registry,
-		Storage:  storage,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Resource")
 		os.Exit(1)
@@ -224,8 +211,8 @@ func main() {
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
-		Storage:            storage,
-		LocalizationClient: locclient.NewClientWithLocalStorage(mgr.GetClient(), storage, mgr.GetScheme()),
+		Registry:           registry,
+		LocalizationClient: locclient.NewClientWithRegistry(mgr.GetClient(), registry, mgr.GetScheme()),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LocalizedResource")
 		os.Exit(1)
@@ -237,8 +224,8 @@ func main() {
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
-		Storage:      storage,
-		ConfigClient: cfgclient.NewClientWithLocalStorage(mgr.GetClient(), storage, mgr.GetScheme()),
+		Registry:     registry,
+		ConfigClient: cfgclient.NewClientWithRegistry(mgr.GetClient(), registry, mgr.GetScheme()),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ConfiguredResource")
 		os.Exit(1)
@@ -282,10 +269,6 @@ func main() {
 		// entire process will terminate if we lose leadership, so we don't need
 		// to handle that.
 		<-mgr.Elected()
-
-		if err := artifactServer.Start(ctx); err != nil {
-			setupLog.Error(err, "unable to start artifact server")
-		}
 	}()
 
 	setupLog.Info("starting manager")

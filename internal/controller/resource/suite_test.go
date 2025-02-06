@@ -28,7 +28,8 @@ import (
 	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
@@ -58,9 +59,12 @@ var cfg *rest.Config
 var k8sClient client.Client
 var k8sManager ctrl.Manager
 var testEnv *envtest.Environment
+var recorder record.EventRecorder
 var zotCmd *exec.Cmd
 var registry *snapshot.Registry
 var zotRootDir string
+var ctx context.Context
+var cancel context.CancelFunc
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -127,6 +131,11 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
+	recorder = &record.FakeRecorder{
+		Events:        make(chan string, 32),
+		IncludeObject: true,
+	}
+
 	// Create zot-registry config file
 	zotRootDir = Must(os.MkdirTemp("", ""))
 	zotAddress := "0.0.0.0"
@@ -158,6 +167,9 @@ var _ = BeforeSuite(func() {
 	registry, err = snapshot.NewRegistry(fmt.Sprintf("%s:%s", zotAddress, zotPort))
 	registry.PlainHTTP = true
 
+	ctx, cancel = context.WithCancel(context.Background())
+	DeferCleanup(cancel)
+
 	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client: k8sClient,
@@ -170,8 +182,18 @@ var _ = BeforeSuite(func() {
 		Registry: registry,
 	}).SetupWithManager(k8sManager)).To(Succeed())
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel = context.WithCancel(context.Background())
 	DeferCleanup(cancel)
+
+	namespace := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: Namespace,
+		},
+	}
+	Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+	DeferCleanup(func(ctx SpecContext) {
+		Expect(k8sClient.Delete(ctx, namespace, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
+	})
 
 	go func() {
 		defer GinkgoRecover()

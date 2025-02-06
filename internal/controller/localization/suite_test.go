@@ -18,16 +18,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
 
+	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/openfluxcd/controller-manager/server"
-	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
@@ -48,6 +51,7 @@ import (
 	cfgclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/client"
 	locclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/client"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 )
 
 // +kubebuilder:scaffold:imports
@@ -55,16 +59,16 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
-const (
-	ARTIFACT_SERVER = "localhost:0"
-)
-
 var cfg *rest.Config
 var k8sClient client.Client
 var k8sManager ctrl.Manager
 var testEnv *envtest.Environment
-var strg *storage.Storage
 var recorder record.EventRecorder
+var zotCmd *exec.Cmd
+var registry *snapshot.Registry
+var zotRootDir string
+var ctx context.Context
+var cancel context.CancelFunc
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -132,18 +136,54 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	tmpdir := GinkgoT().TempDir()
-	Expect(err).ToNot(HaveOccurred())
-	address := ARTIFACT_SERVER
-	strg, err = server.NewStorage(k8sClient, testEnv.Scheme, tmpdir, address, 0, 0)
-	Expect(err).ToNot(HaveOccurred())
-	artifactServer, err := server.NewArtifactServer(tmpdir, address, time.Millisecond)
-	Expect(err).ToNot(HaveOccurred())
-
 	recorder = &record.FakeRecorder{
 		Events:        make(chan string, 32),
 		IncludeObject: true,
 	}
+
+	// Create zot-registry config file
+	zotRootDir = Must(os.MkdirTemp("", ""))
+	zotAddress := "0.0.0.0"
+	zotPort := "8082"
+	zotConfig := []byte(fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},"http":{"address":"%s","port": "%s"}}`, zotRootDir, zotAddress, zotPort))
+	zotConfigFile := filepath.Join(zotRootDir, "config.json")
+	MustBeSuccessful(os.WriteFile(zotConfigFile, zotConfig, 0644))
+
+	// Start zot-registry
+	zotCmd = exec.Command(filepath.Join("..", "..", "..", "bin", "zot-registry"), "serve", zotConfigFile)
+	err = zotCmd.Start()
+	Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Failed to start Zot"))
+
+	// Wait for Zot to be ready
+	Eventually(func() error {
+		resp, err := http.Get(fmt.Sprintf("http://%s:%s/v2/", zotAddress, zotPort))
+		if err != nil {
+			return fmt.Errorf("could not connect to Zot")
+		}
+
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		}
+
+		return nil
+	}, 30*time.Second, 1*time.Second).Should(Succeed(), "Zot registry did not start in time")
+
+	registry, err = snapshot.NewRegistry(fmt.Sprintf("%s:%s", zotAddress, zotPort))
+	registry.PlainHTTP = true
+
+	ctx, cancel = context.WithCancel(context.Background())
+	DeferCleanup(cancel)
+
+	namespace := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: Namespace,
+		},
+	}
+	Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+	DeferCleanup(func(ctx SpecContext) {
+		Expect(k8sClient.Delete(ctx, namespace, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
+	})
 
 	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
@@ -151,8 +191,8 @@ var _ = BeforeSuite(func() {
 			Scheme:        testEnv.Scheme,
 			EventRecorder: recorder,
 		},
-		LocalizationClient: locclient.NewClientWithLocalStorage(k8sClient, strg, scheme.Scheme),
-		Storage:            strg,
+		LocalizationClient: locclient.NewClientWithRegistry(k8sClient, registry, scheme.Scheme),
+		Registry:           registry,
 	}).SetupWithManager(k8sManager)).To(Succeed())
 
 	Expect((&configuration.Reconciler{
@@ -161,18 +201,24 @@ var _ = BeforeSuite(func() {
 			Scheme:        testEnv.Scheme,
 			EventRecorder: recorder,
 		},
-		ConfigClient: cfgclient.NewClientWithLocalStorage(k8sClient, strg, scheme.Scheme),
-		Storage:      strg,
+		ConfigClient: cfgclient.NewClientWithRegistry(k8sClient, registry, scheme.Scheme),
+		Registry:     registry,
 	}).SetupWithManager(k8sManager)).To(Succeed())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	DeferCleanup(cancel)
 	go func() {
 		defer GinkgoRecover()
-		Expect(artifactServer.Start(ctx)).To(Succeed())
-	}()
-	go func() {
-		defer GinkgoRecover()
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
+})
+
+var _ = AfterSuite(func() {
+	if zotCmd != nil {
+		err := zotCmd.Process.Kill()
+		Expect(err).NotTo(HaveOccurred(), "Failed to stop Zot registry")
+
+		// Clean up root directory
+		MustBeSuccessful(os.RemoveAll(zotRootDir))
+	}
 })

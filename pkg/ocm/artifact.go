@@ -5,14 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 
-	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"ocm.software/ocm/api/ocm/compdesc"
 
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
@@ -20,7 +17,7 @@ import (
 )
 
 // GetComponentSetForSnapshot returns the component descriptor set for the given artifact.
-func GetComponentSetForSnapshot(ctx context.Context, repository snapshot.RepositoryType, snapshotResource *v1alpha1.Snapshot) (_ *compdesc.ComponentVersionSet, retErr error) {
+func GetComponentSetForSnapshot(ctx context.Context, repository snapshot.RepositoryType, snapshotResource *v1alpha1.Snapshot) (*compdesc.ComponentVersionSet, error) {
 	reader, err := repository.FetchSnapshot(ctx, snapshotResource.GetDigest())
 	if err != nil {
 		return nil, err
@@ -35,82 +32,73 @@ func GetComponentSetForSnapshot(ctx context.Context, repository snapshot.Reposit
 	return compdesc.NewComponentVersionSet(cds.List...), nil
 }
 
-// GetAndVerifyArtifactForCollectable gets the artifact for the given collectable and verifies it against the given strg.
+// GetAndVerifySnapshotForOwner gets the artifact for the given collectable and verifies it against the given strg.
 // If the artifact is not found, an error is returned.
-func GetAndVerifyArtifactForCollectable(
+func GetAndVerifySnapshotForOwner(
 	ctx context.Context,
 	reader ctrl.Reader,
-	strg *storage.Storage,
-	collectable storage.Collectable,
-) (*artifactv1.Artifact, error) {
-	artifact := strg.NewArtifactFor(collectable.GetKind(), collectable.GetObjectMeta(), "", "")
-	if err := reader.Get(ctx, types.NamespacedName{Name: artifact.Name, Namespace: artifact.Namespace}, artifact); err != nil {
-		return nil, fmt.Errorf("failed to get artifact: %w", err)
+	registry snapshot.RegistryType,
+	owner v1alpha1.SnapshotWriter,
+) (*v1alpha1.Snapshot, error) {
+	snapshotRef := owner.GetSnapshotName()
+	if snapshotRef == "" {
+		return nil, os.ErrNotExist
 	}
 
-	// Check the digest of the archive and compare it to the one in the artifact
-	if err := strg.VerifyArtifact(artifact); err != nil {
-		return nil, fmt.Errorf("failed to verify artifact: %w", err)
+	snapshotCR := &v1alpha1.Snapshot{}
+	if err := reader.Get(ctx, types.NamespacedName{Name: snapshotRef, Namespace: owner.GetNamespace()}, snapshotCR); err != nil {
+		return nil, fmt.Errorf("failed to get snapshot %s: %w", snapshotRef, err)
 	}
 
-	return artifact, nil
+	repository, err := registry.NewRepository(ctx, snapshotCR.Spec.Repository)
+	if err != nil {
+		return nil, fmt.Errorf("failed to createry: %w", err)
+	}
+
+	exists, err := repository.ExistsSnapshot(ctx, snapshotCR.GetDigest())
+	if err != nil {
+		return nil, fmt.Errorf("failed to check snapshot existence: %w", err)
+	}
+
+	if !exists {
+		return nil, fmt.Errorf("snapshot %s does not exist", snapshotRef)
+	}
+
+	// TODO: Discuss if we need more verification steps (which are even possible?)
+	// We could check if snapshotCR.Blob.Digest == layer.Digest()
+	// Problem how to make sure that snapshotCR.Blob.Digest & layer.Digest are calculated the same way?
+
+	return snapshotCR, nil
 }
 
-// ValidateArtifactForCollectable verifies if the artifact for the given collectable is valid.
+// ValidateSnapshotForOwner verifies if the artifact for the given collectable is valid.
 // This means that the artifact must be present in the cluster the reader is connected to and
 // the artifact must be present in the storage.
 // Additionally, the digest of the artifact must be different from the file name of the artifact.
 //
 // This method can be used to determine if an artifact needs an update or not because an artifact that does not
 // fulfill these conditions can be considered out of date (not in the cluster, not in the storage, or mismatching digest).
-//
-// Prerequisite for this method is that the artifact name is based on its original digest.
-func ValidateArtifactForCollectable(
+func ValidateSnapshotForOwner(
 	ctx context.Context,
 	reader ctrl.Reader,
-	strg *storage.Storage,
-	collectable storage.Collectable,
+	registry snapshot.RegistryType,
+	owner v1alpha1.SnapshotWriter,
 	digest string,
 ) (bool, error) {
-	artifact, err := GetAndVerifyArtifactForCollectable(ctx, reader, strg, collectable)
+	snapshotCR, err := GetAndVerifySnapshotForOwner(ctx, reader, registry, owner)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
 	if ctrl.IgnoreNotFound(err) != nil {
-		return false, fmt.Errorf("failed to get artifact: %w", err)
+		return false, fmt.Errorf("failed to get snapshot: %w", err)
 	}
-	if artifact == nil {
+	if err != nil {
+		return false, fmt.Errorf("failed to get and verify snapshot: %w", err)
+	}
+
+	if snapshotCR == nil {
 		return false, nil
 	}
 
-	existingFile := filepath.Base(strg.LocalPath(artifact))
-
-	return existingFile != digest, nil
-}
-
-// RemoveArtifactForCollectable removes the artifact for the given collectable from the given storage.
-func RemoveArtifactForCollectable(
-	ctx context.Context,
-	client ctrl.Client,
-	strg *storage.Storage,
-	collectable storage.Collectable,
-) error {
-	artifact, err := GetAndVerifyArtifactForCollectable(ctx, client, strg, collectable)
-	if ctrl.IgnoreNotFound(err) != nil {
-		return fmt.Errorf("failed to get artifact: %w", err)
-	}
-
-	if artifact != nil {
-		if err := strg.Remove(artifact); err != nil {
-			if !os.IsNotExist(err) {
-				return fmt.Errorf("failed to remove artifact: %w", err)
-			}
-		}
-	}
-
-	return nil
-}
-
-func GetComponentSetForArtifact(_ *storage.Storage, _ *artifactv1.Artifact) (*compdesc.ComponentVersionSet, error) {
-	return nil, nil
+	return snapshotCR.Spec.Blob.Digest != digest, nil
 }

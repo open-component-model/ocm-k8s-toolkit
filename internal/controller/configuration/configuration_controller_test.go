@@ -7,6 +7,7 @@ import (
 
 	_ "embed"
 
+	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
@@ -15,7 +16,6 @@ import (
 	"github.com/mandelsoft/vfs/pkg/projectionfs"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,6 +23,7 @@ import (
 	environment "ocm.software/ocm/api/helper/env"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
 )
 
@@ -65,7 +66,7 @@ var _ = Describe("ConfiguredResource Controller", func() {
 		fileContentAfterConfiguration := []byte(`mykey: "substituted"`)
 
 		dir := filepath.Join(tmp, "test")
-		test.CreateTGZ(dir, map[string][]byte{
+		test.CreateTGZFromData(dir, map[string][]byte{
 			fileToConfigure: fileContentBeforeConfiguration,
 		})
 
@@ -79,7 +80,7 @@ var _ = Describe("ConfiguredResource Controller", func() {
 					Namespace: Namespace,
 					Name:      component.GetName(),
 				},
-				Strg:     strg,
+				Registry: registry,
 				Clnt:     k8sClient,
 				Recorder: recorder,
 			},
@@ -135,13 +136,11 @@ var _ = Describe("ConfiguredResource Controller", func() {
 		})
 
 		Eventually(Object(configuredResource), "15s").Should(
-			HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+			HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
 
-		art := &artifactv1.Artifact{}
-		art.Name = configuredResource.Status.ArtifactRef.Name
-		art.Namespace = configuredResource.Namespace
+		snapshotCR := Must(snapshot.GetSnapshotForOwner(ctx, k8sClient, configuredResource))
 
-		test.VerifyArtifact(strg, art, map[string]func(data []byte){
+		test.VerifyArtifact(ctx, registry, snapshotCR, map[string]func(data []byte){
 			fileToConfigure: func(data []byte) {
 				Expect(data).To(MatchYAML(fileContentAfterConfiguration))
 			},
@@ -157,7 +156,7 @@ func NoOpComponent(ctx context.Context, basePath string) *v1alpha1.Component {
 		nil,
 		&test.MockComponentOptions{
 			BasePath: basePath,
-			Strg:     strg,
+			Registry: registry,
 			Client:   k8sClient,
 			Recorder: recorder,
 			Info: v1alpha1.ComponentInfo{

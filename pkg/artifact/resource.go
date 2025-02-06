@@ -6,17 +6,15 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
 	"github.com/containers/image/v5/pkg/compression"
 	"github.com/fluxcd/pkg/runtime/conditions"
-	"github.com/openfluxcd/controller-manager/storage"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	fluxtar "github.com/fluxcd/pkg/tar"
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/util"
 )
 
@@ -40,35 +38,36 @@ type Content interface {
 }
 
 func NewContentBackedByComponentResourceArtifact(
-	storage *storage.Storage,
+	registry snapshot.RegistryType,
 	component *v1alpha1.Component,
 	resource *v1alpha1.Resource,
-	artifact *artifactv1.Artifact,
+	snapshot *v1alpha1.Snapshot,
 ) Content {
 	return &ContentBackedByStorageAndComponent{
-		Storage:   storage,
+		Registry:  registry,
 		Component: component,
 		Resource:  resource,
-		Artifact:  artifact,
+		Snapshot:  snapshot,
 	}
 }
 
 type ContentBackedByStorageAndComponent struct {
-	Storage   *storage.Storage
+	Registry  snapshot.RegistryType
 	Component *v1alpha1.Component
 	Resource  *v1alpha1.Resource
-	Artifact  *artifactv1.Artifact
+	Snapshot  *v1alpha1.Snapshot
 }
 
 func (r *ContentBackedByStorageAndComponent) GetDigest() (string, error) {
-	return r.Artifact.Spec.Digest, nil
+	return r.Snapshot.Spec.Blob.Digest, nil
 }
 
 func (r *ContentBackedByStorageAndComponent) GetRevision() string {
+	// TODO: seems not good
 	return fmt.Sprintf(
-		"artifact %s in revision %s (from resource %s, based on component %s)",
-		r.Artifact.GetName(),
-		r.Artifact.Spec.Revision,
+		"snapshot %s in revision %s (from resource %s, based on component %s)",
+		r.Snapshot.GetName(),
+		r.Snapshot.Spec.Blob.Digest,
 		r.Resource.GetName(),
 		r.Component.GetName(),
 	)
@@ -79,22 +78,13 @@ func (r *ContentBackedByStorageAndComponent) Open() (io.ReadCloser, error) {
 }
 
 func (r *ContentBackedByStorageAndComponent) open() (io.ReadCloser, error) {
-	path := r.Storage.LocalPath(r.Artifact)
-
-	unlock, err := r.Storage.Lock(r.Artifact)
+	ctx := context.Background()
+	repository, err := r.Registry.NewRepository(context.Background(), r.Snapshot.Spec.Repository)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open repository: %w", err)
 	}
 
-	readCloser, err := os.OpenFile(path, os.O_RDONLY, 0o600)
-	if err != nil {
-		return nil, err
-	}
-
-	return &lockedReadCloser{
-		ReadCloser: readCloser,
-		unlock:     unlock,
-	}, nil
+	return repository.FetchSnapshot(ctx, r.Snapshot.GetDigest())
 }
 
 var _ io.ReadCloser = &lockedReadCloser{}
@@ -114,6 +104,7 @@ func (r *ContentBackedByStorageAndComponent) UnpackIntoDirectory(path string) (e
 		err = errors.Join(err, data.Close())
 	}()
 
+	// TODO: AutoDecompress only decompresses if data is compressed. Is this still necessary?
 	decompressed, _, err := compression.AutoDecompress(data)
 	if err != nil {
 		return fmt.Errorf("failed to autodecompress: %w", err)
@@ -122,24 +113,14 @@ func (r *ContentBackedByStorageAndComponent) UnpackIntoDirectory(path string) (e
 		err = errors.Join(err, decompressed.Close())
 	}()
 
+	// TODO: Check what happens with this early return. Is this still necessary?
 	isTar, reader := util.IsTar(decompressed)
 	if isTar {
 		return fluxtar.Untar(reader, path, fluxtar.WithSkipGzip())
 	}
 
-	path = filepath.Join(path, filepath.Base(r.Storage.LocalPath(r.Artifact)))
-	file, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("failed to unpack file at %s: %w", path, err)
-	}
-	defer func() {
-		err = errors.Join(err, file.Close())
-	}()
-	if _, err := io.Copy(file, reader); err != nil {
-		return fmt.Errorf("failed to copy file to %s: %w", path, err)
-	}
-
-	return nil
+	// TODO: Clean
+	return fmt.Errorf("TESTING: it is not a tar")
 }
 
 func (r *ContentBackedByStorageAndComponent) GetComponent() *v1alpha1.Component {
@@ -163,33 +144,33 @@ func (l *lockedReadCloser) Close() error {
 	return l.ReadCloser.Close()
 }
 
-func GetContentBackedByArtifactFromComponent(
+func GetContentBackedBySnapshotFromComponent(
 	ctx context.Context,
-	clnt client.Reader,
-	strg *storage.Storage,
+	clnt client.Client,
+	registry snapshot.RegistryType,
 	ref *v1alpha1.ConfigurationReference,
 ) (Content, error) {
 	if ref.APIVersion == "" {
 		ref.APIVersion = v1alpha1.GroupVersion.String()
 	}
-	component, resource, artifact, err := GetComponentResourceArtifactFromReference(ctx, clnt, strg, ref)
+	component, resource, artifact, err := GetComponentResourceSnapshotFromReference(ctx, clnt, registry, ref)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewContentBackedByComponentResourceArtifact(strg, component, resource, artifact), nil
+	return NewContentBackedByComponentResourceArtifact(registry, component, resource, artifact), nil
 }
 
 type ObjectWithTargetReference interface {
 	GetTarget() *v1alpha1.ConfigurationReference
 }
 
-func GetComponentResourceArtifactFromReference(
+func GetComponentResourceSnapshotFromReference(
 	ctx context.Context,
 	clnt client.Reader,
-	strg *storage.Storage,
+	registry snapshot.RegistryType,
 	ref *v1alpha1.ConfigurationReference,
-) (*v1alpha1.Component, *v1alpha1.Resource, *artifactv1.Artifact, error) {
+) (*v1alpha1.Component, *v1alpha1.Resource, *v1alpha1.Snapshot, error) {
 	var (
 		resource client.Object
 		err      error
@@ -230,15 +211,15 @@ func GetComponentResourceArtifactFromReference(
 			return nil, nil, nil, fmt.Errorf("failed to fetch component %s to which resource %s belongs: %w", res.Spec.ComponentRef.Name, ref.Name, err)
 		}
 
-		art := &artifactv1.Artifact{}
+		snapshotResource := &v1alpha1.Snapshot{}
 		if err = clnt.Get(ctx, client.ObjectKey{
 			Namespace: res.GetNamespace(),
-			Name:      res.Status.ArtifactRef.Name,
-		}, art); err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to fetch artifact %s belonging to resource %s: %w", res.Status.ArtifactRef.Name, ref.Name, err)
+			Name:      res.Status.SnapshotRef.Name,
+		}, snapshotResource); err != nil {
+			return nil, nil, nil, fmt.Errorf("failed to fetch snapshot %s belonging to resource %s: %w", res.Status.SnapshotRef.Name, ref.Name, err)
 		}
 
-		return component, res, art, nil
+		return component, res, snapshotResource, nil
 	}
 
 	targetable, ok := resource.(ObjectWithTargetReference)
@@ -246,15 +227,15 @@ func GetComponentResourceArtifactFromReference(
 		return nil, nil, nil, fmt.Errorf("unsupported reference type: %T", resource)
 	}
 
-	return GetComponentResourceArtifactFromReference(ctx, clnt, strg, targetable.GetTarget())
+	return GetComponentResourceSnapshotFromReference(ctx, clnt, registry, targetable.GetTarget())
 }
 
-// UniqueIDsForArtifactContentCombination returns a set of unique identifiers for the combination of two Content.
+// UniqueIDsForSnapshotContentCombination returns a set of unique identifiers for the combination of two Content.
 // This compromises of
 // - the digest of 'a' applied to 'b', machine identifiable and unique
 // - the revision of 'a' applied to 'b', human-readable
 // - the archive file name of 'a' applied to 'b'.
-func UniqueIDsForArtifactContentCombination(a, b Content) (string, string, string, error) {
+func UniqueIDsForSnapshotContentCombination(a, b Content) (string, string, string, error) {
 	revisionAndDigest, err := util.NewMappedRevisionAndDigest(a, b)
 	if err != nil {
 		return "", "", "", fmt.Errorf("unable to create unique revision and digest: %w", err)
