@@ -11,6 +11,7 @@ resources:
 - bases/delivery.ocm.software_configuredresources.yaml
 - bases/delivery.ocm.software_resourceconfigs.yaml
 - bases/delivery.ocm.software_snapshots.yaml
+- bases/delivery.ocm.software_fluxdeployers.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

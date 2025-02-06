@@ -32,6 +32,7 @@ rules:
   resources:
   - components
   - configuredresources
+  - fluxdeployers
   - localizedresources
   - ocmrepositories
   - replications
@@ -56,6 +57,7 @@ rules:
   resources:
   - components/status
   - configuredresources/status
+  - fluxdeployers/status
   - localizedresources/status
   - ocmrepositories/status
   - replications/status
@@ -69,6 +71,7 @@ rules:
   - delivery.ocm.software
   resources:
   - configuredresources/finalizers
+  - fluxdeployers/finalizers
   - localizedresources/finalizers
   - ocmrepositories/finalizers
   - replications/finalizers
