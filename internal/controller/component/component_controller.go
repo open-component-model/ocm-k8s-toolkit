@@ -26,7 +26,6 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/goutils/sliceutils"
 	"github.com/opencontainers/go-digest"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/resolvers"
@@ -38,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/yaml"
 
+	corev1 "k8s.io/api/core/v1"
 	ocmctx "ocm.software/ocm/api/ocm"
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -60,8 +60,6 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		// TODO: Check if we should watch for the snapshots that are created by this controller
 		For(&v1alpha1.Component{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// Watch for snapshot-events that are owned by the component controller
-		Owns(&v1alpha1.Snapshot{}).
 		Complete(r)
 }
 
@@ -278,7 +276,7 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 		return ctrl.Result{}, err
 	}
 
-	// Create snapshot
+	logger.Info("creating snapshot")
 	snapshotCR := snapshot.Create(component, ociRepositoryName, manifestDigest.String(), version, digest.FromBytes(descriptorsBytes).String(), int64(len(descriptorsBytes)))
 
 	if _, err = controllerutil.CreateOrUpdate(ctx, r.GetClient(), &snapshotCR, func() error {

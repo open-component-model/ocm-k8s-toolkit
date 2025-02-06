@@ -45,6 +45,7 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/component"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration"
 	cfgclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/client"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/fluxdeployer"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization"
 	locclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/client"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/ocmrepository"
@@ -82,6 +83,7 @@ func main() {
 		storageAddr              string
 		storageAdvAddr           string
 		eventsAddr               string
+		registryAddr             string
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metric endpoint binds to. "+
 		"Use the port :8080. If not set, it will be 0 in order to disable the metrics server")
@@ -97,6 +99,7 @@ func main() {
 	flag.StringVar(&storageAdvAddr, "storage-adv-addr", "", "The advertised address of the static file server.")
 	flag.StringVar(&storagePath, "storage-path", "/data", "The local storage path.")
 	flag.StringVar(&eventsAddr, "events-addr", "", "The address of the events receiver.")
+	flag.StringVar(&registryAddr, "registry-addr", "ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000", "The address of the registry.")
 
 	opts := zap.Options{
 		Development: true,
@@ -181,7 +184,7 @@ func main() {
 	}
 
 	// TODO: Adjust hardcode with CLI param
-	registry, err := snapshotRegistry.NewRegistry("ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000")
+	registry, err := snapshotRegistry.NewRegistry(registryAddr)
 	registry.PlainHTTP = true
 	if err != nil {
 		setupLog.Error(err, "unable to initialize registry object")
@@ -266,6 +269,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&fluxdeployer.Reconciler{
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		EventRecorder: eventsRecorder,
+		Registry:      registryAddr,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "FluxDeployer")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

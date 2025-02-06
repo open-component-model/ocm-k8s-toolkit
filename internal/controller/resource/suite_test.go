@@ -130,7 +130,7 @@ var _ = BeforeSuite(func() {
 	// Create zot-registry config file
 	zotRootDir = Must(os.MkdirTemp("", ""))
 	zotAddress := "0.0.0.0"
-	zotPort := "5005"
+	zotPort := "8081"
 	zotConfig := []byte(fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},"http":{"address":"%s","port": "%s"}}`, zotRootDir, zotAddress, zotPort))
 	zotConfigFile := filepath.Join(zotRootDir, "config.json")
 	MustBeSuccessful(os.WriteFile(zotConfigFile, zotConfig, 0644))
@@ -153,7 +153,7 @@ var _ = BeforeSuite(func() {
 		}
 
 		return nil
-	}, 60*time.Second, 500*time.Millisecond).Should(Succeed(), "Zot registry did not start in time")
+	}, 30*time.Second, 1*time.Second).Should(Succeed(), "Zot registry did not start in time")
 
 	registry, err = snapshot.NewRegistry(fmt.Sprintf("%s:%s", zotAddress, zotPort))
 	registry.PlainHTTP = true
