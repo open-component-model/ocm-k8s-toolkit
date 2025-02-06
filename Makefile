@@ -118,13 +118,11 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	- $(CONTAINER_TOOL) buildx rm ocm-k8s-toolkit-builder
 	rm Dockerfile.cross
 
-# INSTALLER_YAML is the path to the result of the kustomize build command.
-INSTALLER_YAML = dist/install.yaml
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
 	$(call set-images)
-	$(KUSTOMIZE) build config/default-zot-https > $(INSTALLER_YAML)
+	$(KUSTOMIZE) build config/default-zot-https > dist/install.yaml
 
 ##@ Deployment
 
@@ -150,15 +148,16 @@ undeploy-dev: kustomize ## Undeploy controller from the K8s cluster specified in
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f -
 
 .PHONY: deploy
-deploy: deploy-cert-manager build-installer ## Deploy controller to the K8s cluster specified in ~/.kube/config. In-cluster zot registry is accessible via https. If you need http, use deploy-dev target.
-	$(KUBECTL) apply -f $(INSTALLER_YAML)
+deploy: deploy-cert-manager manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config. In-cluster zot registry is accessible via https. If you need http, use deploy-dev target.
+	$(call set-images)
+	$(KUSTOMIZE) build config/default-zot-https | $(KUBECTL) apply -f -
 
 # Undeploy target undeploys the controller, its zot regostry and related certificates. 
 # However, it does not undeploy the cert-manager, which might still be needed by other applications in the cluster.
 # If you wish to undeploy cert manager as well, execute 'make undeploy-cert-manager' in addition.
 .PHONY: undeploy
-undeploy: kustomize build-installer ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f $(INSTALLER_YAML)
+undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	$(KUSTOMIZE) build config/default-zot-https | $(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f -
 
 ##@ Dependencies
 
