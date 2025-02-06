@@ -215,7 +215,6 @@ func main() {
 			EventRecorder: eventsRecorder,
 		},
 		Registry: registry,
-		Storage:  storage,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Resource")
 		os.Exit(1)
@@ -227,8 +226,8 @@ func main() {
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
-		Storage:            storage,
-		LocalizationClient: locclient.NewClientWithLocalStorage(mgr.GetClient(), storage, mgr.GetScheme()),
+		Registry:           registry,
+		LocalizationClient: locclient.NewClientWithRegistry(mgr.GetClient(), registry, mgr.GetScheme()),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LocalizedResource")
 		os.Exit(1)

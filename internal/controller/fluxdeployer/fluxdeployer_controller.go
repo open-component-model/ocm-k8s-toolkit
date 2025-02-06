@@ -407,8 +407,8 @@ func (r *Reconciler) reconcileHelmRelease(
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, helmRelease, func() error {
 		if helmRelease.ObjectMeta.CreationTimestamp.IsZero() {
-			if err := controllerutil.SetOwnerReference(obj, helmRelease, r.Scheme); err != nil {
-				return fmt.Errorf("failed to set owner reference on oci repository source: %w", err)
+			if err := controllerutil.SetControllerReference(obj, helmRelease, r.Scheme); err != nil {
+				return fmt.Errorf("failed to set controller reference on oci repository source: %w", err)
 			}
 		}
 		helmRelease.Spec = *obj.Spec.HelmReleaseTemplate

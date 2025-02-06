@@ -1,6 +1,7 @@
 package test
 
 import (
+	"archive/tar"
 	"context"
 	"fmt"
 	"io"
@@ -10,10 +11,15 @@ import (
 
 	//nolint:revive,stylecheck // dot import necessary for Ginkgo DSL
 	. "github.com/onsi/ginkgo/v2"
+	"github.com/opencontainers/go-digest"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
 	//nolint:revive,stylecheck // dot import necessary for Ginkgo DSL
 	. "github.com/onsi/gomega"
 	//nolint:revive,stylecheck // dot import necessary for Ginkgo DSL
 	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
+
+	. "github.com/mandelsoft/goutils/testutils"
 
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/vfs/pkg/memoryfs"
@@ -29,6 +35,7 @@ import (
 	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	snapshotRegistry "github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
@@ -42,7 +49,9 @@ type MockResourceOptions struct {
 
 	ComponentRef v1alpha1.ObjectKey
 
-	Strg     *storage.Storage
+	Strg *storage.Storage
+
+	Registry snapshotRegistry.RegistryType
 	Clnt     client.Client
 	Recorder record.EventRecorder
 }
@@ -72,43 +81,58 @@ func SetupMockResourceWithData(
 
 	patchHelper := patch.NewSerialPatcher(res, options.Clnt)
 
-	path := options.BasePath
+	var data []byte
+	var err error
 
-	err := options.Strg.ReconcileArtifact(
-		ctx,
-		res,
-		name,
-		path,
-		fmt.Sprintf("%s.tar.gz", name),
-		func(artifact *artifactv1.Artifact, _ string) error {
-			// Archive directory to storage
-			if options.Data != nil {
-				if err := options.Strg.Copy(artifact, options.Data); err != nil {
-					return fmt.Errorf("unable to archive artifact to storage: %w", err)
-				}
+	if options.Data != nil {
+		data, err = io.ReadAll(options.Data)
+		Expect(err).ToNot(HaveOccurred())
+	}
+
+	if options.DataPath != "" {
+		f, err := os.Stat(options.DataPath)
+		Expect(err).ToNot(HaveOccurred())
+
+		// If the file is a directory, it must be tarred
+		if f.IsDir() {
+			tmpFile, err := os.CreateTemp("", "")
+			defer func() {
+				Expect(tmpFile.Close()).To(Succeed())
+			}()
+			Expect(err).ToNot(HaveOccurred())
+
+			err = CreateTGZFromPath(options.DataPath, tmpFile.Name())
+			Expect(err).ToNot(HaveOccurred())
+
+			data, err = os.ReadFile(tmpFile.Name())
+			Expect(err).ToNot(HaveOccurred())
+		} else {
+			data, err = os.ReadFile(options.DataPath)
+			Expect(err).ToNot(HaveOccurred())
+		}
+	}
+
+	// TODO: Check what about version?!
+	version := "1.0.0"
+	repositoryName := Must(snapshotRegistry.CreateRepositoryName(options.ComponentRef.Name, name))
+	repository := Must(options.Registry.NewRepository(ctx, repositoryName))
+
+	manifestDigest := Must(repository.PushSnapshot(ctx, "1.0.0", data))
+	snapshotCR := snapshotRegistry.Create(res, repositoryName, manifestDigest.String(), version, digest.FromBytes(data).String(), int64(len(data)))
+
+	_ = Must(controllerutil.CreateOrUpdate(ctx, options.Clnt, &snapshotCR, func() error {
+		if snapshotCR.ObjectMeta.CreationTimestamp.IsZero() {
+			if err := controllerutil.SetControllerReference(res, &snapshotCR, options.Clnt.Scheme()); err != nil {
+				return fmt.Errorf("failed to set controller reference: %w", err)
 			}
-			if options.DataPath != "" {
-				abs, err := filepath.Abs(options.DataPath)
-				if err != nil {
-					return fmt.Errorf("unable to get absolute path: %w", err)
-				}
-				if err := options.Strg.Archive(artifact, abs, nil); err != nil {
-					return fmt.Errorf("unable to archive artifact to storage: %w", err)
-				}
-			}
+		}
 
-			res.Status.ArtifactRef = corev1.LocalObjectReference{
-				Name: artifact.Name,
-			}
+		res.Status.SnapshotRef = corev1.LocalObjectReference{
+			Name: snapshotCR.GetName(),
+		}
 
-			return nil
-		})
-	Expect(err).ToNot(HaveOccurred())
-
-	art := &artifactv1.Artifact{}
-	art.Name = res.Status.ArtifactRef.Name
-	art.Namespace = res.Namespace
-	Eventually(Object(art), "5s").Should(HaveField("Spec.URL", Not(BeEmpty())))
+		return nil
+	}))
 
 	Eventually(func(ctx context.Context) error {
 		status.MarkReady(options.Recorder, res, "applied mock resource")
@@ -121,7 +145,7 @@ func SetupMockResourceWithData(
 
 type MockComponentOptions struct {
 	BasePath   string
-	Strg       *storage.Storage
+	Registry   snapshotRegistry.RegistryType
 	Client     client.Client
 	Recorder   record.EventRecorder
 	Info       v1alpha1.ComponentInfo
@@ -135,7 +159,7 @@ func SetupComponentWithDescriptorList(
 	options *MockComponentOptions,
 ) *v1alpha1.Component {
 	dir := filepath.Join(options.BasePath, "descriptor")
-	CreateTGZ(dir, map[string][]byte{
+	CreateTGZFromData(dir, map[string][]byte{
 		v1alpha1.OCMComponentDescriptorList: descriptorListData,
 	})
 	component := &v1alpha1.Component{
@@ -158,30 +182,37 @@ func SetupComponentWithDescriptorList(
 
 	patchHelper := patch.NewSerialPatcher(component, options.Client)
 
-	Expect(options.Strg.ReconcileArtifact(
-		ctx,
-		component,
-		name,
-		options.BasePath,
-		fmt.Sprintf("%s.tar.gz", name),
-		func(artifact *artifactv1.Artifact, _ string) error {
-			if err := options.Strg.Archive(artifact, dir, nil); err != nil {
-				return fmt.Errorf("unable to archive artifact to storage: %w", err)
+	//tmpFile, err := os.CreateTemp("", "")
+	//defer func() {
+	//	Expect(tmpFile.Close()).To(Succeed())
+	//}()
+	//Expect(err).ToNot(HaveOccurred())
+
+	//err = CreateTGZFromPath(dir, tmpFile.Name())
+	//Expect(err).ToNot(HaveOccurred())
+
+	data, err := os.ReadFile(filepath.Join(dir, v1alpha1.OCMComponentDescriptorList))
+	Expect(err).ToNot(HaveOccurred())
+
+	repositoryName := Must(snapshotRegistry.CreateRepositoryName(options.Repository, name))
+	repository := Must(options.Registry.NewRepository(ctx, repositoryName))
+
+	manifestDigest := Must(repository.PushSnapshot(ctx, "1.0.0", data))
+	snapshotCR := snapshotRegistry.Create(component, repositoryName, manifestDigest.String(), options.Info.Version, digest.FromBytes(data).String(), int64(len(data)))
+
+	_ = Must(controllerutil.CreateOrUpdate(ctx, options.Client, &snapshotCR, func() error {
+		if snapshotCR.ObjectMeta.CreationTimestamp.IsZero() {
+			if err := controllerutil.SetControllerReference(component, &snapshotCR, options.Client.Scheme()); err != nil {
+				return fmt.Errorf("failed to set controller reference: %w", err)
 			}
+		}
 
-			component.Status.ArtifactRef = corev1.LocalObjectReference{
-				Name: artifact.Name,
-			}
-			component.Status.Component = options.Info
+		component.Status.SnapshotRef = corev1.LocalObjectReference{
+			Name: snapshotCR.GetName(),
+		}
 
-			return nil
-		}),
-	).To(Succeed())
-
-	art := &artifactv1.Artifact{}
-	art.Name = component.Status.ArtifactRef.Name
-	art.Namespace = component.Namespace
-	Eventually(Object(art), "5s").Should(HaveField("Spec.URL", Not(BeEmpty())))
+		return nil
+	}))
 
 	Eventually(func(ctx context.Context) error {
 		status.MarkReady(options.Recorder, component, "applied mock component")
@@ -217,7 +248,7 @@ func VerifyArtifact(strg *storage.Storage, art *artifactv1.Artifact, files map[s
 	}
 }
 
-func CreateTGZ(tgzPackageDir string, data map[string][]byte) {
+func CreateTGZFromData(tgzPackageDir string, data map[string][]byte) {
 	GinkgoHelper()
 	Expect(os.Mkdir(tgzPackageDir, os.ModePerm|os.ModeDir)).To(Succeed())
 	for path, data := range data {
@@ -230,4 +261,59 @@ func CreateTGZ(tgzPackageDir string, data map[string][]byte) {
 		_, err = writer.Write(data)
 		Expect(err).ToNot(HaveOccurred())
 	}
+}
+
+func CreateTGZFromPath(srcDir, tarPath string) error {
+	GinkgoHelper()
+	// Create the output tar file
+	tarFile, err := os.Create(tarPath)
+	Expect(err).ToNot(HaveOccurred())
+	defer func() {
+		Expect(tarFile.Close()).To(Succeed())
+	}()
+
+	// Create a new tar writer
+	tarWriter := tar.NewWriter(tarFile)
+	defer func() {
+		Expect(tarWriter.Close()).To(Succeed())
+	}()
+
+	// Walk through the source directory
+	return filepath.Walk(srcDir, func(file string, fileInfo os.FileInfo, err error) error {
+		Expect(err).ToNot(HaveOccurred())
+
+		if !fileInfo.Mode().IsRegular() {
+			return nil
+		}
+
+		if fileInfo.IsDir() {
+			return nil
+		}
+
+		// Create tar header
+		header, err := tar.FileInfoHeader(fileInfo, fileInfo.Name())
+		Expect(err).ToNot(HaveOccurred())
+
+		// Use relative path for header.Name to preserve folder structure
+		relPath, err := filepath.Rel(srcDir, file)
+		Expect(err).ToNot(HaveOccurred())
+		header.Name = relPath
+
+		// Write header
+		err = tarWriter.WriteHeader(header)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Open the file
+		f, err := os.Open(file)
+		Expect(err).ToNot(HaveOccurred())
+		defer func() {
+			Expect(f.Close()).To(Succeed())
+		}()
+
+		// Copy file data into the tar archive
+		_, err = io.Copy(tarWriter, f)
+		Expect(err).ToNot(HaveOccurred())
+
+		return nil
+	})
 }

@@ -3,7 +3,6 @@ package localization
 import (
 	"bytes"
 	"context"
-	"os"
 	"path/filepath"
 	"text/template"
 
@@ -21,7 +20,6 @@ import (
 	"ocm.software/ocm/api/utils/tarutils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -88,7 +86,7 @@ var _ = Describe("Localization Controller", func() {
 			descriptorListYAML,
 			&test.MockComponentOptions{
 				BasePath: tmp,
-				Strg:     strg,
+				Registry: registry,
 				Client:   k8sClient,
 				Recorder: recorder,
 				Info: v1alpha1.ComponentInfo{
@@ -114,7 +112,7 @@ var _ = Describe("Localization Controller", func() {
 					Namespace: Namespace,
 					Name:      ComponentObj,
 				},
-				Strg:     strg,
+				Registry: registry,
 				Clnt:     k8sClient,
 				Recorder: recorder,
 			},
@@ -133,7 +131,7 @@ var _ = Describe("Localization Controller", func() {
 					Namespace: Namespace,
 					Name:      ComponentObj,
 				},
-				Strg:     strg,
+				Registry: registry,
 				Clnt:     k8sClient,
 				Recorder: recorder,
 			},
@@ -153,24 +151,22 @@ var _ = Describe("Localization Controller", func() {
 		})
 
 		Eventually(Object(localization), "15s").Should(
-			HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+			HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
 
-		art := &artifactv1.Artifact{}
-		art.Name = localization.Status.ArtifactRef.Name
-		art.Namespace = localization.Namespace
+		snapshotCR := &v1alpha1.Snapshot{}
+		snapshotCR.Name = localization.Status.SnapshotRef.Name
+		snapshotCR.Namespace = localization.Namespace
 
-		Eventually(Object(art), "5s").Should(HaveField("Spec.URL", Not(BeEmpty())))
+		Eventually(Object(snapshotCR), "5s").Should(HaveField("Spec.URL", Not(BeEmpty())))
 
-		localized := strg.LocalPath(art)
-		Expect(localized).To(BeAnExistingFile())
+		repository, err := registry.NewRepository(ctx, snapshotCR.Spec.Repository)
+		Expect(err).ToNot(HaveOccurred())
+
+		data, err := repository.FetchSnapshot(ctx, snapshotCR.GetDigest())
+		Expect(err).ToNot(HaveOccurred())
 
 		memFs := vfs.New(memoryfs.New())
-		localizedArchiveData, err := os.OpenFile(localized, os.O_RDONLY, 0o600)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			Expect(localizedArchiveData.Close()).To(Succeed())
-		})
-		Expect(tarutils.UnzipTarToFs(memFs, localizedArchiveData)).To(Succeed())
+		Expect(tarutils.UnzipTarToFs(memFs, data)).To(Succeed())
 
 		valuesData, err := memFs.ReadFile("values.yaml")
 		Expect(err).ToNot(HaveOccurred())

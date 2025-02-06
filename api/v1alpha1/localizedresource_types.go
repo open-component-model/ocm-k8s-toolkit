@@ -91,8 +91,8 @@ type LocalizedResourceStatus struct {
 	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
 	Conditions         []metav1.Condition `json:"conditions,omitempty"`
 
-	// The LocalizedResource reports an ArtifactRef which contains the content of the Resource after Localization
-	ArtifactRef *ObjectKey `json:"artifactRef,omitempty"`
+	// The LocalizedResource reports an SnapshotRef which contains the content of the Resource after Localization
+	SnapshotRef *ObjectKey `json:"snapshotRef,omitempty"`
 
 	// The LocalizedResource reports a ConfiguredResourceRef which contains a reference to the ConfiguredResource
 	// that is responsible for generating the ArtifactRef.

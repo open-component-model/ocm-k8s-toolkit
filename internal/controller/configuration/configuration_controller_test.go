@@ -65,7 +65,7 @@ var _ = Describe("ConfiguredResource Controller", func() {
 		fileContentAfterConfiguration := []byte(`mykey: "substituted"`)
 
 		dir := filepath.Join(tmp, "test")
-		test.CreateTGZ(dir, map[string][]byte{
+		test.CreateTGZFromData(dir, map[string][]byte{
 			fileToConfigure: fileContentBeforeConfiguration,
 		})
 

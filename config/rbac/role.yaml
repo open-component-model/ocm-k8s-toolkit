@@ -50,8 +50,14 @@ rules:
   - delivery.ocm.software
   resources:
   - components/finalizers
+  - configuredresources/finalizers
+  - fluxdeployers/finalizers
+  - localizedresources/finalizers
+  - ocmrepositories/finalizers
+  - replications/finalizers
+  - snapshots/finalizers
   verbs:
-  - updat
+  - update
 - apiGroups:
   - delivery.ocm.software
   resources:
@@ -66,17 +72,6 @@ rules:
   verbs:
   - get
   - patch
-  - update
-- apiGroups:
-  - delivery.ocm.software
-  resources:
-  - configuredresources/finalizers
-  - fluxdeployers/finalizers
-  - localizedresources/finalizers
-  - ocmrepositories/finalizers
-  - replications/finalizers
-  - snapshots/finalizers
-  verbs:
   - update
 - apiGroups:
   - delivery.ocm.software

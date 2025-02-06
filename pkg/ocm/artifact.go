@@ -20,7 +20,7 @@ import (
 )
 
 // GetComponentSetForSnapshot returns the component descriptor set for the given artifact.
-func GetComponentSetForSnapshot(ctx context.Context, repository snapshot.RepositoryType, snapshotResource *v1alpha1.Snapshot) (_ *compdesc.ComponentVersionSet, retErr error) {
+func GetComponentSetForSnapshot(ctx context.Context, repository snapshot.RepositoryType, snapshotResource *v1alpha1.Snapshot) (*compdesc.ComponentVersionSet, error) {
 	reader, err := repository.FetchSnapshot(ctx, snapshotResource.GetDigest())
 	if err != nil {
 		return nil, err
