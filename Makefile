@@ -118,11 +118,13 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	- $(CONTAINER_TOOL) buildx rm ocm-k8s-toolkit-builder
 	rm Dockerfile.cross
 
+# INSTALLER_YAML is the path to the result of the kustomize build command.
+INSTALLER_YAML = dist/install.yaml
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default > dist/install.yaml
+	$(call set-images)
+	$(KUSTOMIZE) build config/default-zot-https > $(INSTALLER_YAML)
 
 ##@ Deployment
 
@@ -138,14 +140,25 @@ install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~
 uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f -
 
-.PHONY: deploy
-deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+.PHONY: deploy-dev
+deploy-dev: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config. In-cluster zot registry is accessible via http. If you need https, use deploy target.
+	$(call set-images)
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 
-.PHONY: undeploy
-undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+.PHONY: undeploy-dev
+undeploy-dev: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f -
+
+.PHONY: deploy
+deploy: deploy-cert-manager build-installer ## Deploy controller to the K8s cluster specified in ~/.kube/config. In-cluster zot registry is accessible via https. If you need http, use deploy-dev target.
+	$(KUBECTL) apply -f $(INSTALLER_YAML)
+
+# Undeploy target undeploys the controller, its zot regostry and related certificates. 
+# However, it does not undeploy the cert-manager, which might still be needed by other applications in the cluster.
+# If you wish to undeploy cert manager as well, execute 'make undeploy-cert-manager' in addition.
+.PHONY: undeploy
+undeploy: kustomize build-installer ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	$(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f $(INSTALLER_YAML)
 
 ##@ Dependencies
 
@@ -167,6 +180,14 @@ CONTROLLER_TOOLS_VERSION ?= v0.16.0
 ENVTEST_VERSION ?= release-0.18
 GOLANGCI_LINT_VERSION ?= v1.61.0
 
+## ZOT OCI Registry
+ZOT_VERSION ?= v2.1.2
+ZOT_IMG ?= ghcr.io/project-zot/zot-minimal:$(ZOT_VERSION)
+
+## cert-manager
+CERT-MANAGER_VERSION ?= v1.16.3
+CERT-MANAGER_YAML ?= https://github.com/cert-manager/cert-manager/releases/download/$(CERT-MANAGER_VERSION)/cert-manager.yaml
+
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
@@ -181,6 +202,17 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 envtest: $(ENVTEST) ## Download setup-envtest locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
+
+.PHONY: deploy-cert-manager
+deploy-cert-manager: ## Deploy cert-manager to the K8s cluster specified in ~/.kube/config.
+	$(KUBECTL) apply -f $(CERT-MANAGER_YAML)
+	$(KUBECTL) wait --for=condition=Available=True Deployment/cert-manager -n cert-manager --timeout=60s
+	$(KUBECTL) wait --for=condition=Available=True Deployment/cert-manager-webhook -n cert-manager --timeout=60s
+	$(KUBECTL) wait --for=condition=Available=True Deployment/cert-manager-cainjector -n cert-manager --timeout=60s
+
+.PHONY: undeploy-cert-manager
+undeploy-cert-manager: ## Undeploy cert-manager from the K8s cluster specified in ~/.kube/config.
+	$(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f $(CERT-MANAGER_YAML)
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
@@ -199,4 +231,11 @@ echo "Downloading $${package}" ;\
 GOBIN=$(LOCALBIN) go install $${package} ;\
 mv "$$(echo "$(1)" | sed "s/-$(3)$$//")" $(1) ;\
 }
+endef
+
+# set-images will set use kustomize to set the specified images for the controller and zot registry
+define set-images
+set -e
+cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+cd config/zot && $(KUSTOMIZE) edit set image zot-minimal=${ZOT_IMG}
 endef
