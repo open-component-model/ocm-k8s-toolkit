@@ -16,7 +16,7 @@ TLDR; Based on [*open flux*](https://github.com/openfluxcd), the composition of
 [oci repositories](https://fluxcd.io/flux/components/source/ocirepositories/),
 [s3 buckets](https://fluxcd.io/flux/components/source/buckets/), and
 [helm](https://fluxcd.io/flux/components/source/helmrepositories/)), enabling
-OCM as a flux source system.  
+OCM as a flux source system.
 
 Thus, the *OCM-K8S-Toolkit* enables the continuous
 deployment of plain manifests, kustomize overlays and helm charts stored in OCM
@@ -54,7 +54,7 @@ components:
   version: "6.1.3-rc.1"
   provider:
     name: ocm.software
-  componentReferences: 
+  componentReferences:
   - componentName: ocm.software/ocm-cli/oci
     name: oci-component-reference
     version: "6.1.3-rc.1"
@@ -165,15 +165,15 @@ downgraded. The property is an enum with the 3 states: `Enforce`, `Allow`,
 In general, *ocm components* may specify their
 *downgradability* through a label named
 `ocm.software/ocm-k8s-toolkit/downgradable`. The value of the label has to be a
-[semver constraint](https://github.com/Masterminds/semver#checking-version-constraints).  
+[semver constraint](https://github.com/Masterminds/semver#checking-version-constraints).
 With respect to that, the `Allow` value means that the *downgradability* is
 respected as specified by the *component version* author. Thus, if the label
 is not set, downgrade is not possible. If the label specifies a *semver
 constraint*, the currently applied *component version* is validated against this
 constraint. If this validation succeeds (so, downgrade from the currently
-applied version is possible), the component will be downgraded.  
+applied version is possible), the component will be downgraded.
 The `Deny` value means that regardless of the *downgradability* set by the
-*component version* author, downgrade **is not** possible.  
+*component version* author, downgrade **is not** possible.
 The `Enforce` value means that regardless of the *downgarability* set by the
 *component version* author, downgrade **is** possible. **This setting should be
 used with caution!**
@@ -264,7 +264,7 @@ specified through the *reference path*. This is analogous to a file system path,
 with the *component references* as the directories and the *resource* as the
 file.
 
-> For details about the internals of the resource resolution and verification, 
+> For details about the internals of the resource resolution and verification,
 > see [here](./docs/architecture/)
 
 > **NOTE:** The other fields are common to all the custom resources and are
@@ -300,13 +300,13 @@ documented [here](https://fluxcd.io/flux/components/source/gitrepositories/#inte
 In general, it specifies the time interval in which the custom
 resource is reconciled again. So thereby, in case of the `Component` custom
 resource, e.g. the time interval in which the *component controller* checks the
-repository for newer versions of the corresponding *ocm component*. Meanwhile, 
-it also serves as a drift detection.  
-But it is **important** to notice, this interval is also used as the retry 
+repository for newer versions of the corresponding *ocm component*. Meanwhile,
+it also serves as a drift detection.
+But it is **important** to notice, this interval is also used as the retry
 interval for some particular failure cases. In case of the `Component` custom
-resource, e.g. if the *component controller* fails to find the *ocm component* 
+resource, e.g. if the *component controller* fails to find the *ocm component*
 in the specified *ocm repository*, it will wait for the duration specified in
-the `interval` until it will try again. Therefore, setting the interval quite 
+the `interval` until it will try again. Therefore, setting the interval quite
 high can lead to unexpected behaviour in regard to recovery time.
 
 The `suspend` (optional) is a common property for flux custom resources as
@@ -323,4 +323,4 @@ We as members, contributors, and leaders pledge to make participation in our com
 
 ## Licensing
 
-Copyright 2024 SAP SE or an SAP affiliate company and ocm-k8s-toolkit contributors. Please see our [LICENSE](LICENSE) for copyright and license information. Detailed information including third-party components and their licensing/copyright information is available [via the REUSE tool](https://api.reuse.software/info/github.com/open-component-model/ocm-k8s-toolkit).
+Copyright 2025 SAP SE or an SAP affiliate company and ocm-k8s-toolkit contributors. Please see our [LICENSE](LICENSE) for copyright and license information. Detailed information including third-party components and their licensing/copyright information is available [via the REUSE tool](https://api.reuse.software/info/github.com/open-component-model/ocm-k8s-toolkit).
