@@ -92,8 +92,8 @@ type ConfiguredResourceStatus struct {
 
 	// The configuration reconcile loop generates an artifact, which contains the
 	// ConfiguredResourceSpec.Target ConfigurationReference after configuration.
-	// It is filled once the Artifact is created and the configuration completed.
-	ArtifactRef *ObjectKey `json:"artifactRef,omitempty"`
+	// It is filled once the Snapshot is created and the configuration completed.
+	SnapshotRef *ObjectKey `json:"snapshotRef,omitempty"`
 
 	// Digest contains a technical identifier for the artifact. This technical identifier
 	// can be used to track changes on the ArtifactRef as it is a combination of the origin

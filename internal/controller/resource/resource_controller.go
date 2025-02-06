@@ -25,7 +25,6 @@ import (
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/opencontainers/go-digest"
-	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/compdesc"
@@ -55,7 +54,6 @@ import (
 
 type Reconciler struct {
 	*ocm.BaseReconciler
-	Storage  *storage.Storage
 	Registry snapshotRegistry.RegistryType
 }
 
@@ -227,15 +225,15 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	}
 
 	// Create repository from registry for snapshot
-	repositoryDescriptor, err := r.Registry.NewRepository(ctx, componentSnapshot.Spec.Repository)
+	repositoryCD, err := r.Registry.NewRepository(ctx, componentSnapshot.Spec.Repository)
 	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.GetSnapshotFailedReason, err.Error())
+		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.CreateOCIRepositoryFailedReason, err.Error())
 
 		return ctrl.Result{}, nil
 	}
 
 	// Get component descriptor set from artifact
-	cdSet, err := ocm.GetComponentSetForSnapshot(ctx, repositoryDescriptor, componentSnapshot)
+	cdSet, err := ocm.GetComponentSetForSnapshot(ctx, repositoryCD, componentSnapshot)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentForSnapshotFailedReason, err.Error())
 

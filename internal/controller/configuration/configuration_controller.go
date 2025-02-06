@@ -38,6 +38,7 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/artifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/index"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
+	snapshotRegistry "github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
@@ -71,6 +72,7 @@ type Reconciler struct {
 	*ocm.BaseReconciler
 	*storage.Storage
 	ConfigClient configurationclient.Client
+	Registry     snapshotRegistry.RegistryType
 }
 
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=configuredresources,verbs=get;list;watch;create;update;patch;delete
@@ -160,7 +162,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		return ctrl.Result{}, fmt.Errorf("failed to fetch cfg: %w", err)
 	}
 
-	digest, revision, filename, err := artifact.UniqueIDsForArtifactContentCombination(cfg, target)
+	digest, revision, filename, err := artifact.UniqueIDsForSnapshotContentCombination(cfg, target)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.UniqueIDGenerationFailedReason, err.Error())
 

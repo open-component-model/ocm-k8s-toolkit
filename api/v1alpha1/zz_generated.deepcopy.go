@@ -395,8 +395,8 @@ func (in *ConfiguredResourceStatus) DeepCopyInto(out *ConfiguredResourceStatus) 
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	if in.ArtifactRef != nil {
-		in, out := &in.ArtifactRef, &out.ArtifactRef
+	if in.SnapshotRef != nil {
+		in, out := &in.SnapshotRef, &out.SnapshotRef
 		*out = new(ObjectKey)
 		**out = **in
 	}
@@ -726,8 +726,8 @@ func (in *LocalizedResourceStatus) DeepCopyInto(out *LocalizedResourceStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	if in.ArtifactRef != nil {
-		in, out := &in.ArtifactRef, &out.ArtifactRef
+	if in.SnapshotRef != nil {
+		in, out := &in.SnapshotRef, &out.SnapshotRef
 		*out = new(ObjectKey)
 		**out = **in
 	}
