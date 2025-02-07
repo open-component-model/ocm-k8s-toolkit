@@ -44,17 +44,12 @@ func Create(owner v1alpha1.SnapshotWriter, ociRepository, manifestDigest, blobVe
 	}
 }
 
+// TODO: TAKE A LOOK AGAIN
 func GetSnapshotForOwner(ctx context.Context, clientK8s client.Client, owner v1alpha1.SnapshotWriter) (*v1alpha1.Snapshot, error) {
-	refs := owner.GetOwnerReferences()
-	if len(refs) != 1 {
-		return nil, fmt.Errorf("expected 1 owner, got %d", len(refs))
-	}
-
-	ref := refs[0]
-
 	snapshot := &v1alpha1.Snapshot{}
-	if err := clientK8s.Get(ctx, types.NamespacedName{Name: ref.Name, Namespace: owner.GetNamespace()}, snapshot); err != nil {
-		return nil, fmt.Errorf("failed to get snapshot: %w", err)
+
+	if err := clientK8s.Get(ctx, types.NamespacedName{Name: owner.GetSnapshotName(), Namespace: owner.GetNamespace()}, snapshot); err != nil {
+		return nil, err
 	}
 
 	return snapshot, nil
