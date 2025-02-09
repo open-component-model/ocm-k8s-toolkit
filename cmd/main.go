@@ -70,16 +70,18 @@ func init() {
 //nolint:funlen // this is the main function
 func main() {
 	var (
-		metricsAddr          string
-		enableLeaderElection bool
-		probeAddr            string
-		secureMetrics        bool
-		enableHTTP2          bool
-		storagePath          string
-		storageAddr          string
-		storageAdvAddr       string
-		eventsAddr           string
-		registryAddr         string
+		metricsAddr                string
+		enableLeaderElection       bool
+		probeAddr                  string
+		secureMetrics              bool
+		enableHTTP2                bool
+		storagePath                string
+		storageAddr                string
+		storageAdvAddr             string
+		eventsAddr                 string
+		registryAddr               string
+		registryCertSecretName     string
+		registryInsecureSkipVerify bool
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metric endpoint binds to. "+
 		"Use the port :8080. If not set, it will be 0 in order to disable the metrics server")
@@ -96,6 +98,8 @@ func main() {
 	flag.StringVar(&storagePath, "storage-path", "/data", "The local storage path.")
 	flag.StringVar(&eventsAddr, "events-addr", "", "The address of the events receiver.")
 	flag.StringVar(&registryAddr, "registry-addr", "ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000", "The address of the registry.")
+	flag.StringVar(&registryCertSecretName, "certificate-secret-name", "ocm-k8s-toolkit-registry-tls-certs", "Secret containing the certificate for the registry.")
+	flag.BoolVar(&registryInsecureSkipVerify, "registry-insecure-skip-verify", false, "Skip verification of the certificate that the registry is using.")
 
 	opts := zap.Options{
 		Development: true,
@@ -171,9 +175,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// TODO: Adjust hardcode with CLI param
 	registry, err := snapshotRegistry.NewRegistry(registryAddr)
-	registry.PlainHTTP = true
+	registry.PlainHTTP = registryInsecureSkipVerify
 	if err != nil {
 		setupLog.Error(err, "unable to initialize registry object")
 		os.Exit(1)

@@ -38,6 +38,7 @@ spec:
           - --health-probe-bind-address=:8081
           - --storage-adv-addr=ocm-k8s-toolkit-artifact-service.ocm-k8s-toolkit-system.svc.cluster.local.
           - --zap-log-level=4
+          - --registry-insecure-skip-verify=true
         image: controller:latest
         name: manager
         imagePullPolicy: Always
