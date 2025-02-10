@@ -260,10 +260,11 @@ func main() {
 	}
 
 	if err = (&fluxdeployer.Reconciler{
-		Client:        mgr.GetClient(),
-		Scheme:        mgr.GetScheme(),
-		EventRecorder: eventsRecorder,
-		Registry:      registryAddr,
+		Client:         mgr.GetClient(),
+		Scheme:         mgr.GetScheme(),
+		EventRecorder:  eventsRecorder,
+		Registry:       registryAddr,
+		CertSecretName: registryCertSecretName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "FluxDeployer")
 		os.Exit(1)
