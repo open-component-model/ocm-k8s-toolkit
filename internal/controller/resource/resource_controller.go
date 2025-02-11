@@ -276,6 +276,12 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		return ctrl.Result{}, err
 	}
 
+	if err := verifyResource(ctx, resourceAccess, cv, cd); err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.VerifyResourceFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+
 	// TODO:
 	//   Problem: Do not re-download resources that are already present in the OCI registry
 	//     Resolution:
@@ -284,33 +290,9 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	//       - If yes, create manifest and point to the previous OCI layer blob
 	//         - How?
 
-	// Get resource content
-	// No need to close the blob access as it will be closed automatically
-	blobAccess, err := getBlobAccess(ctx, resourceAccess)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetBlobAccessFailedReason, err.Error())
-
-		return ctrl.Result{}, err
-	}
-
-	if err := verifyResource(ctx, resourceAccess, cv, cd); err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.VerifyResourceFailedReason, err.Error())
-
-		return ctrl.Result{}, err
-	}
-
-	resourceContent, err := blobAccess.Get()
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceFailedReason, err.Error())
-
-		return ctrl.Result{}, err
-	}
-
-	// TODO
-	//   What to do, if the resource is an OCI artifact. Then we repack it in another OCI artifact which sounds dumb
-	//   On the other side, maybe we need e.g. the config from the inner OCI artifact :/ so maybe we push it directly.
-
-	// Create OCI repository
+	// Create OCI repository to store snapshot.
+	// The digest from the resource access is used, so it can be used to compare resource with the same name/identity
+	// on a digest-level.
 	repositoryResourceName := resourceAccess.Meta().Digest.Value
 	repositoryResource, err := r.Registry.NewRepository(ctx, repositoryResourceName)
 	if err != nil {
@@ -319,12 +301,65 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		return ctrl.Result{}, err
 	}
 
-	// Push resource to OCI repository
-	manifestDigest, err := repositoryResource.PushSnapshot(ctx, resourceAccess.Meta().GetVersion(), resourceContent)
+	var (
+		manifestDigest digest.Digest
+		blobSize       int64
+	)
+
+	// If the resource is of type 'ociArtifact' or its access type is 'ociArtifact', the resource will be copied to the
+	// internal OCI registry
+	logger.Info("create snapshot for resource", "name", resource.GetName(), "type", resourceAccess.Meta().GetType())
+	resourceAccessSpec, err := resourceAccess.Access()
 	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.PushSnapshotFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.PushSnapshotFailedReason, err.Error())
 
 		return ctrl.Result{}, err
+	}
+
+	if resourceAccessSpec == nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.PushSnapshotFailedReason, "access spec is nil")
+
+		return ctrl.Result{}, err
+	}
+
+	if resourceAccessSpec.GetType() == "ociArtifact" {
+		manifestDigest, err = repositoryResource.CopySnapshotForResourceAccess(ctx, resourceAccess)
+		if err != nil {
+			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.PushSnapshotFailedReason, err.Error())
+
+			return ctrl.Result{}, err
+		}
+
+		// TODO: How to get the blob size, without downloading the resource?
+		//  Do we need the blob-size, when we copy the resource either way?
+		//  We could use the size stored in the manifest
+		blobSize = 0
+	} else {
+		// Get resource content
+		// No need to close the blob access as it will be closed automatically
+		blobAccess, err := getBlobAccess(ctx, resourceAccess)
+		if err != nil {
+			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetBlobAccessFailedReason, err.Error())
+
+			return ctrl.Result{}, err
+		}
+
+		resourceContent, err := blobAccess.Get()
+		if err != nil {
+			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceFailedReason, err.Error())
+
+			return ctrl.Result{}, err
+		}
+
+		// Push resource to OCI repository
+		manifestDigest, err = repositoryResource.PushSnapshot(ctx, resourceAccess.Meta().GetVersion(), resourceContent)
+		if err != nil {
+			status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.PushSnapshotFailedReason, err.Error())
+
+			return ctrl.Result{}, err
+		}
+
+		blobSize = int64(len(resourceContent))
 	}
 
 	// Create respective snapshot CR
@@ -333,12 +368,17 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		repositoryResourceName,
 		manifestDigest.String(),
 		resourceAccess.Meta().GetVersion(),
-		digest.FromBytes(resourceContent).String(),
-		int64(len(resourceContent)))
+		// TODO: Think about using the resource-access as blob-digest
+		//   + Always available (in comparison to OCI artifacts where we cannot calc the digest without downloading the
+		//       manifest or blob
+		//   - Not really the digest of the blob
+		resourceAccess.Meta().Digest.Value,
+		blobSize,
+	)
 
-	if _, err = controllerutil.CreateOrUpdate(ctx, r.GetClient(), &snapshotCR, func() error {
+	if _, err = controllerutil.CreateOrUpdate(ctx, r.GetClient(), snapshotCR, func() error {
 		if snapshotCR.ObjectMeta.CreationTimestamp.IsZero() {
-			if err := controllerutil.SetControllerReference(resource, &snapshotCR, r.GetScheme()); err != nil {
+			if err := controllerutil.SetControllerReference(resource, snapshotCR, r.GetScheme()); err != nil {
 				return fmt.Errorf("failed to set controller reference: %w", err)
 			}
 		}

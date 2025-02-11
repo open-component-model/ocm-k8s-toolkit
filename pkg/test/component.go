@@ -87,9 +87,9 @@ func SetupComponentWithDescriptorList(
 
 	snapshotCR := snapshotRegistry.Create(component, repositoryName, manifestDigest.String(), options.Info.Version, digest.FromBytes(data).String(), int64(len(data)))
 
-	_, err = controllerutil.CreateOrUpdate(ctx, options.Client, &snapshotCR, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, options.Client, snapshotCR, func() error {
 		if snapshotCR.ObjectMeta.CreationTimestamp.IsZero() {
-			if err := controllerutil.SetControllerReference(component, &snapshotCR, options.Client.Scheme()); err != nil {
+			if err := controllerutil.SetControllerReference(component, snapshotCR, options.Client.Scheme()); err != nil {
 				return fmt.Errorf("failed to set controller reference: %w", err)
 			}
 		}

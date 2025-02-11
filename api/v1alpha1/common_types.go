@@ -116,7 +116,6 @@ type ResourceInfo struct {
 
 type BlobInfo struct {
 	// Digest is the digest of the blob in the form of '<algorithm>:<checksum>'.
-	// +kubebuilder:validation:Pattern="^[a-z0-9]+(?:[.+_-][a-z0-9]+)*:[a-zA-Z0-9=_-]+$"
 	Digest string `json:"digest"`
 
 	// Tag/Version of the blob

@@ -27,8 +27,8 @@ func generateName(obj v1alpha1.SnapshotWriter) string {
 	return name
 }
 
-func Create(owner v1alpha1.SnapshotWriter, ociRepository, manifestDigest, blobVersion, blobDigest string, blobSize int64) v1alpha1.Snapshot {
-	return v1alpha1.Snapshot{
+func Create(owner v1alpha1.SnapshotWriter, ociRepository, manifestDigest, blobVersion, blobDigest string, blobSize int64) *v1alpha1.Snapshot {
+	return &v1alpha1.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      generateName(owner),
 			Namespace: owner.GetNamespace(),

@@ -229,9 +229,9 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		// We use the digest calculated above for the blob-info digest, so we can compare for any changes
 		snapshotCR := snapshotRegistry.Create(configuration, repositoryName, manifestDigest.String(), configuration.GetResourceVersion(), digest, int64(len(data)))
 
-		if _, err = controllerutil.CreateOrUpdate(ctx, r.GetClient(), &snapshotCR, func() error {
+		if _, err = controllerutil.CreateOrUpdate(ctx, r.GetClient(), snapshotCR, func() error {
 			if snapshotCR.ObjectMeta.CreationTimestamp.IsZero() {
-				if err := controllerutil.SetControllerReference(configuration, &snapshotCR, r.GetScheme()); err != nil {
+				if err := controllerutil.SetControllerReference(configuration, snapshotCR, r.GetScheme()); err != nil {
 					return fmt.Errorf("failed to set controller reference: %w", err)
 				}
 			}

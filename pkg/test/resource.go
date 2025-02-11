@@ -108,9 +108,9 @@ func SetupMockResourceWithData(
 	Expect(err).ToNot(HaveOccurred())
 	snapshotCR := snapshotRegistry.Create(res, repositoryName, manifestDigest.String(), version, digest.FromBytes(data).String(), int64(len(data)))
 
-	_, err = controllerutil.CreateOrUpdate(ctx, options.Clnt, &snapshotCR, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, options.Clnt, snapshotCR, func() error {
 		if snapshotCR.ObjectMeta.CreationTimestamp.IsZero() {
-			if err := controllerutil.SetControllerReference(res, &snapshotCR, options.Clnt.Scheme()); err != nil {
+			if err := controllerutil.SetControllerReference(res, snapshotCR, options.Clnt.Scheme()); err != nil {
 				return fmt.Errorf("failed to set controller reference: %w", err)
 			}
 		}
