@@ -247,7 +247,7 @@ Pros:
 
 Cons:
 - Potentially longer implementation time, as it involves learing how to deploy, configure and operate a new registry
-- To support Docker images, the ergistry must be run in compartibility mode
+- To support Docker images, the registry must be run in compatibility mode
 - Bigger image size: 69 MB the minimal version and 208 MB the full version
 
 # Links
