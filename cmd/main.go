@@ -20,7 +20,9 @@ import (
 	// +kubebuilder:scaffold:imports
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"flag"
+	"net/http"
 	"os"
 
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -28,6 +30,7 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"github.com/fluxcd/pkg/runtime/events"
+	"github.com/mandelsoft/goutils/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -80,7 +83,7 @@ func main() {
 		storageAdvAddr             string
 		eventsAddr                 string
 		registryAddr               string
-		registryCertSecretName     string
+		rootCA                     string
 		registryInsecureSkipVerify bool
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metric endpoint binds to. "+
@@ -98,8 +101,8 @@ func main() {
 	flag.StringVar(&storagePath, "storage-path", "/data", "The local storage path.")
 	flag.StringVar(&eventsAddr, "events-addr", "", "The address of the events receiver.")
 	flag.StringVar(&registryAddr, "registry-addr", "ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000", "The address of the registry.")
-	flag.StringVar(&registryCertSecretName, "certificate-secret-name", "ocm-k8s-toolkit-registry-tls-certs", "Secret containing the certificate for the registry.")
-	flag.BoolVar(&registryInsecureSkipVerify, "registry-insecure-skip-verify", false, "Skip verification of the certificate that the registry is using.")
+	flag.StringVar(&rootCA, "rootCA", "", "root CA certificate required to establish https connection to the registry.")
+	flag.BoolVar(&registryInsecureSkipVerify, "registry-insecure-skip-verify", true, "Skip verification of the certificate that the registry is using.")
 
 	opts := zap.Options{
 		Development: true,
@@ -180,6 +183,17 @@ func main() {
 	if err != nil {
 		setupLog.Error(err, "unable to initialize registry object")
 		os.Exit(1)
+	}
+
+	// If HTTPS is enabled, the root CA certificate must be configured.
+	if !registryInsecureSkipVerify {
+		httpClient, err := getHTTPClientWithTLS(rootCA)
+		if err != nil {
+			setupLog.Error(err, "unable to create http client with TLS configuration")
+			os.Exit(1)
+		}
+
+		registry.Client = httpClient
 	}
 
 	if err := registry.Ping(ctx); err != nil {
@@ -264,7 +278,7 @@ func main() {
 		Scheme:         mgr.GetScheme(),
 		EventRecorder:  eventsRecorder,
 		Registry:       registryAddr,
-		CertSecretName: registryCertSecretName,
+		CertSecretName: rootCA,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "FluxDeployer")
 		os.Exit(1)
@@ -292,4 +306,28 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func getHTTPClientWithTLS(rootCAFile string) (*http.Client, error) {
+	if rootCAFile == "" {
+		return nil, errors.New("path to rootCA file is empty")
+	}
+
+	var c []byte
+	var err error
+	if c, err = os.ReadFile(rootCAFile); err != nil {
+		return nil, err
+	}
+
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: func() *x509.CertPool {
+					rootCAs := x509.NewCertPool()
+					rootCAs.AppendCertsFromPEM(c)
+					return rootCAs
+				}(),
+			},
+		},
+	}, nil
 }

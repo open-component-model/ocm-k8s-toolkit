@@ -11,7 +11,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: controller-manager
-  namespace: system
   labels:
     control-plane: controller-manager
     app.kubernetes.io/name: ocm-k8s-toolkit
@@ -38,7 +37,6 @@ spec:
           - --health-probe-bind-address=:8081
           - --storage-adv-addr=ocm-k8s-toolkit-artifact-service.ocm-k8s-toolkit-system.svc.cluster.local.
           - --zap-log-level=4
-          - --registry-insecure-skip-verify=true
         image: controller:latest
         name: manager
         imagePullPolicy: Always

@@ -4,14 +4,6 @@ resources:
 - certificate.yaml
 - ../default
 patches:
-- path: configmap-patch.yaml
-- path: deployment-patch.yaml
-- patch: |-
-    - op: replace
-      path: /spec/template/spec/containers/0/args/3
-      value: --registry-insecure-skip-verify=false
-  target:
-    group: apps
-    version: v1
-    kind: Deployment
-    name: controller-manager
+- path: zot-configmap-patch.yaml
+- path: zot-deployment-patch.yaml
+- path: mgr-deployment-patch.yaml
