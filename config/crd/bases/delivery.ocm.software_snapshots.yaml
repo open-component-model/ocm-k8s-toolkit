@@ -53,7 +53,6 @@ spec:
                 properties:
                   digest:
                     description: Digest is the digest of the blob in the form of '<algorithm>:<checksum>'.
-                    pattern: ^[a-z0-9]+(?:[.+_-][a-z0-9]+)*:[a-zA-Z0-9=_-]+$
                     type: string
                   size:
                     description: |-

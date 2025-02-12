@@ -71,7 +71,6 @@ rules:
   - delivery.ocm.software
   resources:
   - configuredresources/finalizers
-  - fluxdeployers/finalizers
   - localizedresources/finalizers
   - ocmrepositories/finalizers
   - replications/finalizers

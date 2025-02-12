@@ -28,6 +28,8 @@ import (
 	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -57,10 +59,6 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
-const (
-	ARTIFACT_SERVER = "localhost:0"
-)
-
 var cfg *rest.Config
 var k8sClient client.Client
 var k8sManager ctrl.Manager
@@ -69,6 +67,8 @@ var recorder record.EventRecorder
 var zotCmd *exec.Cmd
 var registry *snapshot.Registry
 var zotRootDir string
+var ctx context.Context
+var cancel context.CancelFunc
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -171,6 +171,19 @@ var _ = BeforeSuite(func() {
 
 	registry, err = snapshot.NewRegistry(fmt.Sprintf("%s:%s", zotAddress, zotPort))
 	registry.PlainHTTP = true
+
+	ctx, cancel = context.WithCancel(context.Background())
+	DeferCleanup(cancel)
+
+	namespace := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: Namespace,
+		},
+	}
+	Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+	DeferCleanup(func(ctx SpecContext) {
+		Expect(k8sClient.Delete(ctx, namespace, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
+	})
 
 	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{

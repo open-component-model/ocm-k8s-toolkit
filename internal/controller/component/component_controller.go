@@ -279,9 +279,9 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 	logger.Info("creating snapshot")
 	snapshotCR := snapshot.Create(component, ociRepositoryName, manifestDigest.String(), version, digest.FromBytes(descriptorsBytes).String(), int64(len(descriptorsBytes)))
 
-	if _, err = controllerutil.CreateOrUpdate(ctx, r.GetClient(), &snapshotCR, func() error {
+	if _, err = controllerutil.CreateOrUpdate(ctx, r.GetClient(), snapshotCR, func() error {
 		if snapshotCR.ObjectMeta.CreationTimestamp.IsZero() {
-			if err := controllerutil.SetControllerReference(component, &snapshotCR, r.GetScheme()); err != nil {
+			if err := controllerutil.SetControllerReference(component, snapshotCR, r.GetScheme()); err != nil {
 				return fmt.Errorf("failed to set controller reference: %w", err)
 			}
 		}

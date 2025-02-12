@@ -6,18 +6,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
+	"strings"
 
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
+	ocmctx "ocm.software/ocm/api/ocm"
+	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
+	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content"
 	"oras.land/oras-go/v2/registry/remote"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	ociV1 "github.com/opencontainers/image-spec/specs-go/v1"
-)
 
-const OCISchemaVersion = 2
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+)
 
 // A RepositoryType is a type that can push and fetch blobs.
 type RepositoryType interface {
@@ -28,11 +34,25 @@ type RepositoryType interface {
 
 	DeleteSnapshot(ctx context.Context, digest string) error
 
+	// ExistsSnapshot checks if the manifest and the referenced layer exists.
 	ExistsSnapshot(ctx context.Context, manifestDigest string) (bool, error)
+
+	CopySnapshotForResourceAccess(ctx context.Context, access ocmctx.ResourceAccess) (digest.Digest, error)
+
+	GetHost() string
+	GetName() string
 }
 
 type Repository struct {
 	*remote.Repository
+}
+
+func (r *Repository) GetHost() string {
+	return r.Reference.Host()
+}
+
+func (r *Repository) GetName() string {
+	return r.Reference.Repository
 }
 
 func (r *Repository) PushSnapshot(ctx context.Context, tag string, blob []byte) (digest.Digest, error) {
@@ -72,7 +92,7 @@ func (r *Repository) PushSnapshot(ctx context.Context, tag string, blob []byte) 
 
 	// Prepare and upload manifest
 	manifest := ociV1.Manifest{
-		Versioned: specs.Versioned{SchemaVersion: OCISchemaVersion},
+		Versioned: specs.Versioned{SchemaVersion: v1alpha1.OCISchemaVersion},
 		MediaType: ociV1.MediaTypeImageManifest,
 		Config:    imageConfigDescriptor,
 		Layers:    []ociV1.Descriptor{blobDescriptor},
@@ -144,7 +164,6 @@ func (r *Repository) DeleteSnapshot(ctx context.Context, manifestDigest string) 
 	return r.Delete(ctx, manifestDescriptor)
 }
 
-// ExistsSnapshot checks if the manifest and the referenced layer exists.
 func (r *Repository) ExistsSnapshot(ctx context.Context, manifestDigest string) (bool, error) {
 	manifestDescriptor, _, err := r.FetchReference(ctx, manifestDigest)
 	if err != nil {
@@ -152,6 +171,73 @@ func (r *Repository) ExistsSnapshot(ctx context.Context, manifestDigest string) 
 	}
 
 	return r.Exists(ctx, manifestDescriptor)
+}
+
+func (r *Repository) CopySnapshotForResourceAccess(ctx context.Context, access ocmctx.ResourceAccess) (digest.Digest, error) {
+	logger := log.FromContext(ctx)
+
+	gloAccess := access.GlobalAccess()
+	accessSpec, ok := gloAccess.(*ociartifact.AccessSpec)
+	if !ok {
+		return "", fmt.Errorf("expected type ociartifact.AccessSpec, but got %T", gloAccess)
+	}
+
+	var http bool
+	var refSanitized string
+	refUrl, err := url.Parse(accessSpec.ImageReference)
+	if err != nil {
+		return "", fmt.Errorf("oci: error parsing image reference: %w", err)
+	}
+
+	if refUrl.Scheme != "" {
+		if refUrl.Scheme == "http" {
+			http = true
+		}
+		refSanitized = strings.TrimPrefix(accessSpec.ImageReference, refUrl.Scheme+"://")
+	} else {
+		refSanitized = accessSpec.ImageReference
+	}
+
+	ref, err := name.ParseReference(refSanitized)
+	if err != nil {
+		return "", fmt.Errorf("oci: error parsing image reference: %w", err)
+	}
+
+	sourceRegistry, err := remote.NewRegistry(ref.Context().RegistryStr())
+	if err != nil {
+		return "", fmt.Errorf("oci: error creating source registry: %w", err)
+	}
+
+	if http {
+		sourceRegistry.PlainHTTP = true
+	}
+
+	sourceRepository, err := sourceRegistry.Repository(ctx, ref.Context().RepositoryStr())
+	if err != nil {
+		return "", fmt.Errorf("oci: error creating source repository: %w", err)
+	}
+
+	desc, err := oras.Copy(ctx, sourceRepository, ref.Identifier(), r.Repository, ref.Identifier(), oras.CopyOptions{
+		CopyGraphOptions: oras.CopyGraphOptions{
+			PreCopy: func(ctx context.Context, desc ociV1.Descriptor) error {
+				logger.Info("uploading", "digest", desc.Digest.String(), "mediaType", desc.MediaType)
+				return nil
+			},
+			PostCopy: func(ctx context.Context, desc ociV1.Descriptor) error {
+				logger.Info("uploading", "digest", desc.Digest.String(), "mediaType", desc.MediaType)
+				return nil
+			},
+			OnCopySkipped: func(ctx context.Context, desc ociV1.Descriptor) error {
+				logger.Info("uploading", "digest", desc.Digest.String(), "mediaType", desc.MediaType)
+				return nil
+			},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("oci: error copying snapshot: %w", err)
+	}
+
+	return desc.Digest, nil
 }
 
 // CreateRepositoryName creates a name for an OCI repository and returns a hashed string from the passed arguments. The

@@ -21,7 +21,6 @@ import (
 	"ocm.software/ocm/api/utils/tarutils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ocmbuilder "ocm.software/ocm/api/helper/builder"
@@ -69,16 +68,6 @@ var _ = Describe("Localization Controller", func() {
 		Expect(err).ToNot(HaveOccurred())
 		env = ocmbuilder.NewBuilder(environment.FileSystem(testfs))
 		DeferCleanup(env.Cleanup)
-	})
-
-	BeforeEach(func(ctx SpecContext) {
-		By("creating namespace object")
-		namespace := &corev1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: Namespace,
-			},
-		}
-		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 	})
 
 	It("should localize an artifact from a resource based on a config supplied in a sibling resource", func(ctx SpecContext) {
