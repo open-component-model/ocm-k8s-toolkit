@@ -218,7 +218,7 @@ Pros:
 - Users can customize their OCI registry like they want
 
 Cons:
-- We do not "control" the resource and issues caused by another OCI registry could be hard to fix/support
+- We offer full support for `zot` only. Using a different OCI registry would be at risk of the user of OCM controllers.
 - Most people need to operate a registry then and the majority would not have experience maintaining a production grade stable oci registry as a service
 - Giving a possibility to the user to provide/configure an own registry does not eliminate the need to provide a default registry (option 2), especially to those users who do not want to customize an own registry.
 
