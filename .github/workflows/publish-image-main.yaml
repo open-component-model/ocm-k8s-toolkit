@@ -1,0 +1,66 @@
+name: publish image
+on:
+  # publish on pushes to the main branch (image tagged as "latest")
+  push:
+    branches:
+      - main
+    paths:
+      - '**/*.go'
+      - '**/*.mod'
+      - '**/*.sum'
+      - 'config/**'
+      - 'Dockefile'
+jobs:
+  docker_publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      packages: write
+    steps:
+      - name: Generate token
+        id: generate_token
+        uses: tibdex/github-app-token@v2
+        with:
+          app_id: ${{ secrets.OCMBOT_APP_ID }}
+          private_key: ${{ secrets.OCMBOT_PRIV_KEY }}
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.generate_token.outputs.token }}
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Docker Login
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+      - name: Go Build Cache for Docker
+        uses: actions/cache@v4
+        with:
+          path: go-build-cache
+          key: ${{ runner.os }}-go-build-cache-${{ hashFiles('**/go.sum') }}
+      - name: inject go-build-cache into docker
+        uses: reproducible-containers/buildkit-cache-dance@v3
+        with:
+          cache-source: go-build-cache
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          # supported platforms: https://github.com/GoogleContainerTools/distroless?tab=readme-ov-file#what-images-are-available
+          platforms: linux/amd64,linux/arm64 #linux/arm,linux/ppc64le,linux/s390x
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
