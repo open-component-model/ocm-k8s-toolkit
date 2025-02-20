@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/openfluxcd/controller-manager/storage"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/types"
-	artifactutil "github.com/open-component-model/ocm-k8s-toolkit/pkg/artifact"
+	snapshotRegistry "github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 )
 
 type Client interface {
@@ -24,24 +23,24 @@ type Client interface {
 	GetTarget(ctx context.Context, ref v1alpha1.ConfigurationReference) (target types.ConfigurationTarget, err error)
 }
 
-func NewClientWithLocalStorage(r client.Reader, s *storage.Storage, scheme *runtime.Scheme) Client {
+func NewClientWithRegistry(r client.Reader, registry snapshotRegistry.RegistryType, scheme *runtime.Scheme) Client {
 	factory := serializer.NewCodecFactory(scheme)
 	info, _ := runtime.SerializerInfoForMediaType(factory.SupportedMediaTypes(), runtime.ContentTypeYAML)
 	encoder := factory.EncoderForVersion(info.Serializer, v1alpha1.GroupVersion)
 
 	return &localStorageBackedClient{
-		Reader:  r,
-		Storage: s,
-		scheme:  scheme,
-		encoder: encoder,
+		Reader:   r,
+		Registry: registry,
+		scheme:   scheme,
+		encoder:  encoder,
 	}
 }
 
 type localStorageBackedClient struct {
 	client.Reader
-	*storage.Storage
-	scheme  *runtime.Scheme
-	encoder runtime.Encoder
+	Registry snapshotRegistry.RegistryType
+	scheme   *runtime.Scheme
+	encoder  runtime.Encoder
 }
 
 var _ Client = &localStorageBackedClient{}
@@ -57,7 +56,7 @@ func (clnt *localStorageBackedClient) GetTarget(ctx context.Context, ref v1alpha
 	case v1alpha1.KindLocalizedResource:
 		fallthrough
 	case v1alpha1.KindResource:
-		return artifactutil.GetContentBackedByArtifactFromComponent(ctx, clnt.Reader, clnt.Storage, &ref)
+		return snapshotRegistry.GetContentBackedBySnapshotFromComponent(ctx, clnt.Reader, clnt.Registry, &ref)
 	default:
 		return nil, fmt.Errorf("unsupported configuration target kind: %s", ref.Kind)
 	}
@@ -66,7 +65,7 @@ func (clnt *localStorageBackedClient) GetTarget(ctx context.Context, ref v1alpha
 func (clnt *localStorageBackedClient) GetConfiguration(ctx context.Context, ref v1alpha1.ConfigurationReference) (source types.ConfigurationSource, err error) {
 	switch ref.Kind {
 	case v1alpha1.KindResource:
-		return artifactutil.GetContentBackedByArtifactFromComponent(ctx, clnt.Reader, clnt.Storage, &ref)
+		return snapshotRegistry.GetContentBackedBySnapshotFromComponent(ctx, clnt.Reader, clnt.Registry, &ref)
 	case v1alpha1.KindResourceConfig:
 		return GetResourceConfigFromKubernetes(ctx, clnt.Reader, clnt.encoder, ref)
 	default:
@@ -90,5 +89,5 @@ func GetResourceConfigFromKubernetes(ctx context.Context, clnt client.Reader, en
 		return nil, fmt.Errorf("failed to fetch localization config %s: %w", reference.Name, err)
 	}
 
-	return &artifactutil.ObjectConfig{Object: &cfg, Encoder: encoder}, nil
+	return &snapshotRegistry.ObjectConfig{Object: &cfg, Encoder: encoder}, nil
 }

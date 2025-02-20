@@ -19,33 +19,30 @@ package component
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"time"
 
+	"github.com/fluxcd/pkg/apis/meta"
 	. "github.com/mandelsoft/goutils/testutils"
+	"github.com/mandelsoft/vfs/pkg/vfs"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	. "ocm.software/ocm/api/helper/builder"
-
-	"github.com/fluxcd/pkg/apis/meta"
-	"github.com/fluxcd/pkg/runtime/conditions"
-	"github.com/fluxcd/pkg/tar"
-	"github.com/mandelsoft/filepath/pkg/filepath"
-	"github.com/mandelsoft/vfs/pkg/osfs"
-	"github.com/mandelsoft/vfs/pkg/vfs"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
-	"ocm.software/ocm/api/utils/accessio"
+	. "ocm.software/ocm/api/helper/builder"
 	"ocm.software/ocm/api/utils/accessobj"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 	"sigs.k8s.io/yaml"
 
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
+	"github.com/fluxcd/pkg/runtime/conditions"
+	"github.com/mandelsoft/vfs/pkg/osfs"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	environment "ocm.software/ocm/api/helper/env"
+	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
+	"ocm.software/ocm/api/utils/accessio"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
@@ -143,36 +140,44 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that artifact has been created successfully")
+			By("checking that the component has been reconciled successfully")
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+				if err != nil {
+					return false
+				}
+				return conditions.IsReady(component)
+			}, "15s").WithContext(ctx).Should(BeTrue())
 
+			By("checking that the snapshot has been created successfully")
 			Eventually(komega.Object(component), "15s").Should(
-				HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+				HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			snapshotComponent := &v1alpha1.Snapshot{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: component.GetNamespace(), Name: component.GetSnapshotName()}, snapshotComponent)).To(Succeed())
 
-			artifact := &artifactv1.Artifact{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: component.Namespace,
-					Name:      component.Status.ArtifactRef.Name,
-				},
-			}
-			Eventually(komega.Get(artifact)).Should(Succeed())
+			By("validating the snapshot")
+			ownersReference := snapshotComponent.GetOwnerReferences()
+			Expect(len(ownersReference)).To(Equal(1), "expected only one ownersReference")
+			Expect(ownersReference[0].Name).To(Equal(component.GetName()), "expected to be a ownersReference of the component")
 
-			By("check if the component descriptor list can be retrieved from the artifact server")
-			r := Must(http.Get(artifact.Spec.URL))
+			By("checking that the snapshot contains the correct content")
+			snapshotRepository := Must(registry.NewRepository(ctx, snapshotComponent.Spec.Repository))
+			snapshotComponentContent := Must(snapshotRepository.FetchSnapshot(ctx, snapshotComponent.GetDigest()))
 
-			tmpdir := Must(os.MkdirTemp("/tmp", "descriptors-"))
-			DeferCleanup(func() error {
-				return os.RemoveAll(tmpdir)
-			})
-			MustBeSuccessful(tar.Untar(r.Body, tmpdir))
-
+			snapshotDescriptors := &ocm.Descriptors{}
+			MustBeSuccessful(yaml.Unmarshal(snapshotComponentContent, snapshotDescriptors))
 			repo := Must(ctf.Open(env, accessobj.ACC_WRITABLE, ctfpath, vfs.FileMode(vfs.O_RDWR), env))
 			cv := Must(repo.LookupComponentVersion(Component, Version1))
-			expecteddescs := Must(ocm.ListComponentDescriptors(ctx, cv, repo))
+			expectedDescriptors := Must(ocm.ListComponentDescriptors(ctx, cv, repo))
+			Expect(snapshotDescriptors).To(YAMLEqual(expectedDescriptors))
 
-			data := Must(os.ReadFile(filepath.Join(tmpdir, v1alpha1.OCMComponentDescriptorList)))
-			descs := &ocm.Descriptors{}
-			MustBeSuccessful(yaml.Unmarshal(data, descs))
-			Expect(descs).To(YAMLEqual(expecteddescs))
+			By("delete resources manually")
+			Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, snapshotComponent)).To(Succeed())
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+				return errors.IsNotFound(err)
+			}, "15s").WithContext(ctx).Should(BeTrue())
 		})
 
 		It("does not reconcile when the repository is not ready", func() {
@@ -184,7 +189,7 @@ var _ = Describe("Component Controller", func() {
 			component := &v1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: Namespace,
-					Name:      ComponentObj + "-not-ready",
+					Name:      fmt.Sprintf("%s-%d", ComponentObj, testNumber),
 				},
 				Spec: v1alpha1.ComponentSpec{
 					RepositoryRef: v1alpha1.ObjectKey{
@@ -199,9 +204,26 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that no artifact has been created")
-			Eventually(komega.Object(component), "15s").Should(
-				HaveField("Status.ArtifactRef.Name", BeEmpty()))
+			By("checking that the component has not been reconciled successfully")
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+				if err != nil {
+					return false
+				}
+
+				return !conditions.IsReady(component)
+			}, "15s").WithContext(ctx).Should(BeTrue())
+
+			By("checking that the snapshot has not been created successfully")
+			Expect(component).To(HaveField("Status.SnapshotRef.Name", BeEmpty()))
+
+			By("deleting the resources manually")
+			Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+
+				return errors.IsNotFound(err)
+			}, "15s").WithContext(ctx).Should(BeTrue())
 		})
 
 		It("grabs the new version when it becomes available", func() {
@@ -224,10 +246,20 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that artifact has been created successfully")
+			By("checking that the component has been reconciled successfully")
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+				if err != nil {
+					return false
+				}
+				return conditions.IsReady(component)
+			}, "15s").WithContext(ctx).Should(BeTrue())
 
+			By("checking that the snapshot has been created successfully")
 			Eventually(komega.Object(component), "15s").Should(
-				HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+				HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			snapshotComponent := &v1alpha1.Snapshot{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: component.GetNamespace(), Name: component.GetSnapshotName()}, snapshotComponent)).To(Succeed())
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 			Expect(component.Status.Component.Version).To(Equal(Version1))
@@ -246,6 +278,14 @@ var _ = Describe("Component Controller", func() {
 
 				return component.Status.Component.Version == Version2
 			}).WithTimeout(15 * time.Second).Should(BeTrue())
+
+			By("delete resources manually")
+			Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, snapshotComponent)).To(Succeed())
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+				return errors.IsNotFound(err)
+			}, "15s").WithContext(ctx).Should(BeTrue())
 		})
 
 		It("grabs lower version if downgrade is allowed", func() {
@@ -281,9 +321,20 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that artifact has been created successfully")
+			By("checking that the component has been reconciled successfully")
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+				if err != nil {
+					return false
+				}
+				return conditions.IsReady(component)
+			}, "15s").WithContext(ctx).Should(BeTrue())
 
-			Eventually(komega.Object(component), "15s").Should(HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+			By("checking that the snapshot has been created successfully")
+			Eventually(komega.Object(component), "15s").Should(
+				HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			snapshotComponent := &v1alpha1.Snapshot{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: component.GetNamespace(), Name: component.GetSnapshotName()}, snapshotComponent)).To(Succeed())
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
@@ -296,6 +347,14 @@ var _ = Describe("Component Controller", func() {
 
 				return component.Status.Component.Version == "0.0.2"
 			}).WithTimeout(15 * time.Second).Should(BeTrue())
+
+			By("delete resources manually")
+			Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, snapshotComponent)).To(Succeed())
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+				return errors.IsNotFound(err)
+			}, "15s").WithContext(ctx).Should(BeTrue())
 		})
 
 		It("does not grab lower version if downgrade is denied", func() {
@@ -330,8 +389,20 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that artifact has been created successfully")
-			Eventually(komega.Object(component), "15s").Should(HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+			By("checking that the component has been reconciled successfully")
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+				if err != nil {
+					return false
+				}
+				return conditions.IsReady(component)
+			}, "15s").WithContext(ctx).Should(BeTrue())
+
+			By("checking that the snapshot has been created successfully")
+			Eventually(komega.Object(component), "15s").Should(
+				HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			snapshotComponent := &v1alpha1.Snapshot{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: component.GetNamespace(), Name: component.GetSnapshotName()}, snapshotComponent)).To(Succeed())
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
@@ -345,6 +416,14 @@ var _ = Describe("Component Controller", func() {
 				cond := conditions.Get(component, meta.ReadyCondition)
 				return cond.Message == "terminal error: component version cannot be downgraded from version 0.0.3 to version 0.0.2"
 			}).WithTimeout(15 * time.Second).Should(BeTrue())
+
+			By("delete resources manually")
+			Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, snapshotComponent)).To(Succeed())
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+				return errors.IsNotFound(err)
+			}, "15s").WithContext(ctx).Should(BeTrue())
 		})
 
 		It("can force downgrade even if not allowed by the component", func() {
@@ -376,10 +455,20 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that artifact has been created successfully")
+			By("checking that the component has been reconciled successfully")
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+				if err != nil {
+					return false
+				}
+				return conditions.IsReady(component)
+			}, "15s").WithContext(ctx).Should(BeTrue())
 
+			By("checking that the snapshot has been created successfully")
 			Eventually(komega.Object(component), "15s").Should(
-				HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+				HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			snapshotComponent := &v1alpha1.Snapshot{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: component.GetNamespace(), Name: component.GetSnapshotName()}, snapshotComponent)).To(Succeed())
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
@@ -391,7 +480,15 @@ var _ = Describe("Component Controller", func() {
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 
 				return component.Status.Component.Version == "0.0.2"
-			}).WithTimeout(15 * time.Second).Should(BeTrue())
+			}).WithTimeout(60 * time.Second).Should(BeTrue())
+
+			By("delete resources manually")
+			Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, snapshotComponent)).To(Succeed())
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+				return errors.IsNotFound(err)
+			}, "15s").WithContext(ctx).Should(BeTrue())
 		})
 	})
 
@@ -585,6 +682,21 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
+			By("checking that the component has been reconciled successfully")
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+				if err != nil {
+					return false
+				}
+				return conditions.IsReady(component)
+			}, "15s").WithContext(ctx).Should(BeTrue())
+
+			By("checking that the snapshot has been created successfully")
+			Eventually(komega.Object(component), "15s").Should(
+				HaveField("Status.SnapshotRef.Name", Not(BeEmpty())))
+			snapshotComponent := &v1alpha1.Snapshot{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: component.GetNamespace(), Name: component.GetSnapshotName()}, snapshotComponent)).To(Succeed())
+
 			Eventually(komega.Object(component), "15s").Should(
 				HaveField("Status.EffectiveOCMConfig", ConsistOf(
 					v1alpha1.OCMConfiguration{
@@ -605,7 +717,16 @@ var _ = Describe("Component Controller", func() {
 						},
 						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
 					},
-				)))
+				)),
+			)
+
+			By("delete resources manually")
+			Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, snapshotComponent)).To(Succeed())
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+				return errors.IsNotFound(err)
+			}, "15s").WithContext(ctx).Should(BeTrue())
 		})
 	})
 })

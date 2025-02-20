@@ -16,38 +16,32 @@ package component
 import (
 	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
-	"time"
 
 	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/openfluxcd/controller-manager/server"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"sigs.k8s.io/yaml"
-
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
-	corev1 "k8s.io/api/core/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
+	snapshotPkg "github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
 )
 
 // +kubebuilder:scaffold:imports
@@ -55,15 +49,13 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
-const (
-	ARTIFACT_PATH   = "ocm-k8s-artifactstore--*"
-	ARTIFACT_SERVER = "localhost:8080"
-)
-
 var cfg *rest.Config
 var k8sClient client.Client
 var k8sManager ctrl.Manager
 var testEnv *envtest.Environment
+var zotCmd *exec.Cmd
+var registry *snapshotPkg.Registry
+var zotRootDir string
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -76,25 +68,9 @@ var _ = BeforeSuite(func() {
 
 	By("bootstrapping test environment")
 
-	// Get external artifact CRD
-	resp, err := http.Get(v1alpha1.ArtifactCrd)
-	Expect(err).NotTo(HaveOccurred())
-	DeferCleanup(func() error {
-		return resp.Body.Close()
-	})
-
-	crdByte, err := io.ReadAll(resp.Body)
-	Expect(err).NotTo(HaveOccurred())
-
-	artifactCRD := &apiextensionsv1.CustomResourceDefinition{}
-	err = yaml.Unmarshal(crdByte, artifactCRD)
-	Expect(err).NotTo(HaveOccurred())
-
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
-
-		CRDs: []*apiextensionsv1.CustomResourceDefinition{artifactCRD},
 
 		// The BinaryAssetsDirectory is only required if you want to run the tests directly
 		// without call the makefile target test. If not informed it will look for the
@@ -105,6 +81,8 @@ var _ = BeforeSuite(func() {
 			fmt.Sprintf("1.30.0-%s-%s", runtime.GOOS, runtime.GOARCH)),
 	}
 
+	var err error
+
 	// cfg is defined in this file globally.
 	cfg, err = testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
@@ -112,7 +90,6 @@ var _ = BeforeSuite(func() {
 	DeferCleanup(testEnv.Stop)
 
 	Expect(v1alpha1.AddToScheme(scheme.Scheme)).Should(Succeed())
-	Expect(artifactv1.AddToScheme(scheme.Scheme)).Should(Succeed())
 	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:scheme
@@ -130,10 +107,13 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	tmpdir := Must(os.MkdirTemp("", ARTIFACT_PATH))
-	address := ARTIFACT_SERVER
-	storage := Must(server.NewStorage(k8sClient, testEnv.Scheme, tmpdir, address, 0, 0))
-	artifactServer := Must(server.NewArtifactServer(tmpdir, address, time.Millisecond))
+	// Setup zot registry and start it up
+	zotRootDir = Must(os.MkdirTemp("", ""))
+	DeferCleanup(func() {
+		Expect(os.RemoveAll(zotRootDir)).To(Succeed())
+	})
+
+	zotCmd, registry = test.SetupRegistry(filepath.Join("..", "..", "..", "bin", "zot-registry"), zotRootDir, "0.0.0.0", "8080")
 
 	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
@@ -144,7 +124,7 @@ var _ = BeforeSuite(func() {
 				IncludeObject: true,
 			},
 		},
-		Storage: storage,
+		Registry: registry,
 	}).SetupWithManager(k8sManager)).To(Succeed())
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -159,10 +139,11 @@ var _ = BeforeSuite(func() {
 
 	go func() {
 		defer GinkgoRecover()
-		Expect(artifactServer.Start(ctx)).To(Succeed())
-	}()
-	go func() {
-		defer GinkgoRecover()
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
+})
+
+var _ = AfterSuite(func(ctx context.Context) {
+	err := zotCmd.Process.Kill()
+	Expect(err).NotTo(HaveOccurred(), "Failed to stop Zot registry")
 })

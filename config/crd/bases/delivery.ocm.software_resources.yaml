@@ -149,22 +149,6 @@ spec:
           status:
             description: ResourceStatus defines the observed state of Resource.
             properties:
-              artifactRef:
-                description: |-
-                  ArtifactRef points to the Artifact which represents the output of the
-                  last successful Resource sync.
-                properties:
-                  name:
-                    default: ""
-                    description: |-
-                      Name of the referent.
-                      This field is effectively required, but due to backwards compatibility is
-                      allowed to be empty. Instances of this type with an empty value here are
-                      almost certainly wrong.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
               conditions:
                 description: Conditions holds the conditions for the Resource.
                 items:
@@ -300,6 +284,22 @@ spec:
                 - name
                 - type
                 type: object
+              snapshotRef:
+                description: |-
+                  SnapshotRef points to the Snapshot which represents the output of the
+                  last successful Resource sync.
+                properties:
+                  name:
+                    default: ""
+                    description: |-
+                      Name of the referent.
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
             type: object
         required:
         - spec
