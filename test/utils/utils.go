@@ -236,7 +236,7 @@ func CheckOCMComponent(componentReference, ocmConfigPath string, options ...stri
 	}
 	c = append(c, componentReference)
 
-	cmd := exec.Command(c[0], c[1:]...) //nolint:gosec // The argument list is constructed right above.
+	cmd := exec.Command(c[0], c[1:]...) // #nosec G204 -- The argument list is constructed right above.
 	if _, err := utils.Run(cmd); err != nil {
 		return err
 	}
@@ -255,7 +255,7 @@ func GetOCMResourceImageRef(componentReference, resourceName, ocmConfigPath stri
 	}
 	c = append(c, "get", "resources", componentReference, resourceName, "-oJSON") // -oJSON is used to get the output in JSON format.
 
-	cmd := exec.Command(c[0], c[1:]...) //nolint:gosec // The argument list is constructed right above.
+	cmd := exec.Command(c[0], c[1:]...) // #nosec G204 -- The argument list is constructed right above.
 	output, err := utils.Run(cmd)
 	if err != nil {
 		return "", err
