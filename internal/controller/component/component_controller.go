@@ -26,7 +26,6 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/goutils/sliceutils"
 	"github.com/opencontainers/go-digest"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
@@ -41,6 +40,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	ocmctx "ocm.software/ocm/api/ocm"
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -148,6 +148,8 @@ func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, component *v
 
 func (r *Reconciler) reconcileExists(ctx context.Context, component *v1alpha1.Component) (_ ctrl.Result, retErr error) {
 	logger := log.FromContext(ctx)
+
+	//nolint:nestif //nested if blocks required
 	if !component.GetDeletionTimestamp().IsZero() {
 		logger.Info("component is being deleted and cannot be used", "name", component.Name)
 
@@ -178,6 +180,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, component *v1alpha1.Co
 		if err := r.Update(ctx, component); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
+
 		return ctrl.Result{Requeue: true}, nil
 	}
 
