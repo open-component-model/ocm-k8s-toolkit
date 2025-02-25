@@ -26,6 +26,7 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/goutils/sliceutils"
 	"github.com/opencontainers/go-digest"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
@@ -48,6 +49,8 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
+
+const SnapshotFinalizer = "snapshot-finalizer"
 
 // Reconciler reconciles a Component object.
 type Reconciler struct {
@@ -120,6 +123,7 @@ func (r *Reconciler) findOCMRepositories(key string) handler.MapFunc {
 
 // Reconcile the component object.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, retErr error) {
+	log.FromContext(ctx).Info("reconciling component", "name", req.Name)
 	component := &v1alpha1.Component{}
 	if err := r.Get(ctx, req.NamespacedName, component); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -144,9 +148,36 @@ func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, component *v
 
 func (r *Reconciler) reconcileExists(ctx context.Context, component *v1alpha1.Component) (_ ctrl.Result, retErr error) {
 	logger := log.FromContext(ctx)
-	if component.GetDeletionTimestamp() != nil {
+	if !component.GetDeletionTimestamp().IsZero() {
 		logger.Info("component is being deleted and cannot be used", "name", component.Name)
 
+		if component.Status.SnapshotRef.Name != "" {
+			snap := &v1alpha1.Snapshot{}
+			snap.SetNamespace(component.GetNamespace())
+			snap.SetName(component.Status.SnapshotRef.Name)
+			err := r.Get(ctx, client.ObjectKeyFromObject(snap), snap)
+			if err == nil {
+				err = r.Delete(ctx, snap)
+			}
+			if err != nil && !k8serrors.IsNotFound(err) {
+				return ctrl.Result{}, fmt.Errorf("failed to delete snapshot: %w", err)
+			}
+			logger.Info("referenced snapshot deleted", "name", snap.GetName())
+		}
+
+		if updated := controllerutil.RemoveFinalizer(component, SnapshotFinalizer); updated {
+			if err := r.Update(ctx, component); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
+			}
+		}
+
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	if updated := controllerutil.AddFinalizer(component, SnapshotFinalizer); updated {
+		if err := r.Update(ctx, component); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
+		}
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -172,9 +203,9 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 		return ctrl.Result{}, fmt.Errorf("failed to get repository: %w", err)
 	}
 
-	if repo.DeletionTimestamp != nil {
+	if !repo.DeletionTimestamp.IsZero() {
 		err := errors.New("repository is being deleted, please do not use it")
-		logger.Error(err, "repository is being deleted, please do not use it", "name", component.Spec.RepositoryRef.Name)
+		logger.Error(err, "waiting for deletion", "name", component.Spec.RepositoryRef.Name)
 
 		// Triggered through cache
 		return ctrl.Result{}, nil
@@ -330,22 +361,27 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 			Size:   int64(len(descriptorsBytes)),
 		},
 	)
+	snapshotCopy := snapshotCR.DeepCopy()
 
-	if _, err = controllerutil.CreateOrUpdate(ctx, r.GetClient(), snapshotCR, func() error {
+	result, err := controllerutil.CreateOrUpdate(ctx, r.GetClient(), snapshotCR, func() error {
 		if err := controllerutil.SetControllerReference(component, snapshotCR, r.GetScheme()); err != nil {
 			return fmt.Errorf("failed to set controller reference: %w", err)
 		}
+
+		snapshotCR.Spec = snapshotCopy.Spec
 
 		component.Status.SnapshotRef = corev1.LocalObjectReference{
 			Name: snapshotCR.GetName(),
 		}
 
 		return nil
-	}); err != nil {
+	})
+	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CreateSnapshotFailedReason, err.Error())
 
 		return ctrl.Result{}, err
 	}
+	logger.Info(fmt.Sprintf("snapshot %s", result), "operation", result)
 
 	logger.Info("updating status")
 	component.Status.Component = v1alpha1.ComponentInfo{

@@ -25,10 +25,10 @@ import (
 	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -56,6 +56,7 @@ var testEnv *envtest.Environment
 var zotCmd *exec.Cmd
 var registry *snapshotPkg.Registry
 var zotRootDir string
+var recorder record.EventRecorder
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -115,27 +116,33 @@ var _ = BeforeSuite(func() {
 
 	zotCmd, registry = test.SetupRegistry(filepath.Join("..", "..", "..", "bin", "zot-registry"), zotRootDir, "0.0.0.0", "8080")
 
-	Expect((&Reconciler{
-		BaseReconciler: &ocm.BaseReconciler{
-			Client: k8sClient,
-			Scheme: testEnv.Scheme,
-			EventRecorder: &record.FakeRecorder{
-				Events:        make(chan string, 32),
-				IncludeObject: true,
-			},
-		},
-		Registry: registry,
-	}).SetupWithManager(k8sManager)).To(Succeed())
-
+	events := make(chan string)
+	recorder = &record.FakeRecorder{
+		Events:        events,
+		IncludeObject: true,
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	DeferCleanup(cancel)
 
-	namespace := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: Namespace,
+	go func() {
+		for {
+			select {
+			case event := <-events:
+				GinkgoLogr.Info("Event received", "event", event)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	Expect((&Reconciler{
+		BaseReconciler: &ocm.BaseReconciler{
+			Client:        k8sClient,
+			Scheme:        testEnv.Scheme,
+			EventRecorder: recorder,
 		},
-	}
-	Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+		Registry: registry,
+	}).SetupWithManager(k8sManager)).To(Succeed())
 
 	go func() {
 		defer GinkgoRecover()
