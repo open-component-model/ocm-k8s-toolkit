@@ -19,7 +19,7 @@ package v1alpha1
 // Ocm credential config key for secrets.
 const (
 	// OCMCredentialConfigKey defines the secret key to look for in case a user provides an ocm credential config.
-	OCMCredentialConfigKey = ".ocmcredentialconfig" // #nosec G101 -- it isn't a credential
+	OCMCredentialConfigKey = ".ocmcredentialconfig" //nolint:gosec // G101 -- it isn't a credential
 	// OCMConfigKey defines the secret or configmap key to look for in case a user provides an ocm config.
 	OCMConfigKey = ".ocmconfig"
 	// OCMLabelDowngradable defines the secret.
