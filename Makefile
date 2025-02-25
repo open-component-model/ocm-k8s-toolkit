@@ -176,6 +176,7 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize-$(KUSTOMIZE_VERSION)
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
+ZOT_BINARY ?= $(LOCALBIN)/zot-registry
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.1
@@ -219,10 +220,12 @@ undeploy-cert-manager: ## Undeploy cert-manager from the K8s cluster specified i
 	$(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f $(CERT-MANAGER_YAML)
 
 .PHONY: zot-registry
-zot-registry: $(LOCALBIN) # Download zot registry binary locally if necessary.
+zot-registry: $(LOCALBIN) ## Download zot registry binary locally if necessary.
+ifeq (, $(shell which $(ZOT_BINARY)))
 	wget "https://github.com/project-zot/zot/releases/download/$(ZOT_VERSION)/zot-$(OS)-$(ARCH)-minimal" \
-		-O $(LOCALBIN)/zot-registry \
-		&& chmod u+x $(LOCALBIN)/zot-registry
+		-O $(ZOT_BINARY) \
+		&& chmod u+x $(ZOT_BINARY)
+endif
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
