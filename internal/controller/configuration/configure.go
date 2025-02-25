@@ -18,7 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/artifact"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/substitute"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/substitute/steps"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/util"
@@ -55,16 +55,16 @@ func Configure(ctx context.Context,
 ) (string, error) {
 	logger := log.FromContext(ctx)
 	targetDir := filepath.Join(basePath, "target")
-	if err := target.UnpackIntoDirectory(targetDir); errors.Is(err, artifact.ErrAlreadyUnpacked) {
+	if err := target.UnpackIntoDirectory(targetDir); errors.Is(err, snapshot.ErrAlreadyUnpacked) {
 		logger.Info("target was already present, reusing existing directory", "path", targetDir)
 	} else if err != nil {
 		return "", fmt.Errorf("failed to get target directory: %w", err)
 	}
 
-	// TODO Workaround because the tarball from artifact storer uses a folder
-	// named after the util name instead of storing at artifact root level as this is the expected format
-	// for helm tgz archives.
-	// See issue: https://github.com/helm/helm/issues/5552
+	// TODO: Workaround because the tarball from artifact storer uses a folder
+	//  named after the util name instead of storing at artifact root level as this is the expected format
+	//  for helm tgz archives.
+	//  See issue: https://github.com/helm/helm/issues/5552
 	useSubDir, subDir, err := util.IsHelmChart(targetDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to determine if target is a helm chart to traverse into subdirectory: %w", err)

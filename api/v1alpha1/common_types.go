@@ -113,3 +113,15 @@ type ResourceInfo struct {
 	// +required
 	Digest string `json:"digest,omitempty"`
 }
+
+type BlobInfo struct {
+	// Digest is the digest of the blob in the form of '<algorithm>:<checksum>'.
+	Digest string `json:"digest"`
+
+	// Tag/Version of the blob
+	Tag string `json:"tag"`
+
+	// Size is the number of bytes of the blob.
+	// Can be used to determine how to file should be handled when downloaded (memory/disk)
+	Size int64 `json:"size"`
+}

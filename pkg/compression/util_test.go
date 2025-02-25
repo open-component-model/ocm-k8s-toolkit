@@ -5,20 +5,16 @@ import (
 	"compress/gzip"
 	"context"
 	"io"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/ulikunitz/xz"
 
 	contcompression "github.com/containers/image/v5/pkg/compression"
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
 )
-
-const testfile = "testfile"
 
 var testData = []byte("test")
 
@@ -26,7 +22,7 @@ type MockStorage struct {
 	data *bytes.Buffer
 }
 
-func (m *MockStorage) Copy(_ *artifactv1.Artifact, reader io.Reader) error {
+func (m *MockStorage) Copy(_ *v1alpha1.Snapshot, reader io.Reader) error {
 	m.data = new(bytes.Buffer)
 	_, err := io.Copy(m.data, reader)
 	return err
@@ -36,49 +32,43 @@ func (m *MockStorage) GetData() *bytes.Buffer {
 	return m.data
 }
 
-var _ compression.WriterToStorageFromArtifact = &MockStorage{}
+var _ compression.WriterToStorageFromSnapshot = &MockStorage{}
 
 func TestAutoCompressAndArchiveFile(t *testing.T) {
 	tests := []struct {
 		name     string
-		setup    func(t *testing.T) (string, *MockStorage)
-		validate func(t *testing.T, storage *MockStorage)
+		setup    func(t *testing.T) []byte
+		validate func(t *testing.T, data []byte)
 	}{
 		{
 			name: "Uncompressed",
-			setup: func(t *testing.T) (string, *MockStorage) {
-				path := filepath.Join(t.TempDir(), testfile)
-				assert.NoError(t, os.WriteFile(path, testData, 0o644))
-				return path, &MockStorage{}
+			setup: func(t *testing.T) []byte {
+				return testData
 			},
 			validate: validateAutoCompressedAsGzip,
 		},
 		{
 			name: "Precompressed_Gzip",
-			setup: func(t *testing.T) (string, *MockStorage) {
-				path := filepath.Join(t.TempDir(), testfile)
+			setup: func(t *testing.T) []byte {
 				var buf bytes.Buffer
 				compress := gzip.NewWriter(&buf)
 				_, err := io.Copy(compress, bytes.NewReader(testData))
 				assert.NoError(t, compress.Close())
 				assert.NoError(t, err)
-				assert.NoError(t, os.WriteFile(path, buf.Bytes(), 0o644))
-				return path, &MockStorage{}
+				return buf.Bytes()
 			},
 			validate: validateAutoCompressedAsGzip,
 		},
 		{
 			name: "Precompressed_Nongzip_Xz",
-			setup: func(t *testing.T) (string, *MockStorage) {
-				path := filepath.Join(t.TempDir(), testfile)
+			setup: func(t *testing.T) []byte {
 				var buf bytes.Buffer
 				compress, err := xz.NewWriter(&buf)
 				assert.NoError(t, err)
 				_, err = io.Copy(compress, bytes.NewReader(testData))
 				assert.NoError(t, compress.Close())
 				assert.NoError(t, err)
-				assert.NoError(t, os.WriteFile(path, buf.Bytes(), 0o644))
-				return path, &MockStorage{}
+				return buf.Bytes()
 			},
 			validate: validateAutoCompressedAsGzip,
 		},
@@ -86,18 +76,17 @@ func TestAutoCompressAndArchiveFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			path, storage := tt.setup(t)
-			art := &artifactv1.Artifact{}
-			err := compression.AutoCompressAsGzipAndArchiveFile(context.Background(), art, storage, path)
+			data := tt.setup(t)
+			dataCompressed, err := compression.AutoCompressAsGzip(context.Background(), data)
 			assert.NoError(t, err)
-			tt.validate(t, storage)
+			tt.validate(t, dataCompressed)
 		})
 	}
 }
 
-func validateAutoCompressedAsGzip(t *testing.T, storage *MockStorage) {
+func validateAutoCompressedAsGzip(t *testing.T, input []byte) {
 	t.Helper()
-	algo, decompress, reader, err := contcompression.DetectCompressionFormat(storage.GetData())
+	algo, decompress, reader, err := contcompression.DetectCompressionFormat(bytes.NewReader(input))
 	assert.NoError(t, err)
 	assert.Equal(t, contcompression.Gzip.Name(), algo.Name())
 	decompressed, err := decompress(reader)

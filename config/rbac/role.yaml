@@ -36,6 +36,7 @@ rules:
   - ocmrepositories
   - replications
   - resources
+  - snapshots
   verbs:
   - create
   - delete
@@ -52,7 +53,7 @@ rules:
   - localizedresources/finalizers
   - ocmrepositories/finalizers
   - replications/finalizers
-  - resources/finalizers
+  - snapshots/finalizers
   verbs:
   - update
 - apiGroups:
@@ -64,6 +65,7 @@ rules:
   - ocmrepositories/status
   - replications/status
   - resources/status
+  - snapshots/status
   verbs:
   - get
   - patch
@@ -87,29 +89,3 @@ rules:
   - patch
   - update
   - watch
-- apiGroups:
-  - openfluxcd.ocm.software
-  resources:
-  - artifacts
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - openfluxcd.ocm.software
-  resources:
-  - artifacts/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - openfluxcd.ocm.software
-  resources:
-  - artifacts/status
-  verbs:
-  - get
-  - patch
-  - update

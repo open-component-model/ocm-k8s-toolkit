@@ -13,6 +13,8 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the Project itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- snapshot_editor_role.yaml
+- snapshot_viewer_role.yaml
 - replication_editor_role.yaml
 - replication_viewer_role.yaml
 - configuredresource_editor_role.yaml
@@ -23,3 +25,4 @@ resources:
 - component_viewer_role.yaml
 - ocmrepository_editor_role.yaml
 - ocmrepository_viewer_role.yaml
+
