@@ -17,6 +17,7 @@ limitations under the License.
 package resource
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -279,7 +280,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	}
 
 	// Resolve resource resourceReference to get resource and its component descriptor
-	resourceDesc, resourceCompDesc, err := compdesc.ResolveResourceReference(cd, resourceReference, cdSet)
+	resourceDesc, resourceCompDesc, err := ResolveResourceReference(cd, resourceReference, cdSet)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ResolveResourceFailedReason, err.Error())
 
@@ -581,4 +582,53 @@ func setResourceStatus(ctx context.Context, configs []v1alpha1.OCMConfiguration,
 	resource.Status.EffectiveOCMConfig = configs
 
 	return nil
+}
+
+func ResolveResourceReference(cd *compdesc.ComponentDescriptor, ref v1.ResourceReference, resolver compdesc.ComponentVersionResolver) (*compdesc.Resource, *compdesc.ComponentDescriptor, error) {
+	if len(ref.Resource) == 0 || len(ref.Resource["name"]) == 0 {
+		return nil, nil, errors.New("at least resource name must be specified for resource reference")
+	}
+
+	eff, err := ResolveReferencePath(cd, ref.ReferencePath, resolver)
+	if err != nil {
+		return nil, nil, err
+	}
+	r, err := eff.GetResourceByIdentity(ref.Resource)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &r, eff, nil
+}
+
+func ResolveReferencePath(cv *compdesc.ComponentDescriptor, path []v1.Identity, resolver compdesc.ComponentVersionResolver) (*compdesc.ComponentDescriptor, error) {
+	if cv == nil {
+		return nil, fmt.Errorf("no component version specified")
+	}
+
+	eff := cv
+	var err error
+	for _, path := range path {
+		idx := GetReferenceIndexByIdentity(eff, path)
+		if idx >= 0 {
+			eff, err = resolver.LookupComponentVersion(cv.References[idx].ComponentName, cv.References[idx].Version)
+		} else {
+			return nil, fmt.Errorf("%q not found: %q", compdesc.KIND_COMPONENTVERSION, path.String())
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return eff, nil
+}
+
+// GetReferenceIndexByIdentity returns the index of the reference that matches the given identity.
+func GetReferenceIndexByIdentity(cd *compdesc.ComponentDescriptor, id v1.Identity) int {
+	dig := id.Digest()
+	for i, ref := range cd.References {
+		if bytes.Equal(ref.GetIdentityDigest(cd.References), dig) {
+			return i
+		}
+	}
+	return -1
 }
