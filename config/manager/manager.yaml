@@ -36,7 +36,6 @@ spec:
         args:
           # - --leader-elect We dont need it for testing
           - --health-probe-bind-address=:8081
-          - --storage-adv-addr=ocm-k8s-toolkit-artifact-service.ocm-k8s-toolkit-system.svc.cluster.local.
           - --zap-log-level=4
         image: controller:latest
         name: manager

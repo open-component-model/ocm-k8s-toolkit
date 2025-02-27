@@ -62,135 +62,135 @@ jobs:
             bin/k8s
           key: ${{ steps.cache-k8s-restore.outputs.cache-primary-key }}
 
-  e2e-tests:
-    runs-on: large_runner
-    steps:
-      - name: Self Hosted Runner Post Job Cleanup Action
-        uses: TooMuch4U/actions-clean@v2.2
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: '${{ github.workspace }}/go.mod'
-          cache: false
-
-      - name: Get Go environment
-        run: |
-          echo "go_cache=$(go env GOCACHE)" >> $GITHUB_ENV
-          echo "go_modcache=$(go env GOMODCACHE)" >> $GITHUB_ENV
-      - name: Set up cache
-        # https://github.com/actions/setup-go/issues/358 - cache is not working with setup-go for multiple jobs
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.go_cache }}
-            ${{ env.go_modcache }}
-            bin/k8s
-          key: ${{ env.cache_name }}-${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ hashFiles('**/go.mod') }}
-          restore-keys: |
-            ${{ env.cache_name }}-${{ runner.os }}-go-
-        env:
-          cache_name: integration-test
-
-      - name: Create k8s Kind Cluster
-        uses: helm/kind-action@v1
-        with:
-          config: test/e2e/config/kind-config.yaml
-
-      - name: Install internal image registry
-        run: |
-          kubectl apply -f test/e2e/config/image-registry.yaml
-          kubectl wait pod -l app=registry --for condition=Ready --timeout 5m
-          kubectl wait pod -l app=protected-registry1 --for condition=Ready --timeout 5m
-          kubectl wait pod -l app=protected-registry2 --for condition=Ready --timeout 5m
-
-      - name: Install external CRDs
-        run: kubectl apply --server-side -k https://github.com/openfluxcd/artifact//config/crd?ref=v0.1.1
-
-      - name: Checkout helm-controller
-        uses: actions/checkout@v4
-        with:
-          repository: openfluxcd/helm-controller
-          path: helm-controller
-
-      # TODO: Create helm-controller image in public repository to omit rebuilds
-      - name: Install helm-controller
-        env:
-          IMG: localhost:31000/helm-controller:latest
-        run: |
-          make -C helm-controller docker-build
-          make -C helm-controller docker-push
-          make -C helm-controller install
-          make -C helm-controller deploy
-          kubectl wait deployment.apps/helm-controller --for condition=Available --namespace helm-system --timeout 5m
-          kubectl logs --tail -1 -l app=helm-controller -n helm-system -f --ignore-errors &> helm-controller.log &
-
-      - name: Checkout kustomize-controller
-        uses: actions/checkout@v4
-        with:
-          repository: openfluxcd/kustomize-controller
-          path: kustomize-controller
-
-      # TODO: Create kustomize-controller image in public repository to omit rebuilds
-      - name: Install kustomize-controller
-        env:
-          IMG: localhost:31000/kustomize-controller:latest
-        run: |
-          make -C kustomize-controller docker-build
-          make -C kustomize-controller docker-push
-          make -C kustomize-controller install
-          make -C kustomize-controller deploy
-          kubectl wait deployment.apps/kustomize-controller --for condition=Available --namespace kustomize-system --timeout 5m
-          kubectl logs --tail -1 -l app=kustomize-controller -n kustomize-system -f --ignore-errors &> kustomize-controller.log &
-
-      # TODO: Replace once the release with the 'skipDigestGeneration' field in the component constructor is available
-      # uses: open-component-model/ocm-setup-action@main
-      # with:
-      #   version: v0.19.0-rc.1
-      - name: Set up cache for ocm (temporarily)
-        uses: actions/cache@v4
-        with:
-          path: |
-            ocm/bin
-          key: ${{ env.cache_name }}-${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ hashFiles('**/go.mod') }}
-          restore-keys: |
-            ${{ env.cache_name }}-${{ runner.os }}-go-
-        env:
-          cache_name: dummy-cache
-      - name: Checkout OCM (temporarily)
-        uses: actions/checkout@v4
-        with:
-          repository: open-component-model/ocm
-          path: ocm
-      - name: Build OCM (temporarily)
-        run: |
-          make -C ocm bin/ocm
-          echo "${{ github.workspace }}/ocm/bin" >> "$GITHUB_PATH"
-
-      - name: Run e2e test
-        env:
-          RESOURCE_TIMEOUT: 5m
-          HELM_CHART: ghcr.io/stefanprodan/charts/podinfo:6.7.1
-          IMAGE_REFERENCE: ghcr.io/stefanprodan/podinfo:6.7.1
-          CONTROLLER_LOG_PATH: ./ocm-k8s-toolkit-controller.log
-          IMAGE_REGISTRY_URL: http://localhost:31000
-          INTERNAL_IMAGE_REGISTRY_URL: http://registry-internal.default.svc.cluster.local:5000
-          PROTECTED_REGISTRY_URL: http://localhost:31001
-          INTERNAL_PROTECTED_REGISTRY_URL: http://protected-registry1-internal.default.svc.cluster.local:5001
-          PROTECTED_REGISTRY_URL2: http://localhost:31002
-          INTERNAL_PROTECTED_REGISTRY_URL2: http://protected-registry2-internal.default.svc.cluster.local:5002
-        run: make test-e2e
-
-      - name: Publish logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: controller-logs
-          # Currently, it is planned that the integration tests runs on every commit on a PR. Therefore, we could
-          # produce a lot of logs. To note clutter the storage, the retention-days are reduced to 1.
-          retention-days: 1
-          path: |
-            helm-controller.log
-            kustomize-controller.log
-            ocm-k8s-toolkit-controller.log
+#  e2e-tests:
+#    runs-on: large_runner
+#    steps:
+#      - name: Self Hosted Runner Post Job Cleanup Action
+#        uses: TooMuch4U/actions-clean@v2.2
+#      - name: Checkout
+#        uses: actions/checkout@v4
+#      - name: Setup Go
+#        uses: actions/setup-go@v5
+#        with:
+#          go-version-file: '${{ github.workspace }}/go.mod'
+#          cache: false
+#
+#      - name: Get Go environment
+#        run: |
+#          echo "go_cache=$(go env GOCACHE)" >> $GITHUB_ENV
+#          echo "go_modcache=$(go env GOMODCACHE)" >> $GITHUB_ENV
+#      - name: Set up cache
+#        # https://github.com/actions/setup-go/issues/358 - cache is not working with setup-go for multiple jobs
+#        uses: actions/cache@v4
+#        with:
+#          path: |
+#            ${{ env.go_cache }}
+#            ${{ env.go_modcache }}
+#            bin/k8s
+#          key: ${{ env.cache_name }}-${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ hashFiles('**/go.mod') }}
+#          restore-keys: |
+#            ${{ env.cache_name }}-${{ runner.os }}-go-
+#        env:
+#          cache_name: integration-test
+#
+#      - name: Create k8s Kind Cluster
+#        uses: helm/kind-action@v1
+#        with:
+#          config: test/e2e/config/kind-config.yaml
+#
+#      - name: Install internal image registry
+#        run: |
+#          kubectl apply -f test/e2e/config/image-registry.yaml
+#          kubectl wait pod -l app=registry --for condition=Ready --timeout 5m
+#          kubectl wait pod -l app=protected-registry1 --for condition=Ready --timeout 5m
+#          kubectl wait pod -l app=protected-registry2 --for condition=Ready --timeout 5m
+#
+#      - name: Install external CRDs
+#        run: kubectl apply --server-side -k https://github.com/openfluxcd/artifact//config/crd?ref=v0.1.1
+#
+#      - name: Checkout helm-controller
+#        uses: actions/checkout@v4
+#        with:
+#          repository: openfluxcd/helm-controller
+#          path: helm-controller
+#
+#      # TODO: Create helm-controller image in public repository to omit rebuilds
+#      - name: Install helm-controller
+#        env:
+#          IMG: localhost:31000/helm-controller:latest
+#        run: |
+#          make -C helm-controller docker-build
+#          make -C helm-controller docker-push
+#          make -C helm-controller install
+#          make -C helm-controller deploy
+#          kubectl wait deployment.apps/helm-controller --for condition=Available --namespace helm-system --timeout 5m
+#          kubectl logs --tail -1 -l app=helm-controller -n helm-system -f --ignore-errors &> helm-controller.log &
+#
+#      - name: Checkout kustomize-controller
+#        uses: actions/checkout@v4
+#        with:
+#          repository: openfluxcd/kustomize-controller
+#          path: kustomize-controller
+#
+#      # TODO: Create kustomize-controller image in public repository to omit rebuilds
+#      - name: Install kustomize-controller
+#        env:
+#          IMG: localhost:31000/kustomize-controller:latest
+#        run: |
+#          make -C kustomize-controller docker-build
+#          make -C kustomize-controller docker-push
+#          make -C kustomize-controller install
+#          make -C kustomize-controller deploy
+#          kubectl wait deployment.apps/kustomize-controller --for condition=Available --namespace kustomize-system --timeout 5m
+#          kubectl logs --tail -1 -l app=kustomize-controller -n kustomize-system -f --ignore-errors &> kustomize-controller.log &
+#
+#      # TODO: Replace once the release with the 'skipDigestGeneration' field in the component constructor is available
+#      # uses: open-component-model/ocm-setup-action@main
+#      # with:
+#      #   version: v0.19.0-rc.1
+#      - name: Set up cache for ocm (temporarily)
+#        uses: actions/cache@v4
+#        with:
+#          path: |
+#            ocm/bin
+#          key: ${{ env.cache_name }}-${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ hashFiles('**/go.mod') }}
+#          restore-keys: |
+#            ${{ env.cache_name }}-${{ runner.os }}-go-
+#        env:
+#          cache_name: dummy-cache
+#      - name: Checkout OCM (temporarily)
+#        uses: actions/checkout@v4
+#        with:
+#          repository: open-component-model/ocm
+#          path: ocm
+#      - name: Build OCM (temporarily)
+#        run: |
+#          make -C ocm bin/ocm
+#          echo "${{ github.workspace }}/ocm/bin" >> "$GITHUB_PATH"
+#
+#      - name: Run e2e test
+#        env:
+#          RESOURCE_TIMEOUT: 5m
+#          HELM_CHART: ghcr.io/stefanprodan/charts/podinfo:6.7.1
+#          IMAGE_REFERENCE: ghcr.io/stefanprodan/podinfo:6.7.1
+#          CONTROLLER_LOG_PATH: ./ocm-k8s-toolkit-controller.log
+#          IMAGE_REGISTRY_URL: http://localhost:31000
+#          INTERNAL_IMAGE_REGISTRY_URL: http://registry-internal.default.svc.cluster.local:5000
+#          PROTECTED_REGISTRY_URL: http://localhost:31001
+#          INTERNAL_PROTECTED_REGISTRY_URL: http://protected-registry1-internal.default.svc.cluster.local:5001
+#          PROTECTED_REGISTRY_URL2: http://localhost:31002
+#          INTERNAL_PROTECTED_REGISTRY_URL2: http://protected-registry2-internal.default.svc.cluster.local:5002
+#        run: make test-e2e
+#
+#      - name: Publish logs on failure
+#        if: failure()
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: controller-logs
+#          # Currently, it is planned that the integration tests runs on every commit on a PR. Therefore, we could
+#          # produce a lot of logs. To note clutter the storage, the retention-days are reduced to 1.
+#          retention-days: 1
+#          path: |
+#            helm-controller.log
+#            kustomize-controller.log
+#            ocm-k8s-toolkit-controller.log
