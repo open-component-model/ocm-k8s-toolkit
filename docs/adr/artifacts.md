@@ -25,11 +25,12 @@ Therefore, the original purpose of that Custom Resource `artifact` is not presen
 decided to not use a plain http-server but an internal OCI registry to store and publish its blobs that are produced by
 the OCM controllers as single layer OCI artifacts.
 
-Arguments (meeting notes from 26.11.2024):
-- An OCI registry is a responsibility less to maintain 
+Arguments:
+- In comparison to a plain http-server that requires an implementation of access, GC, ... the usage of an OCI registry 
+would simplify the implementation
 - Stop support at the level of the distribution spec of OCI
-- OCI registries could provide GC
-- We will need an abstraction that handles OCI registries anyway
+- We will need an abstraction that handles OCI registries anyway to convert resources into a flux consumable format
+(= single layer oci artifact)
 
 The following discussion concerns two major topics:
 - How to store and reference the single layer OCI artifacts.
@@ -148,7 +149,10 @@ Pros:
 Cons:
 - Implemented for a plain http-server and not for OCI registry (check 
 [storage implementation][controller-manager-storage]). Thus, missing dedicated control-loop.
-- Would require a custom deployment of controller of FluxCD
+- The current setup (`OpenFluxCD`) requires the deployment of the customized FluxCD `helm-` and `kustomize-controller`.
+This wouldn't be required necessarily, but some form of transformation of the `artifact` resource to a consumable
+resource is necessary, e.g. by a transformer as in Option 2.
+- Maintenance of the storage server (which is copied and adjusted from flux).
 
 Basically rejected because we could only use the `Artifact` type definition and not the implementation for the storage.
 
@@ -171,9 +175,6 @@ overkill.
 - Using the `OCIRepository` control-loop would basically "clone" every blob from the OCI registry in FluxCD
 local storage (plain http server). 
 
-Using `OCIRepository` as intermediate `storage`-pointer CR is not an option as the control-loop of that resource would
-"clone" any OCI Registry blob to its own local storage.
-
 #### Option 5: Create a new custom resource
 
 Pros:
@@ -181,7 +182,7 @@ Pros:
 - Orientation on `snapshot` and `artifact` ease the implementation.
 
 Cons:
-- New implementation is required.
+- Offers no benefit over the existing implementation.
 
 Creating a new custom resource seems like an overkill, considering that the `snapshot` implementation covers a lot of
 our use-cases. Thus, it seems more reasonable to go with the `snapshot` implementation and adjust/refactor that.
