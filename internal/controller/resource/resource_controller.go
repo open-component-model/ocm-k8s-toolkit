@@ -314,7 +314,9 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		}
 	}
 
-	err = reconcileArtifact(ctx, octx, r.Storage, resource, resourceAccess, revision, artifactStorage, func() error { return verifyResource(ctx, resourceAccess, cv, cd) })
+	err = reconcileArtifact(ctx, octx, r.Storage, resource, resourceAccess, revision, artifactStorage, func() error {
+		return verifyResource(ctx, resourceAccess, cv, resourceCompDesc)
+	})
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ReconcileArtifactFailedReason, err.Error())
 
