@@ -214,12 +214,11 @@ To select the registry, no comprehensive benchmarking tests have been performed.
 ### Option 1: Let the user provide a registry that is OCI compliant
 
 Pros:
-- Not our responsibility
+- Operating a user-provided registry is not in our responsibility
 - Users can customize their OCI registry like they want
 
 Cons:
-- We offer full support for `zot` only. Using a different OCI registry would be at risk of the user of OCM controllers.
-- Most people need to operate a registry then and the majority would not have experience maintaining a production grade stable oci registry as a service
+- We develop and test the OCM Toolset in environments where `zot` registry is used. We assume that it'll work with any other OCI-compliant registry, but other registries are not tested (yet).
 - Giving a possibility to the user to provide/configure an own registry does not eliminate the need to provide a default registry (option 2), especially to those users who do not want to customize an own registry.
 
 #### Option 2: Deploy an OCI image registry with our controllers
