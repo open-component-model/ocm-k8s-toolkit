@@ -34,8 +34,8 @@ const (
 
 // Finalizers for controllers.
 const (
-	// SnapshotFinalizer is the finalizter that is added to snapshot created by the ocm controllers.
-	SnapshotFinalizer = "finalizers.ocm.software/snapshot"
+	// ArtifactFinalizer is the finalizer that is added to an object that handles the lifecycle of an artifact created by the ocm controllers.
+	ArtifactFinalizer = "finalizers.ocm.software/artifact"
 )
 
 // OCI related constants.

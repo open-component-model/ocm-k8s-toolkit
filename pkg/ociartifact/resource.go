@@ -1,4 +1,4 @@
-package snapshot
+package ociartifact
 
 import (
 	"bytes"
@@ -84,7 +84,7 @@ func (r *ContentBackedBySnapshotAndComponent) open() (io.ReadCloser, error) {
 		return nil, fmt.Errorf("failed to open repository: %w", err)
 	}
 
-	data, err := repository.FetchSnapshot(ctx, r.Snapshot.GetDigest())
+	data, err := repository.FetchArtifact(ctx, r.Snapshot.GetDigest())
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch snapshot: %w", err)
 	}

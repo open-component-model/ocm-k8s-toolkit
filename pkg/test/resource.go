@@ -22,7 +22,7 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
@@ -34,7 +34,7 @@ type MockResourceOptions struct {
 
 	ComponentRef v1alpha1.ObjectKey
 
-	Registry snapshot.RegistryType
+	Registry ociartifact.RegistryType
 	Clnt     client.Client
 	Recorder record.EventRecorder
 }
@@ -78,14 +78,14 @@ func SetupMockResourceWithData(
 	}
 
 	version := "dummy"
-	repositoryName, err := snapshot.CreateRepositoryName(options.ComponentRef.Name, name)
+	repositoryName, err := ociartifact.CreateRepositoryName(options.ComponentRef.Name, name)
 	Expect(err).ToNot(HaveOccurred())
 	repository, err := options.Registry.NewRepository(ctx, repositoryName)
 	Expect(err).ToNot(HaveOccurred())
 
-	manifestDigest, err := repository.PushSnapshot(ctx, version, data)
+	manifestDigest, err := repository.PushArtifact(ctx, version, data)
 	Expect(err).ToNot(HaveOccurred())
-	snapshotCR := snapshot.Create(
+	snapshotCR := ociartifact.Create(
 		res,
 		repositoryName,
 		manifestDigest.String(),

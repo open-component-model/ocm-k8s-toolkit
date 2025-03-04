@@ -140,7 +140,7 @@ var _ = Describe("Localization Controller", func() {
 
 		repository, err := registry.NewRepository(ctx, snapshotLocalization.Spec.Repository)
 		Expect(err).ToNot(HaveOccurred())
-		data, err := repository.FetchSnapshot(ctx, snapshotLocalization.GetDigest())
+		data, err := repository.FetchArtifact(ctx, snapshotLocalization.GetDigest())
 		Expect(err).ToNot(HaveOccurred())
 
 		memFs := vfs.New(memoryfs.New())

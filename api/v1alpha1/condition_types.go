@@ -54,29 +54,26 @@ const (
 	// MarshalFailedReason is used when we fail to marshal a struct.
 	MarshalFailedReason = "MarshalFailed"
 
+	// YamlToJsonDecodeFailedReason is used when we fail to decode yaml to json.
+	YamlToJsonDecodeFailedReason = "YamlToJsonDecodeFailed"
+
 	// CreateOCIRepositoryNameFailedReason is used when we fail to create an OCI repository name.
 	CreateOCIRepositoryNameFailedReason = "CreateOCIRepositoryNameFailed"
 
 	// CreateOCIRepositoryFailedReason is used when we fail to create an OCI repository.
 	CreateOCIRepositoryFailedReason = "CreateOCIRepositoryFailed"
 
+	// PushOCIArtifactFailedReason is used when we fail to push an OCI artifact.
+	PushOCIArtifactFailedReason = "PushOCIArtifactFailed"
+
+	// FetchOCIArtifactFailedReason is used when we fail to fetch an OCI artifact.
+	FetchOCIArtifactFailedReason = "FetchOCIArtifactFailed"
+
+	// CopyOCIArtifactFailedReason is used when we fail to copy an OCI artifact.
+	CopyOCIArtifactFailedReason = "CopyOCIArtifactFailed"
+
 	// OCIRepositoryExistsFailedReason is used when we fail to check the existence of an OCI repository.
 	OCIRepositoryExistsFailedReason = "OCIRepositoryExistsFailed"
-
-	// DeleteSnapshotFailedReason is used when we fail to delete an OCI repository.
-	DeleteSnapshotFailedReason = "DeleteOCIRepositoryFailed"
-
-	// CreateSnapshotFailedReason is used when we fail to create a snapshot.
-	CreateSnapshotFailedReason = "CreateSnapshotFailed"
-
-	// GetSnapshotFailedReason is used when we fail in getting a Snapshot.
-	GetSnapshotFailedReason = "GetSnapshotFailed"
-
-	// SnapshotReadyFailedReason is used when the snapshot is not ready.
-	SnapshotReadyFailedReason = "SnapshotReadyFailed"
-
-	// PushSnapshotFailedReason is used when we fail to push a snapshot.
-	PushSnapshotFailedReason = "PushSnapshotFailed"
 
 	// ResolveResourceFailedReason is used when we fail in resolving a resource.
 	ResolveResourceFailedReason = "ResolveResourceFailed"
@@ -92,9 +89,6 @@ const (
 
 	// GetResourceFailedReason is used when we fail to get the resource.
 	GetResourceFailedReason = "GetResourceFailed"
-
-	// GetComponentForSnapshotFailedReason is used when we fail in getting a component for a snapshot.
-	GetComponentForSnapshotFailedReason = "GetComponentForSnapshotFailed"
 
 	// CompressGzipFailedReason is used when we fail to compress to gzip.
 	CompressGzipFailedReason = "CompressGzipFailed"

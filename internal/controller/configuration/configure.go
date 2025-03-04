@@ -18,7 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/substitute"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/substitute/steps"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/util"
@@ -55,7 +55,7 @@ func Configure(ctx context.Context,
 ) (string, error) {
 	logger := log.FromContext(ctx)
 	targetDir := filepath.Join(basePath, "target")
-	if err := target.UnpackIntoDirectory(targetDir); errors.Is(err, snapshot.ErrAlreadyUnpacked) {
+	if err := target.UnpackIntoDirectory(targetDir); errors.Is(err, ociartifact.ErrAlreadyUnpacked) {
 		logger.Info("target was already present, reusing existing directory", "path", targetDir)
 	} else if err != nil {
 		return "", fmt.Errorf("failed to get target directory: %w", err)

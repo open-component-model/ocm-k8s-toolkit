@@ -16,8 +16,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	snapshotRegistry "github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	snapshotRegistry "github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
@@ -78,7 +78,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 			return ctrl.Result{}, fmt.Errorf("failed to create a repository: %w", err)
 		}
 
-		exists, err := repository.ExistsSnapshot(ctx, snapshotResource.GetDigest())
+		exists, err := repository.ExistsArtifact(ctx, snapshotResource.GetDigest())
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, snapshotResource, deliveryv1alpha1.OCIRepositoryExistsFailedReason, err.Error())
 
@@ -86,14 +86,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		}
 
 		if exists {
-			if err := repository.DeleteSnapshot(ctx, snapshotResource.GetDigest()); err != nil {
+			if err := repository.DeleteArtifact(ctx, snapshotResource.GetDigest()); err != nil {
 				status.MarkNotReady(r.EventRecorder, snapshotResource, deliveryv1alpha1.DeleteSnapshotFailedReason, err.Error())
 
 				return ctrl.Result{}, fmt.Errorf("failed to delete snapshot: %w", err)
 			}
 		}
 
-		if removed := controllerutil.RemoveFinalizer(snapshotResource, deliveryv1alpha1.SnapshotFinalizer); removed {
+		if removed := controllerutil.RemoveFinalizer(snapshotResource, deliveryv1alpha1.ArtifactFinalizer); removed {
 			if err := r.Update(ctx, snapshotResource); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 			}
@@ -102,7 +102,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	if added := controllerutil.AddFinalizer(snapshotResource, deliveryv1alpha1.SnapshotFinalizer); added {
+	if added := controllerutil.AddFinalizer(snapshotResource, deliveryv1alpha1.ArtifactFinalizer); added {
 		err := r.Update(ctx, snapshotResource)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
@@ -119,7 +119,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to create a repository: %w", err)
 	}
 
-	exists, err := repository.ExistsSnapshot(ctx, snapshotResource.GetDigest())
+	exists, err := repository.ExistsArtifact(ctx, snapshotResource.GetDigest())
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, snapshotResource, deliveryv1alpha1.OCIRepositoryExistsFailedReason, err.Error())
 
