@@ -19,12 +19,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
 type MockComponentOptions struct {
-	Registry   snapshot.RegistryType
+	Registry   ociartifact.RegistryType
 	Client     client.Client
 	Recorder   record.EventRecorder
 	Info       v1alpha1.ComponentInfo
@@ -51,16 +51,16 @@ func SetupComponentWithDescriptorList(
 
 	patchHelper := patch.NewSerialPatcher(component, options.Client)
 
-	repositoryName, err := snapshot.CreateRepositoryName(options.Repository, name)
+	repositoryName, err := ociartifact.CreateRepositoryName(options.Repository, name)
 	Expect(err).ToNot(HaveOccurred())
 
 	repository, err := options.Registry.NewRepository(ctx, repositoryName)
 	Expect(err).ToNot(HaveOccurred())
 
-	manifestDigest, err := repository.PushSnapshot(ctx, options.Info.Version, descriptorListData)
+	manifestDigest, err := repository.PushArtifact(ctx, options.Info.Version, descriptorListData)
 	Expect(err).ToNot(HaveOccurred())
 
-	snapshotCR := snapshot.Create(
+	snapshotCR := ociartifact.Create(
 		component,
 		repositoryName,
 		manifestDigest.String(),

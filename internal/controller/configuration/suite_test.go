@@ -39,8 +39,8 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	cfgclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/client"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
 )
 
@@ -55,7 +55,7 @@ var k8sManager ctrl.Manager
 var testEnv *envtest.Environment
 var recorder record.EventRecorder
 var zotCmd *exec.Cmd
-var registry *snapshot.Registry
+var registry *ociartifact.Registry
 var zotRootDir string
 
 func TestControllers(t *testing.T) {

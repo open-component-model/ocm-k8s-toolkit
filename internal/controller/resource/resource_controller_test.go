@@ -173,7 +173,7 @@ var _ = Describe("Resource Controller", func() {
 			By("checking that the snapshot contains the correct content")
 			snapshotRepository, err := registry.NewRepository(ctx, snapshotResource.Spec.Repository)
 			Expect(err).NotTo(HaveOccurred())
-			snapshotResourceContentCompressed, err := snapshotRepository.FetchSnapshot(ctx, snapshotResource.GetDigest())
+			snapshotResourceContentCompressed, err := snapshotRepository.FetchArtifact(ctx, snapshotResource.GetDigest())
 			Expect(err).NotTo(HaveOccurred())
 			gzipReader, err := gzip.NewReader(bytes.NewReader(snapshotResourceContentCompressed))
 			Expect(err).NotTo(HaveOccurred())
@@ -291,7 +291,7 @@ var _ = Describe("Resource Controller", func() {
 			By("checking that the snapshot contains the correct content")
 			snapshotRepository, err := registry.NewRepository(ctx, snapshotResource.Spec.Repository)
 			Expect(err).NotTo(HaveOccurred())
-			snapshotResourceContentCompressed, err := snapshotRepository.FetchSnapshot(ctx, snapshotResource.GetDigest())
+			snapshotResourceContentCompressed, err := snapshotRepository.FetchArtifact(ctx, snapshotResource.GetDigest())
 			Expect(err).NotTo(HaveOccurred())
 			gzipReader, err := gzip.NewReader(bytes.NewReader(snapshotResourceContentCompressed))
 			Expect(err).NotTo(HaveOccurred())
@@ -322,7 +322,7 @@ var _ = Describe("Resource Controller", func() {
 			Expect(k8sClient.Delete(ctx, snapshotComponent)).To(Succeed())
 		})
 
-		It("can reconcile a resource: OCIArtifact", func() {
+		It("can reconcile a resource: OCIArtifactInfo", func() {
 			testComponent := fmt.Sprintf("%s-%d", ComponentObj, testNumber)
 			testResource := fmt.Sprintf("%s-%d", ResourceObj, testNumber)
 			resourceType := artifacttypes.OCI_ARTIFACT
@@ -330,10 +330,10 @@ var _ = Describe("Resource Controller", func() {
 			By("creating an OCI artifact")
 			repository, err := registry.NewRepository(ctx, testResource)
 			Expect(err).NotTo(HaveOccurred())
-			manifestDigest, err := repository.PushSnapshot(ctx, ResourceVersion, []byte(ResourceContent))
+			manifestDigest, err := repository.PushArtifact(ctx, ResourceVersion, []byte(ResourceContent))
 			Expect(err).ToNot(HaveOccurred())
 			DeferCleanup(func(ctx SpecContext) {
-				Expect(repository.DeleteSnapshot(ctx, manifestDigest.String())).To(Succeed())
+				Expect(repository.DeleteArtifact(ctx, manifestDigest.String())).To(Succeed())
 			})
 
 			By("creating an ocm resource from an OCI artifact")
@@ -415,7 +415,7 @@ var _ = Describe("Resource Controller", func() {
 			By("checking that the snapshot contains the correct content")
 			snapshotRepository, err := registry.NewRepository(ctx, snapshotResource.Spec.Repository)
 			Expect(err).NotTo(HaveOccurred())
-			snapshotResourceContent, err := snapshotRepository.FetchSnapshot(ctx, snapshotResource.GetDigest())
+			snapshotResourceContent, err := snapshotRepository.FetchArtifact(ctx, snapshotResource.GetDigest())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(snapshotResourceContent)).To(Equal(ResourceContent))
 

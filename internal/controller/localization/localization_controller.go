@@ -32,8 +32,8 @@ import (
 	localizationclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/client"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/types"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/index"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/util"
 )
@@ -42,7 +42,7 @@ import (
 type Reconciler struct {
 	*ocm.BaseReconciler
 	LocalizationClient localizationclient.Client
-	Registry           snapshot.RegistryType
+	Registry           ociartifact.RegistryType
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -274,7 +274,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 func localizeRules(
 	ctx context.Context,
 	c client.Client,
-	r snapshot.RegistryType,
+	r ociartifact.RegistryType,
 	content LocalizableSnapshotContent,
 	cfg types.LocalizationConfig,
 ) (
@@ -336,7 +336,7 @@ func localizeRules(
 // LocalizableSnapshotContent is an artifact content that is backed by a component and resource, allowing it
 // to be localized (by resolving relative references from the resource & component into absolute values).
 type LocalizableSnapshotContent interface {
-	snapshot.Content
+	ociartifact.Content
 	GetComponent() *v1alpha1.Component
 	GetResource() *v1alpha1.Resource
 }
@@ -344,7 +344,7 @@ type LocalizableSnapshotContent interface {
 func ComponentDescriptorAndSetFromResource(
 	ctx context.Context,
 	reader client.Reader,
-	registry snapshot.RegistryType,
+	registry ociartifact.RegistryType,
 	baseComponent *v1alpha1.Component,
 ) (compdesc.ComponentVersionResolver, *compdesc.ComponentDescriptor, error) {
 	snapshotResource := &v1alpha1.Snapshot{}

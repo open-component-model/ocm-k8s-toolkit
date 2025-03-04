@@ -9,12 +9,12 @@ import (
 	"ocm.software/ocm/api/ocm/compdesc"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 )
 
 // GetComponentSetForSnapshot returns the component descriptor set for the given snapshot.
-func GetComponentSetForSnapshot(ctx context.Context, repository snapshot.RepositoryType, snapshotResource *v1alpha1.Snapshot) (*compdesc.ComponentVersionSet, error) {
-	data, err := repository.FetchSnapshot(ctx, snapshotResource.GetDigest())
+func GetComponentSetForSnapshot(ctx context.Context, repository ociartifact.RepositoryType, snapshotResource *v1alpha1.Snapshot) (*compdesc.ComponentVersionSet, error) {
+	data, err := repository.FetchArtifact(ctx, snapshotResource.GetDigest())
 	if err != nil {
 		return nil, err
 	}

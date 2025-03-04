@@ -48,14 +48,14 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
 type Reconciler struct {
 	*ocm.BaseReconciler
-	Registry snapshot.RegistryType
+	Registry ociartifact.RegistryType
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -370,7 +370,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 			return ctrl.Result{}, fmt.Errorf("failed to auto compress data: %w", err)
 		}
 
-		manifestDigest, err = repositoryResource.PushSnapshot(ctx, resourceAccess.Meta().GetVersion(), resourceContentCompressed)
+		manifestDigest, err = repositoryResource.PushArtifact(ctx, resourceAccess.Meta().GetVersion(), resourceContentCompressed)
 		if err != nil {
 			status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.PushSnapshotFailedReason, err.Error())
 
@@ -381,7 +381,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	}
 
 	// Create respective snapshot CR
-	snapshotCR := snapshot.Create(
+	snapshotCR := ociartifact.Create(
 		resource,
 		repositoryResourceName,
 		manifestDigest.String(),

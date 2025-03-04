@@ -13,14 +13,14 @@ import (
 	//nolint:revive,stylecheck // dot import necessary for Ginkgo DSL
 	. "github.com/onsi/gomega"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 )
 
 const (
 	timeout = 30 * time.Second
 )
 
-func SetupRegistry(binPath, rootDir, address, port string) (*exec.Cmd, *snapshot.Registry) {
+func SetupRegistry(binPath, rootDir, address, port string) (*exec.Cmd, *ociartifact.Registry) {
 	config := []byte(fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},"http":{"address":"%s","port": "%s"}}`, rootDir, address, port))
 	configFile := filepath.Join(rootDir, "config.json")
 	err := os.WriteFile(configFile, config, 0o600)
@@ -52,7 +52,7 @@ func SetupRegistry(binPath, rootDir, address, port string) (*exec.Cmd, *snapshot
 		return nil
 	}, timeout).Should(Succeed(), "Zot registry did not start in time")
 
-	registry, err := snapshot.NewRegistry(fmt.Sprintf("%s:%s", address, port))
+	registry, err := ociartifact.NewRegistry(fmt.Sprintf("%s:%s", address, port))
 	Expect(err).NotTo(HaveOccurred())
 	registry.PlainHTTP = true
 

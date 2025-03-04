@@ -62,10 +62,10 @@ type ResourceStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// SnapshotRef points to the Snapshot which represents the output of the
+	// OCIArtifact points to the OCI artifact which represents the output of the
 	// last successful Resource sync.
 	// +optional
-	SnapshotRef corev1.LocalObjectReference `json:"snapshotRef,omitempty"`
+	OCIArtifact *OCIArtifactInfo `json:"ociArtifact,omitempty"`
 
 	// +optional
 	Resource *ResourceInfo `json:"resource,omitempty"`
@@ -129,10 +129,6 @@ func (in *Resource) GetSpecifiedOCMConfig() []OCMConfiguration {
 
 func (in *Resource) GetEffectiveOCMConfig() []OCMConfiguration {
 	return in.Status.EffectiveOCMConfig
-}
-
-func (in *Resource) GetSnapshotName() string {
-	return in.Status.SnapshotRef.Name
 }
 
 // +kubebuilder:object:root=true

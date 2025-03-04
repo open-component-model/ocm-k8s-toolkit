@@ -10,7 +10,7 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/types"
-	snapshotRegistry "github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
+	snapshotRegistry "github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 )
 
 type Client interface {

@@ -36,8 +36,8 @@ import (
 	configurationclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/client"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/index"
+	snapshotRegistry "github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	snapshotRegistry "github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
@@ -218,7 +218,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		//   - HelmRelease (FluxCD) requires the OCI artifact to have the same tag as the helm chart itself
 		//     - But how to get the helm chart version? (User input, parse from content)
 		tag := "dummy"
-		manifestDigest, err := repository.PushSnapshot(ctx, tag, dataTGZ)
+		manifestDigest, err := repository.PushArtifact(ctx, tag, dataTGZ)
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.ConfigurationFailedReason, err.Error())
 

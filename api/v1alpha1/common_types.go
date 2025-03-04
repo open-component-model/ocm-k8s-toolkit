@@ -125,3 +125,18 @@ type BlobInfo struct {
 	// Can be used to determine how to file should be handled when downloaded (memory/disk)
 	Size int64 `json:"size"`
 }
+
+// OCIArtifactInfo contains information on how to locate an OCI Artifact.
+type OCIArtifactInfo struct {
+	// OCI repository name
+	// +required
+	Repository string `json:"repository"`
+
+	// Manifest digest (required to delete the manifest and prepare OCI artifact for GC)
+	// +required
+	Digest string `json:"digest"`
+
+	// Blob
+	// +required
+	Blob *BlobInfo `json:"blob"`
+}

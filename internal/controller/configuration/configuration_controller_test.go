@@ -159,7 +159,7 @@ var _ = Describe("ConfiguredResource Controller", func() {
 
 		snapshotRepository, err := registry.NewRepository(ctx, snapshotResource.Spec.Repository)
 		Expect(err).NotTo(HaveOccurred())
-		snapshotResourceContent, err := snapshotRepository.FetchSnapshot(ctx, snapshotResource.GetDigest())
+		snapshotResourceContent, err := snapshotRepository.FetchArtifact(ctx, snapshotResource.GetDigest())
 		Expect(err).NotTo(HaveOccurred())
 		dataExtracted, err := compression.ExtractDataFromTGZ(snapshotResourceContent)
 		Expect(err).NotTo(HaveOccurred())

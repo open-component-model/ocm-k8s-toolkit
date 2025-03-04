@@ -48,8 +48,8 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/replication"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/resource"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/snapshot"
+	snapshotRegistry "github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	snapshotRegistry "github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 )
 
 var (

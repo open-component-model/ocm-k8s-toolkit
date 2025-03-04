@@ -262,6 +262,44 @@ spec:
                   object.
                 format: int64
                 type: integer
+              ociArtifact:
+                description: |-
+                  OCIArtifact points to the OCI artifact which represents the output of the
+                  last successful Resource sync.
+                properties:
+                  blob:
+                    description: Blob
+                    properties:
+                      digest:
+                        description: Digest is the digest of the blob in the form
+                          of '<algorithm>:<checksum>'.
+                        type: string
+                      size:
+                        description: |-
+                          Size is the number of bytes of the blob.
+                          Can be used to determine how to file should be handled when downloaded (memory/disk)
+                        format: int64
+                        type: integer
+                      tag:
+                        description: Tag/Version of the blob
+                        type: string
+                    required:
+                    - digest
+                    - size
+                    - tag
+                    type: object
+                  digest:
+                    description: Manifest digest (required to delete the manifest
+                      and prepare OCI artifact for GC)
+                    type: string
+                  repository:
+                    description: OCI repository name
+                    type: string
+                required:
+                - blob
+                - digest
+                - repository
+                type: object
               resource:
                 properties:
                   access:
@@ -284,22 +322,6 @@ spec:
                 - name
                 - type
                 type: object
-              snapshotRef:
-                description: |-
-                  SnapshotRef points to the Snapshot which represents the output of the
-                  last successful Resource sync.
-                properties:
-                  name:
-                    default: ""
-                    description: |-
-                      Name of the referent.
-                      This field is effectively required, but due to backwards compatibility is
-                      allowed to be empty. Instances of this type with an empty value here are
-                      almost certainly wrong.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
             type: object
         required:
         - spec

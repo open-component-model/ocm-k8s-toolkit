@@ -21,7 +21,6 @@ import (
 
 	"github.com/fluxcd/pkg/apis/meta"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -91,10 +90,10 @@ type ConfiguredResourceStatus struct {
 	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
 	Conditions         []metav1.Condition `json:"conditions,omitempty"`
 
-	// The configuration reconcile loop generates a snapshot, which contains the
+	// The configuration reconcile loop generates an OCI artifact, which contains the
 	// ConfiguredResourceSpec.Target ConfigurationReference after configuration.
-	// It is filled once the Snapshot is created and the configuration completed.
-	SnapshotRef corev1.LocalObjectReference `json:"snapshotRef,omitempty"`
+	// It is filled once the OCI artifact is created and the configuration completed.
+	OCIArtifact *OCIArtifactInfo `json:"ociArtifact,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -107,10 +106,6 @@ type ConfiguredResource struct {
 
 	Spec   ConfiguredResourceSpec   `json:"spec,omitempty"`
 	Status ConfiguredResourceStatus `json:"status,omitempty"`
-}
-
-func (in *ConfiguredResource) GetSnapshotName() string {
-	return in.Status.SnapshotRef.Name
 }
 
 // +kubebuilder:object:root=true
