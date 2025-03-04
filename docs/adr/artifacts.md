@@ -102,17 +102,19 @@ transformation, they also can be used as a caching mechanism to reduce unnecessa
 
 ### Decision Outcome
 
-Chosen option: "Option 2: Use the `snapshot` implementation", because it is already implemented in the
-`ocm-controllers` v1 and fits our use-cases most.
+Chosen option: "Option 1: Omit the `artifact`/`snapshot` concept", because the implementation gets simpler by not
+needing an additional custom resource and reconciler. All the required information ("Where to find the blob") can be
+stored in the status of the source resource (`component`, `resource`, `configuredResource`).
 
 #### Positive Consequences
 
-- Most of the functionality is already implemented, can be copied, and adjusted/refactored to our design.
+- Simpler implementation.
+- No intermediate Custom Resource necessary. 
 
 #### Negative Consequences
 
-- Requires a transformer that transforms the `snapshot` resource in something that, for example, FluxCDs
-`source-controller` can consume. For this, the FluxCDs `OCIRepository` resource seems predestined.
+- Requires a transformer that can transform the information about the blob-location to a resource that can be consumed
+by a deployer, like FluxCDs `source-controller`. For example, a transformation to FluxCDs `OCIRRepository`.
 
 ### Pros and Cons of the Options
 
@@ -122,11 +124,10 @@ Instead of using an intermediate Custom Resource as `artifact` or `snapshot`, on
 resource that is creating the blob could point to the location of that blob itself.
 
 Pros:
-- No additional custom resource needed.
+- No additional custom resource and reconciler needed.
 
 Cons:
-- Since there is a "real" blob in the storage, it should have a respective entity to represent it, e.g.
-`artifact`/`snapshot`
+- Loss of extensibility of the architecture provided by a common interface.
 
 #### Option 2: Use the `snapshot` implementation
 
