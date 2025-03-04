@@ -71,10 +71,8 @@ transformation, they also can be used as a caching mechanism to reduce unnecessa
 
 [`SnapshotStatus`][snapshot-status]
 - (Conditions)
-- LastReconciledDigest:
-  - Purpose?
-- LastReconciledTag:
-  - Purpose?
+- LastReconciledDigest: determine, if reconciliation is necessary. Marks the last SUCCESSFULLY reconciled digest.
+- LastReconciledTag: determine, if reconciliation is necessary. Marks the last SUCCESSFULLY reconciled tag.
 - RepositoryURL: Concrete URL pointing to the local registry including the service name 
 - (ObservedGeneration)
 
