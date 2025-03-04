@@ -111,8 +111,8 @@ stored in the status of the source resource (`component`, `resource`, `configure
 
 #### Negative Consequences
 
-- Requires a transformer that can transform the information about the blob-location to a resource that can be consumed
-by a deployer, like FluxCDs `source-controller`. For example, a transformation to FluxCDs `OCIRRepository`.
+- Requires a transformer that can transform the information about the blob-location to a resource that can be consumed 
+by a deployer, like FluxCDs `source-controller`. For example, a transformation to FluxCDs `OCIRRepository`. (For implementation details of the transformer a separate Deployment ADR will have to be agreed upon.)
 
 ### Pros and Cons of the Options
 
@@ -134,7 +134,7 @@ Pros:
 - Implemented for an OCI registry
 
 Cons:
-- Require a transformer to make the artifacts consumable by FluxCDs Helm- and Kustomize-Controller. E.g. by using
+- Requires a transformer to make the artifacts consumable by FluxCDs Helm- and Kustomize-Controller. E.g. by using
 FluxCDs `source-controller` and its CR `OCIRepository`.
 - Implemented in `open-component-model/ocm-controller` which will be archived, when the `ocm-controller` v2 go
 productive. Thus, the `snapshot` implementation must be copied in this repository.
