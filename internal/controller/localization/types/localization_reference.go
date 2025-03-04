@@ -1,7 +1,7 @@
 package types
 
 import (
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 )
 
 // LocalizationReference can be used both as a source (LocalizationConfig),
@@ -11,12 +11,12 @@ type LocalizationReference interface {
 	LocalizationTarget
 }
 
-// LocalizationConfig is a configuration on how to localize an snapshot.Content.
+// LocalizationConfig is a configuration on how to localize an ociartifact.Content.
 type LocalizationConfig interface {
-	snapshot.Content
+	ociartifact.Content
 }
 
-// LocalizationTarget is a target snapshot.Content for localization.
+// LocalizationTarget is a target ociartifact.Content for localization.
 type LocalizationTarget interface {
-	snapshot.Content
+	ociartifact.Content
 }

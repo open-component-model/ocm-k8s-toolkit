@@ -18,7 +18,6 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/apimachinery/pkg/types"
 	ocmbuilder "ocm.software/ocm/api/helper/builder"
 	environment "ocm.software/ocm/api/helper/env"
 	"ocm.software/ocm/api/utils/tarutils"
@@ -67,7 +66,7 @@ var _ = Describe("Localization Controller", func() {
 		DeferCleanup(env.Cleanup)
 	})
 
-	It("should localize an snapshot from a resource based on a config supplied in a sibling resource", func(ctx SpecContext) {
+	It("should localize an OCI artifact from a resource based on a config supplied in a sibling resource", func(ctx SpecContext) {
 		component := test.SetupComponentWithDescriptorList(ctx,
 			ComponentObj,
 			Namespace,
@@ -128,19 +127,14 @@ var _ = Describe("Localization Controller", func() {
 			if err != nil {
 				return false
 			}
-			return conditions.IsReady(localization) && localization.GetSnapshotName() != ""
+			return conditions.IsReady(localization)
 		}, "15s").WithContext(ctx).Should(BeTrue())
 
-		snapshotLocalization := &v1alpha1.Snapshot{}
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: localization.GetNamespace(), Name: localization.GetSnapshotName()}, snapshotLocalization)).To(Succeed())
+		Expect(localization.GetOCIArtifact()).ToNot(BeNil())
 
-		// Marks snapshot as ready
-		conditions.MarkTrue(snapshotLocalization, "Ready", "ready", "message")
-		Expect(k8sClient.Status().Update(ctx, snapshotLocalization)).To(Succeed())
-
-		repository, err := registry.NewRepository(ctx, snapshotLocalization.Spec.Repository)
+		repository, err := registry.NewRepository(ctx, localization.GetOCIRepository())
 		Expect(err).ToNot(HaveOccurred())
-		data, err := repository.FetchSnapshot(ctx, snapshotLocalization.GetDigest())
+		data, err := repository.FetchArtifact(ctx, localization.GetManifestDigest())
 		Expect(err).ToNot(HaveOccurred())
 
 		memFs := vfs.New(memoryfs.New())
@@ -156,26 +150,14 @@ var _ = Describe("Localization Controller", func() {
 
 		By("delete resources manually")
 		Expect(k8sClient.Delete(ctx, localization)).To(Succeed())
-		Expect(k8sClient.Delete(ctx, snapshotLocalization)).To(Succeed())
 		Eventually(func(ctx context.Context) bool {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(localization), localization)
 			return errors.IsNotFound(err)
 		}, "15s").WithContext(ctx).Should(BeTrue())
 
 		Expect(k8sClient.Delete(ctx, cfgResource)).To(Succeed())
-		snapshotCfgResource := &v1alpha1.Snapshot{}
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: cfgResource.GetNamespace(), Name: cfgResource.GetSnapshotName()}, snapshotCfgResource)).To(Succeed())
-		Expect(k8sClient.Delete(ctx, snapshotCfgResource)).To(Succeed())
-
 		Expect(k8sClient.Delete(ctx, targetResource)).To(Succeed())
-		snapshotTargetResource := &v1alpha1.Snapshot{}
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: targetResource.GetNamespace(), Name: targetResource.GetSnapshotName()}, snapshotTargetResource)).To(Succeed())
-		Expect(k8sClient.Delete(ctx, snapshotTargetResource)).To(Succeed())
-
 		Expect(k8sClient.Delete(ctx, component)).To(Succeed())
-		snapshotComponent := &v1alpha1.Snapshot{}
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: component.GetNamespace(), Name: component.GetSnapshotName()}, snapshotComponent)).To(Succeed())
-		Expect(k8sClient.Delete(ctx, snapshotComponent)).To(Succeed())
 	})
 })
 

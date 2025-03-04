@@ -25,10 +25,7 @@ import (
 	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -39,8 +36,8 @@ import (
 	metricserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
 )
 
@@ -49,13 +46,12 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
-var cfg *rest.Config
 var k8sClient client.Client
 var k8sManager ctrl.Manager
 var testEnv *envtest.Environment
 var recorder record.EventRecorder
 var zotCmd *exec.Cmd
-var registry *snapshot.Registry
+var registry *ociartifact.Registry
 var zotRootDir string
 var ctx context.Context
 var cancel context.CancelFunc
@@ -137,16 +133,6 @@ var _ = BeforeSuite(func() {
 
 	ctx, cancel = context.WithCancel(context.Background())
 	DeferCleanup(cancel)
-
-	namespace := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: Namespace,
-		},
-	}
-	Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
-	DeferCleanup(func(ctx SpecContext) {
-		Expect(k8sClient.Delete(ctx, namespace, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
-	})
 
 	go func() {
 		defer GinkgoRecover()

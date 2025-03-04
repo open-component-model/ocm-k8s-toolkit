@@ -17,6 +17,7 @@ limitations under the License.
 package resource
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -26,6 +27,7 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/opencontainers/go-digest"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/compdesc"
 	"ocm.software/ocm/api/ocm/resolvers"
@@ -40,7 +42,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	ocmctx "ocm.software/ocm/api/ocm"
 	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
@@ -48,14 +49,14 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
 type Reconciler struct {
 	*ocm.BaseReconciler
-	Registry snapshot.RegistryType
+	Registry ociartifact.RegistryType
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -76,8 +77,6 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Resource{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// Watch for snapshot-events that are owned by the resource controller
-		Owns(&v1alpha1.Snapshot{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		// Watch for component-events that are referenced by resources
 		Watches(
 			&v1alpha1.Component{},
@@ -143,7 +142,25 @@ func (r *Reconciler) reconcileExists(ctx context.Context, resource *v1alpha1.Res
 	}
 
 	if resource.GetDeletionTimestamp() != nil {
+		if err := ociartifact.DeleteForObject(ctx, r.Registry, resource); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		if updated := controllerutil.RemoveFinalizer(resource, v1alpha1.ArtifactFinalizer); updated {
+			if err := r.Update(ctx, resource); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
+			}
+		}
+
 		logger.Info("resource is being deleted and cannot be used", "name", resource.Name)
+
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	if updated := controllerutil.AddFinalizer(resource, v1alpha1.ArtifactFinalizer); updated {
+		if err := r.Update(ctx, resource); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
+		}
 
 		return ctrl.Result{Requeue: true}, nil
 	}
@@ -195,7 +212,7 @@ func (r *Reconciler) reconcileOCM(ctx context.Context, resource *v1alpha1.Resour
 	return result, nil
 }
 
-//nolint:funlen,cyclop,maintidx // we do not want to cut function at an arbitrary point
+//nolint:funlen,cyclop // we do not want to cut function at an arbitrary point
 func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context, resource *v1alpha1.Resource, component *v1alpha1.Component) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("reconciling resource")
@@ -218,22 +235,8 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		return ctrl.Result{}, err
 	}
 
-	// Get snapshot from component that contains component descriptor
-	componentSnapshot := &v1alpha1.Snapshot{}
-	if err := r.Get(ctx, types.NamespacedName{Namespace: component.GetNamespace(), Name: component.GetSnapshotName()}, componentSnapshot); err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.GetSnapshotFailedReason, err.Error())
-
-		return ctrl.Result{}, err
-	}
-
-	if !conditions.IsReady(componentSnapshot) {
-		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.SnapshotReadyFailedReason, "snapshot not ready")
-
-		return ctrl.Result{}, errors.New("snapshot not ready")
-	}
-
-	// Create repository from registry for snapshot
-	repositoryCD, err := r.Registry.NewRepository(ctx, componentSnapshot.Spec.Repository)
+	// Create repository to download the component descriptors
+	repositoryCD, err := r.Registry.NewRepository(ctx, component.GetOCIRepository())
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.CreateOCIRepositoryFailedReason, err.Error())
 
@@ -241,12 +244,21 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	}
 
 	// Get component descriptor set from artifact
-	cdSet, err := ocm.GetComponentSetForSnapshot(ctx, repositoryCD, componentSnapshot)
+	data, err := repositoryCD.FetchArtifact(ctx, component.GetManifestDigest())
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentForSnapshotFailedReason, err.Error())
+		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.FetchOCIArtifactFailedReason, err.Error())
 
 		return ctrl.Result{}, err
 	}
+
+	cds := &ocm.Descriptors{}
+	if err := yaml.NewYAMLToJSONDecoder(bytes.NewReader(data)).Decode(cds); err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.YamlToJSONDecodeFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+
+	cdSet := compdesc.NewComponentVersionSet(cds.List...)
 
 	// Get referenced component descriptor from component descriptor set
 	cd, err := cdSet.LookupComponentVersion(component.Status.Component.Component, component.Status.Component.Version)
@@ -319,7 +331,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 
 	// If the resource is of type 'ociArtifact' or its access type is 'ociArtifact', the resource will be copied to the
 	// internal OCI registry
-	logger.Info("create snapshot for resource", "name", resource.GetName(), "type", resourceAccess.Meta().GetType())
+	logger.Info("create OCI artifact for resource", "name", resource.GetName(), "type", resourceAccess.Meta().GetType())
 	resourceAccessSpec, err := resourceAccess.Access()
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceAccessFailedReason, err.Error())
@@ -336,7 +348,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	if resourceAccessSpec.GetType() == "ociArtifact" {
 		manifestDigest, err = repositoryResource.CopyOCIArtifactForResourceAccess(ctx, resourceAccess)
 		if err != nil {
-			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.PushSnapshotFailedReason, err.Error())
+			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.CopyOCIArtifactFailedReason, err.Error())
 
 			return ctrl.Result{}, err
 		}
@@ -370,48 +382,26 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 			return ctrl.Result{}, fmt.Errorf("failed to auto compress data: %w", err)
 		}
 
-		manifestDigest, err = repositoryResource.PushSnapshot(ctx, resourceAccess.Meta().GetVersion(), resourceContentCompressed)
+		manifestDigest, err = repositoryResource.PushArtifact(ctx, resourceAccess.Meta().GetVersion(), resourceContentCompressed)
 		if err != nil {
-			status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.PushSnapshotFailedReason, err.Error())
+			status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.PushOCIArtifactFailedReason, err.Error())
 
-			return ctrl.Result{}, fmt.Errorf("failed to push snapshot: %w", err)
+			return ctrl.Result{}, fmt.Errorf("failed to push OCI artifact: %w", err)
 		}
 
 		blobSize = int64(len(resourceContentCompressed))
 	}
 
-	// Create respective snapshot CR
-	snapshotCR := snapshot.Create(
-		resource,
-		repositoryResourceName,
-		manifestDigest.String(),
-		&v1alpha1.BlobInfo{
+	// Update status
+	if err = setResourceStatus(ctx, configs, resource, resourceAccess, &v1alpha1.OCIArtifactInfo{
+		Repository: repositoryResourceName,
+		Digest:     manifestDigest.String(),
+		Blob: &v1alpha1.BlobInfo{
 			Digest: resourceAccess.Meta().Digest.Value,
-			Tag:    resourceAccess.Meta().GetVersion(),
+			Tag:    resourceAccess.Meta().Version,
 			Size:   blobSize,
 		},
-	)
-
-	if _, err = controllerutil.CreateOrUpdate(ctx, r.GetClient(), snapshotCR, func() error {
-		if snapshotCR.ObjectMeta.CreationTimestamp.IsZero() {
-			if err := controllerutil.SetControllerReference(resource, snapshotCR, r.GetScheme()); err != nil {
-				return fmt.Errorf("failed to set controller reference: %w", err)
-			}
-		}
-
-		resource.Status.SnapshotRef = corev1.LocalObjectReference{
-			Name: snapshotCR.GetName(),
-		}
-
-		return nil
 	}); err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.CreateSnapshotFailedReason, err.Error())
-
-		return ctrl.Result{}, err
-	}
-
-	// Update status
-	if err = setResourceStatus(ctx, configs, resource, resourceAccess); err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.StatusSetFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to set resource status: %w", err)
@@ -527,7 +517,7 @@ func verifyResource(ctx context.Context, access ocmctx.ResourceAccess, cv ocmctx
 }
 
 // setResourceStatus updates the resource status with the all required information.
-func setResourceStatus(ctx context.Context, configs []v1alpha1.OCMConfiguration, resource *v1alpha1.Resource, resourceAccess ocmctx.ResourceAccess) error {
+func setResourceStatus(ctx context.Context, configs []v1alpha1.OCMConfiguration, resource *v1alpha1.Resource, resourceAccess ocmctx.ResourceAccess, ociArtifact *v1alpha1.OCIArtifactInfo) error {
 	log.FromContext(ctx).V(1).Info("updating resource status")
 
 	// Get the access spec from the resource access
@@ -551,6 +541,8 @@ func setResourceStatus(ctx context.Context, configs []v1alpha1.OCMConfiguration,
 	}
 
 	resource.Status.EffectiveOCMConfig = configs
+
+	resource.Status.OCIArtifact = ociArtifact
 
 	return nil
 }

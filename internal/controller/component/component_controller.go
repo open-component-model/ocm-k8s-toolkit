@@ -39,23 +39,19 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/yaml"
 
-	corev1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	ocmctx "ocm.software/ocm/api/ocm"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
-
-const SnapshotFinalizer = "snapshot-finalizer"
 
 // Reconciler reconciles a Component object.
 type Reconciler struct {
 	*ocm.BaseReconciler
-	Registry snapshot.RegistryType
+	Registry ociartifact.RegistryType
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -86,7 +82,6 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Component{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&v1alpha1.OCMRepository{}, handler.EnqueueRequestsFromMapFunc(r.findOCMRepositories(ocmRepositoryKey))).
-		Owns(&v1alpha1.Snapshot{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
 }
 
@@ -149,34 +144,23 @@ func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, component *v
 func (r *Reconciler) reconcileExists(ctx context.Context, component *v1alpha1.Component) (_ ctrl.Result, retErr error) {
 	logger := log.FromContext(ctx)
 
-	//nolint:nestif //nested if blocks required
 	if !component.GetDeletionTimestamp().IsZero() {
-		logger.Info("component is being deleted and cannot be used", "name", component.Name)
-
-		if component.Status.SnapshotRef.Name != "" {
-			snap := &v1alpha1.Snapshot{}
-			snap.SetNamespace(component.GetNamespace())
-			snap.SetName(component.Status.SnapshotRef.Name)
-			err := r.Get(ctx, client.ObjectKeyFromObject(snap), snap)
-			if err == nil {
-				err = r.Delete(ctx, snap)
-			}
-			if err != nil && !k8serrors.IsNotFound(err) {
-				return ctrl.Result{}, fmt.Errorf("failed to delete snapshot: %w", err)
-			}
-			logger.Info("referenced snapshot deleted", "name", snap.GetName())
+		if err := ociartifact.DeleteForObject(ctx, r.Registry, component); err != nil {
+			return ctrl.Result{}, err
 		}
 
-		if updated := controllerutil.RemoveFinalizer(component, SnapshotFinalizer); updated {
+		if updated := controllerutil.RemoveFinalizer(component, v1alpha1.ArtifactFinalizer); updated {
 			if err := r.Update(ctx, component); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 			}
 		}
 
+		logger.Info("component is being deleted and cannot be used", "name", component.Name)
+
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	if updated := controllerutil.AddFinalizer(component, SnapshotFinalizer); updated {
+	if updated := controllerutil.AddFinalizer(component, v1alpha1.ArtifactFinalizer); updated {
 		if err := r.Update(ctx, component); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
@@ -323,9 +307,9 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 		return ctrl.Result{}, err
 	}
 
-	// Store descriptors and create snapshot
+	// Store descriptors and create OCI artifact
 	logger.Info("pushing descriptors to storage")
-	ociRepositoryName, err := snapshot.CreateRepositoryName(component.Spec.RepositoryRef.Name, component.GetName())
+	ociRepositoryName, err := ociartifact.CreateRepositoryName(component.Spec.RepositoryRef.Name, component.GetName())
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CreateOCIRepositoryNameFailedReason, err.Error())
 
@@ -346,47 +330,26 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 		return ctrl.Result{}, err
 	}
 
-	manifestDigest, err := ociRepository.PushSnapshot(ctx, version, descriptorsBytes)
+	manifestDigest, err := ociRepository.PushArtifact(ctx, version, descriptorsBytes)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.PushSnapshotFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.PushOCIArtifactFailedReason, err.Error())
 
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("creating snapshot")
-	snapshotCR := snapshot.Create(
-		component,
-		ociRepositoryName,
-		manifestDigest.String(),
-		&v1alpha1.BlobInfo{
+	ociArtifact := v1alpha1.OCIArtifactInfo{
+		Repository: ociRepositoryName,
+		Digest:     manifestDigest.String(),
+		Blob: &v1alpha1.BlobInfo{
 			Digest: digest.FromBytes(descriptorsBytes).String(),
 			Tag:    version,
 			Size:   int64(len(descriptorsBytes)),
 		},
-	)
-	snapshotCopy := snapshotCR.DeepCopy()
-
-	result, err := controllerutil.CreateOrUpdate(ctx, r.GetClient(), snapshotCR, func() error {
-		if err := controllerutil.SetControllerReference(component, snapshotCR, r.GetScheme()); err != nil {
-			return fmt.Errorf("failed to set controller reference: %w", err)
-		}
-
-		snapshotCR.Spec = snapshotCopy.Spec
-
-		component.Status.SnapshotRef = corev1.LocalObjectReference{
-			Name: snapshotCR.GetName(),
-		}
-
-		return nil
-	})
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CreateSnapshotFailedReason, err.Error())
-
-		return ctrl.Result{}, err
 	}
-	logger.Info(fmt.Sprintf("snapshot %s", result), "operation", result)
 
 	logger.Info("updating status")
+	component.Status.OCIArtifact = &ociArtifact
+
 	component.Status.Component = v1alpha1.ComponentInfo{
 		RepositorySpec: repository.Spec.RepositorySpec,
 		Component:      component.Spec.Component,

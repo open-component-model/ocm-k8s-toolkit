@@ -13,13 +13,7 @@ import (
 
 	"github.com/containers/image/v5/pkg/compression"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
-
-type WriterToStorageFromSnapshot interface {
-	Copy(snapshot *v1alpha1.Snapshot, reader io.Reader) error
-}
 
 // AutoCompressAsGzip compresses the content if it is not already compressed and returns it.
 // If the file is already compressed as gzip, it will be returned as is.

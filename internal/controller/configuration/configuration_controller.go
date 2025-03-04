@@ -25,19 +25,17 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	configurationclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/client"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/index"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	snapshotRegistry "github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
@@ -50,8 +48,6 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.ConfiguredResource{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// Update when the owned artifact containing the configured data changes
-		Owns(&v1alpha1.Snapshot{}).
 		// Update when a resource specified as target changes
 		Watches(&v1alpha1.Resource{}, onTargetChange).
 		Watches(&v1alpha1.LocalizedResource{}, onTargetChange).
@@ -70,7 +66,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 type Reconciler struct {
 	*ocm.BaseReconciler
 	ConfigClient configurationclient.Client
-	Registry     snapshotRegistry.RegistryType
+	Registry     ociartifact.RegistryType
 }
 
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=configuredresources,verbs=get;list;watch;create;update;patch;delete
@@ -120,7 +116,7 @@ func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, localization
 	return result, nil
 }
 
-//nolint:gocognit // we do not want to cut function at an arbitrary point
+//nolint:funlen // function length is acceptable
 func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha1.ConfiguredResource) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
@@ -146,7 +142,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		return ctrl.Result{}, fmt.Errorf("failed to fetch cfg: %w", err)
 	}
 
-	combinedDigest, revision, _, err := snapshotRegistry.UniqueIDsForSnapshotContentCombination(cfg, target)
+	combinedDigest, revision, _, err := ociartifact.UniqueIDsForArtifactContentCombination(cfg, target)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.UniqueIDGenerationFailedReason, err.Error())
 
@@ -156,23 +152,35 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 	// TODO: we cannot use `combinedDigest` to determine a change as the combinedDigest calculation is incorrect
 	//   (it takes a k8s object with managed fields that change on every update).
 
-	// Check if a snapshot of the configuration resource already exists and if it holds the same calculated combinedDigest
+	// Check if an OCI artifact of the configuration resource already exists and if it holds the same calculated combinedDigest
 	// from above
 	logger.V(1).Info("verifying configuration", "combinedDigest", combinedDigest, "revision", revision)
-	hasValidSnapshot, err := snapshotRegistry.ValidateSnapshotForOwner(
-		ctx,
-		r.Client,
-		configuration,
-		combinedDigest,
-	)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to check if snapshot is valid: %w", err)
+
+	hasValidArtifact := false
+
+	if configuration.GetOCIArtifact() != nil {
+		ociRepository, err := r.Registry.NewRepository(ctx, configuration.GetOCIRepository())
+		if err != nil {
+			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.CreateOCIRepositoryFailedReason, err.Error())
+
+			return ctrl.Result{}, err
+		}
+
+		exists, err := ociRepository.ExistsArtifact(ctx, configuration.GetManifestDigest())
+		if err != nil {
+			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.OCIRepositoryExistsFailedReason, err.Error())
+
+			return ctrl.Result{}, err
+		}
+		if exists {
+			hasValidArtifact = combinedDigest == configuration.GetBlobDigest()
+		}
 	}
 
-	// If no valid snapshot is present (because it never existed or is just not valid), we will configure the target,
-	// create a snapshot and return.
+	// If no valid OCI artifact is present (because it never existed or is just not valid), we will configure the target,
+	// create an OCI artifact and return.
 	//nolint:nestif // Ignore as it is not that complex.
-	if !hasValidSnapshot {
+	if !hasValidArtifact {
 		logger.V(1).Info("configuring", "combinedDigest", combinedDigest, "revision", revision)
 		basePath, err := os.MkdirTemp("", "configured-")
 		if err != nil {
@@ -199,7 +207,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 			return ctrl.Result{}, fmt.Errorf("failed to create TGZ from path: %w", err)
 		}
 
-		repositoryName, err := snapshotRegistry.CreateRepositoryName(configuration.GetName())
+		repositoryName, err := ociartifact.CreateRepositoryName(configuration.GetName())
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.CreateOCIRepositoryNameFailedReason, err.Error())
 
@@ -218,7 +226,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		//   - HelmRelease (FluxCD) requires the OCI artifact to have the same tag as the helm chart itself
 		//     - But how to get the helm chart version? (User input, parse from content)
 		tag := "dummy"
-		manifestDigest, err := repository.PushSnapshot(ctx, tag, dataTGZ)
+		manifestDigest, err := repository.PushArtifact(ctx, tag, dataTGZ)
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.ConfigurationFailedReason, err.Error())
 
@@ -226,37 +234,18 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		}
 
 		// We use the combinedDigest calculated above for the blob-info combinedDigest, so we can compare for any changes
-		snapshotCR := snapshotRegistry.Create(
-			configuration,
-			repositoryName,
-			manifestDigest.String(),
-			&v1alpha1.BlobInfo{
+		configuration.Status.OCIArtifact = &v1alpha1.OCIArtifactInfo{
+			Repository: repositoryName,
+			Digest:     manifestDigest.String(),
+			Blob: &v1alpha1.BlobInfo{
 				Digest: combinedDigest,
 				Tag:    tag,
 				Size:   int64(len(dataTGZ)),
 			},
-		)
-
-		if _, err = controllerutil.CreateOrUpdate(ctx, r.GetClient(), snapshotCR, func() error {
-			if snapshotCR.ObjectMeta.CreationTimestamp.IsZero() {
-				if err := controllerutil.SetControllerReference(configuration, snapshotCR, r.GetScheme()); err != nil {
-					return fmt.Errorf("failed to set controller reference: %w", err)
-				}
-			}
-
-			configuration.Status.SnapshotRef = corev1.LocalObjectReference{
-				Name: snapshotCR.GetName(),
-			}
-
-			return nil
-		}); err != nil {
-			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.CreateSnapshotFailedReason, err.Error())
-
-			return ctrl.Result{}, err
 		}
 	}
 
-	logger.Info("configuration successful", "snapshot", configuration.Status.SnapshotRef)
+	logger.Info("configuration successful", "OCIArtifact", configuration.GetOCIArtifact())
 	status.MarkReady(r.EventRecorder, configuration, "configured successfully")
 
 	return ctrl.Result{RequeueAfter: configuration.Spec.Interval.Duration}, nil

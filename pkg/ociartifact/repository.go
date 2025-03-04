@@ -1,4 +1,4 @@
-package snapshot
+package ociartifact
 
 import (
 	"bytes"
@@ -28,20 +28,20 @@ import (
 
 // A RepositoryType is a type that can push and fetch blobs.
 type RepositoryType interface {
-	// PushSnapshot is a wrapper to push a single layer OCI artifact with an empty config and a single data layer
-	// containing the blob. As all snapshots are produced and consumed by us, we do not have to care about the
+	// PushArtifact is a wrapper to push a single layer OCI artifact with an empty config and a single data layer
+	// containing the blob. As all OCI artifacts are produced and consumed by us, we do not have to care about the
 	// configuration.
-	PushSnapshot(ctx context.Context, reference string, blob []byte) (digest.Digest, error)
+	PushArtifact(ctx context.Context, reference string, blob []byte) (digest.Digest, error)
 
-	// FetchSnapshot is a wrapper to fetch a single layer OCI artifact with a manifest digest. It expects and returns
+	// FetchArtifact is a wrapper to fetch a single layer OCI artifact with a manifest digest. It expects and returns
 	// the single data layer.
-	FetchSnapshot(ctx context.Context, reference string) ([]byte, error)
+	FetchArtifact(ctx context.Context, reference string) ([]byte, error)
 
-	// DeleteSnapshot is a wrapper to delete a single layer OCI artifact with a manifest digest.
-	DeleteSnapshot(ctx context.Context, digest string) error
+	// DeleteArtifact is a wrapper to delete a single layer OCI artifact with a manifest digest.
+	DeleteArtifact(ctx context.Context, digest string) error
 
-	// ExistsSnapshot is a wrapper to check if an OCI repository exists using the manifest digest.
-	ExistsSnapshot(ctx context.Context, manifestDigest string) (bool, error)
+	// ExistsArtifact is a wrapper to check if an OCI repository exists using the manifest digest.
+	ExistsArtifact(ctx context.Context, manifestDigest string) (bool, error)
 
 	// CopyOCIArtifactForResourceAccess is a wrapper to copy an OCI artifact from an OCM resource access.
 	CopyOCIArtifactForResourceAccess(ctx context.Context, access ocmctx.ResourceAccess) (digest.Digest, error)
@@ -50,7 +50,7 @@ type RepositoryType interface {
 	GetName() string
 }
 
-// Repository is a wrapper for an OCI repository to provide snapshot methods.
+// Repository is a wrapper for an OCI repository that provides methods to work with OCI artifacts.
 type Repository struct {
 	*remote.Repository
 }
@@ -63,7 +63,7 @@ func (r *Repository) GetName() string {
 	return r.Reference.Repository
 }
 
-func (r *Repository) PushSnapshot(ctx context.Context, tag string, blob []byte) (digest.Digest, error) {
+func (r *Repository) PushArtifact(ctx context.Context, tag string, blob []byte) (digest.Digest, error) {
 	logger := log.FromContext(ctx)
 
 	// Prepare and upload blob
@@ -139,7 +139,7 @@ func (r *Repository) PushSnapshot(ctx context.Context, tag string, blob []byte) 
 	return manifestDigest, nil
 }
 
-func (r *Repository) FetchSnapshot(ctx context.Context, manifestDigest string) ([]byte, error) {
+func (r *Repository) FetchArtifact(ctx context.Context, manifestDigest string) ([]byte, error) {
 	// Fetch manifest descriptor to get manifest.
 	manifestDescriptor, _, err := r.FetchReference(ctx, manifestDigest)
 	if err != nil {
@@ -169,20 +169,28 @@ func (r *Repository) FetchSnapshot(ctx context.Context, manifestDigest string) (
 	return io.ReadAll(reader)
 }
 
-func (r *Repository) DeleteSnapshot(ctx context.Context, manifestDigest string) error {
+func (r *Repository) DeleteArtifact(ctx context.Context, manifestDigest string) error {
+	logger := log.FromContext(ctx)
+
 	manifestDescriptor, _, err := r.FetchReference(ctx, manifestDigest)
 	if err != nil {
 		return fmt.Errorf("error fetching manifest: %w", err)
 	}
 
+	logger.Info("deleting OCI artifact", "digest", manifestDigest)
+
 	return r.Delete(ctx, manifestDescriptor)
 }
 
-func (r *Repository) ExistsSnapshot(ctx context.Context, manifestDigest string) (bool, error) {
+func (r *Repository) ExistsArtifact(ctx context.Context, manifestDigest string) (bool, error) {
+	logger := log.FromContext(ctx)
+
 	manifestDescriptor, _, err := r.FetchReference(ctx, manifestDigest)
 	if err != nil {
 		return false, fmt.Errorf("error fetching manifest: %w", err)
 	}
+
+	logger.Info("checking if OCI artifact exists", "digest", manifestDigest)
 
 	return r.Exists(ctx, manifestDescriptor)
 }
@@ -251,7 +259,7 @@ func (r *Repository) CopyOCIArtifactForResourceAccess(ctx context.Context, acces
 		},
 	})
 	if err != nil {
-		return "", fmt.Errorf("error copying snapshot: %w", err)
+		return "", fmt.Errorf("error copying OCI artifact: %w", err)
 	}
 
 	return desc.Digest, nil

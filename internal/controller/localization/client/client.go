@@ -10,7 +10,7 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/localization/types"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 )
 
 type Client interface {
@@ -26,7 +26,7 @@ type Client interface {
 	GetLocalizationConfig(ctx context.Context, ref v1alpha1.ConfigurationReference) (source types.LocalizationConfig, err error)
 }
 
-func NewClientWithRegistry(c client.Client, registry *snapshot.Registry, scheme *runtime.Scheme) Client {
+func NewClientWithRegistry(c client.Client, registry *ociartifact.Registry, scheme *runtime.Scheme) Client {
 	factory := serializer.NewCodecFactory(scheme)
 	info, _ := runtime.SerializerInfoForMediaType(factory.SupportedMediaTypes(), runtime.ContentTypeYAML)
 	encoder := factory.EncoderForVersion(info.Serializer, v1alpha1.GroupVersion)
@@ -41,7 +41,7 @@ func NewClientWithRegistry(c client.Client, registry *snapshot.Registry, scheme 
 
 type localStorageBackedClient struct {
 	client.Client
-	Registry *snapshot.Registry
+	Registry *ociartifact.Registry
 	scheme   *runtime.Scheme
 	encoder  runtime.Encoder
 }
@@ -62,7 +62,7 @@ func (clnt *localStorageBackedClient) GetLocalizationTarget(
 	case v1alpha1.KindLocalizedResource:
 		fallthrough
 	case v1alpha1.KindResource:
-		return snapshot.GetContentBackedBySnapshotFromComponent(ctx, clnt.Client, clnt.Registry, &ref)
+		return ociartifact.GetContentBackedByArtifactFromComponent(ctx, clnt.Client, clnt.Registry, &ref)
 	default:
 		return nil, fmt.Errorf("unsupported localization target kind: %s", ref.Kind)
 	}
@@ -74,7 +74,7 @@ func (clnt *localStorageBackedClient) GetLocalizationConfig(
 ) (types.LocalizationConfig, error) {
 	switch ref.Kind {
 	case v1alpha1.KindResource:
-		return snapshot.GetContentBackedBySnapshotFromComponent(ctx, clnt.Client, clnt.Registry, &ref)
+		return ociartifact.GetContentBackedByArtifactFromComponent(ctx, clnt.Client, clnt.Registry, &ref)
 	case v1alpha1.KindLocalizationConfig:
 		return GetLocalizationConfigFromKubernetes(ctx, clnt.Client, clnt.encoder, ref)
 	default:
@@ -98,5 +98,5 @@ func GetLocalizationConfigFromKubernetes(ctx context.Context, clnt client.Reader
 		return nil, fmt.Errorf("failed to fetch localization config %s: %w", reference.Name, err)
 	}
 
-	return &snapshot.ObjectConfig{Object: &cfg, Encoder: encoder}, nil
+	return &ociartifact.ObjectConfig{Object: &cfg, Encoder: encoder}, nil
 }

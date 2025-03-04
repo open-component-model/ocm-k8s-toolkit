@@ -47,9 +47,8 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/ocmrepository"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/replication"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/resource"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/snapshot"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	snapshotRegistry "github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 )
 
 var (
@@ -162,7 +161,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	registry, err := snapshotRegistry.NewRegistry(registryAddr)
+	registry, err := ociartifact.NewRegistry(registryAddr)
 	registry.PlainHTTP = true
 	if err != nil {
 		setupLog.Error(err, "unable to initialize registry object")
@@ -232,18 +231,6 @@ func main() {
 		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Replication")
-		os.Exit(1)
-	}
-
-	if err = (&snapshot.Reconciler{
-		BaseReconciler: &ocm.BaseReconciler{
-			Client:        mgr.GetClient(),
-			Scheme:        mgr.GetScheme(),
-			EventRecorder: eventsRecorder,
-		},
-		Registry: registry,
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Snapshot")
 		os.Exit(1)
 	}
 

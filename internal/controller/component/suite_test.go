@@ -37,8 +37,8 @@ import (
 	metricserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	snapshotPkg "github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
 )
 
@@ -52,7 +52,7 @@ var k8sClient client.Client
 var k8sManager ctrl.Manager
 var testEnv *envtest.Environment
 var zotCmd *exec.Cmd
-var registry *snapshotPkg.Registry
+var registry *ociartifact.Registry
 var zotRootDir string
 var recorder record.EventRecorder
 

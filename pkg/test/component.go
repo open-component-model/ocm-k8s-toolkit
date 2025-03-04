@@ -2,29 +2,26 @@ package test
 
 import (
 	"context"
-	"fmt"
+	"strings"
 	"time"
 
 	//nolint:revive,stylecheck // dot import necessary for Ginkgo DSL
 	. "github.com/onsi/gomega"
 
-	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/opencontainers/go-digest"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/snapshot"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
 type MockComponentOptions struct {
-	Registry   snapshot.RegistryType
+	Registry   ociartifact.RegistryType
 	Client     client.Client
 	Recorder   record.EventRecorder
 	Info       v1alpha1.ComponentInfo
@@ -51,46 +48,26 @@ func SetupComponentWithDescriptorList(
 
 	patchHelper := patch.NewSerialPatcher(component, options.Client)
 
-	repositoryName, err := snapshot.CreateRepositoryName(options.Repository, name)
+	repositoryName, err := ociartifact.CreateRepositoryName(options.Repository, name)
 	Expect(err).ToNot(HaveOccurred())
 
 	repository, err := options.Registry.NewRepository(ctx, repositoryName)
 	Expect(err).ToNot(HaveOccurred())
 
-	manifestDigest, err := repository.PushSnapshot(ctx, options.Info.Version, descriptorListData)
+	manifestDigest, err := repository.PushArtifact(ctx, options.Info.Version, descriptorListData)
 	Expect(err).ToNot(HaveOccurred())
 
-	snapshotCR := snapshot.Create(
-		component,
-		repositoryName,
-		manifestDigest.String(),
-		&v1alpha1.BlobInfo{
+	component.Status.OCIArtifact = &v1alpha1.OCIArtifactInfo{
+		Repository: repositoryName,
+		Digest:     manifestDigest.String(),
+		Blob: &v1alpha1.BlobInfo{
 			Digest: digest.FromBytes(descriptorListData).String(),
 			Tag:    options.Info.Version,
 			Size:   int64(len(descriptorListData)),
 		},
-	)
+	}
 
-	_, err = controllerutil.CreateOrUpdate(ctx, options.Client, snapshotCR, func() error {
-		if snapshotCR.ObjectMeta.CreationTimestamp.IsZero() {
-			if err := controllerutil.SetControllerReference(component, snapshotCR, options.Client.Scheme()); err != nil {
-				return fmt.Errorf("failed to set controller reference: %w", err)
-			}
-		}
-
-		component.Status.SnapshotRef = corev1.LocalObjectReference{
-			Name: snapshotCR.GetName(),
-		}
-
-		component.Status.Component = options.Info
-
-		return nil
-	})
-	Expect(err).ToNot(HaveOccurred())
-
-	// Marks snapshot as ready
-	conditions.MarkTrue(snapshotCR, "Ready", "ready", "message")
-	Expect(options.Client.Status().Update(ctx, snapshotCR)).To(Succeed())
+	component.Status.Component = options.Info
 
 	Eventually(func(ctx context.Context) error {
 		status.MarkReady(options.Recorder, component, "applied mock component")
@@ -99,4 +76,14 @@ func SetupComponentWithDescriptorList(
 	}).WithContext(ctx).Should(Succeed())
 
 	return component
+}
+
+func GenerateComponentName(testName string) string {
+	replaced := strings.ToLower(strings.ReplaceAll(testName, " ", "-"))
+	maxLength := 63 // RFC 1123 Label Names
+	if len(replaced) > maxLength {
+		return replaced[:maxLength]
+	}
+
+	return replaced
 }

@@ -2,6 +2,7 @@ package configuration
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -15,7 +16,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	corev1 "k8s.io/api/core/v1"
@@ -146,28 +146,30 @@ var _ = Describe("ConfiguredResource Controller", func() {
 		}
 		Expect(k8sClient.Create(ctx, configuredResource)).To(Succeed())
 
-		Eventually(func(ctx context.Context) bool {
+		Eventually(func(ctx context.Context) error {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(configuredResource), configuredResource)
 			if err != nil {
-				return false
+				return err
 			}
-			return conditions.IsReady(configuredResource) && configuredResource.GetSnapshotName() != ""
-		}, "15s").WithContext(ctx).Should(BeTrue())
+			if !conditions.IsReady(configuredResource) {
+				return fmt.Errorf("resource not ready")
+			}
+			if configuredResource.GetOCIArtifact() == nil {
+				return fmt.Errorf("OCI artifact not present")
+			}
+			return nil
+		}, "15s").WithContext(ctx).Should(Succeed())
 
-		snapshotResource := &v1alpha1.Snapshot{}
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: configuredResource.GetNamespace(), Name: configuredResource.GetSnapshotName()}, snapshotResource)).To(Succeed())
-
-		snapshotRepository, err := registry.NewRepository(ctx, snapshotResource.Spec.Repository)
+		ociRepository, err := registry.NewRepository(ctx, configuredResource.GetOCIRepository())
 		Expect(err).NotTo(HaveOccurred())
-		snapshotResourceContent, err := snapshotRepository.FetchSnapshot(ctx, snapshotResource.GetDigest())
+		resourceContent, err := ociRepository.FetchArtifact(ctx, configuredResource.GetManifestDigest())
 		Expect(err).NotTo(HaveOccurred())
-		dataExtracted, err := compression.ExtractDataFromTGZ(snapshotResourceContent)
+		dataExtracted, err := compression.ExtractDataFromTGZ(resourceContent)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dataExtracted).To(MatchYAML(fileContentAfterConfiguration))
 
 		By("delete resources manually")
 		Expect(k8sClient.Delete(ctx, configuredResource)).To(Succeed())
-		Expect(k8sClient.Delete(ctx, snapshotResource)).To(Succeed())
 		Eventually(func(ctx context.Context) bool {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(configuredResource), configuredResource)
 			return errors.IsNotFound(err)
@@ -180,14 +182,8 @@ var _ = Describe("ConfiguredResource Controller", func() {
 		}, "15s").WithContext(ctx).Should(BeTrue())
 
 		Expect(k8sClient.Delete(ctx, targetResource)).To(Succeed())
-		snapshotTargetResource := &v1alpha1.Snapshot{}
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: targetResource.GetNamespace(), Name: targetResource.GetSnapshotName()}, snapshotTargetResource)).To(Succeed())
-		Expect(k8sClient.Delete(ctx, snapshotTargetResource)).To(Succeed())
 
 		Expect(k8sClient.Delete(ctx, component)).To(Succeed())
-		snapshotComponent := &v1alpha1.Snapshot{}
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: component.GetNamespace(), Name: component.GetSnapshotName()}, snapshotComponent)).To(Succeed())
-		Expect(k8sClient.Delete(ctx, snapshotComponent)).To(Succeed())
 	})
 })
 

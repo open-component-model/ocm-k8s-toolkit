@@ -12,27 +12,10 @@ import (
 
 	contcompression "github.com/containers/image/v5/pkg/compression"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
 )
 
 var testData = []byte("test")
-
-type MockStorage struct {
-	data *bytes.Buffer
-}
-
-func (m *MockStorage) Copy(_ *v1alpha1.Snapshot, reader io.Reader) error {
-	m.data = new(bytes.Buffer)
-	_, err := io.Copy(m.data, reader)
-	return err
-}
-
-func (m *MockStorage) GetData() *bytes.Buffer {
-	return m.data
-}
-
-var _ compression.WriterToStorageFromSnapshot = &MockStorage{}
 
 func TestAutoCompressAndArchiveFile(t *testing.T) {
 	tests := []struct {
