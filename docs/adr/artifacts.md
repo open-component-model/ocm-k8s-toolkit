@@ -111,8 +111,10 @@ stored in the status of the source resource (`component`, `resource`, `configure
 
 #### Negative Consequences
 
-- Requires a transformer that can transform the information about the blob-location to a resource that can be consumed 
-by a deployer, like FluxCDs `source-controller`. For example, a transformation to FluxCDs `OCIRRepository`. (For implementation details of the transformer a separate Deployment ADR will have to be agreed upon.)
+- The final OCI artifact that should be used for the deployment needs to be consumable by a deployment-tool, e.g. FluxCDs `source-controller`.
+  Thus, some kind of consumable Kubernetes resource must be created, e.g. FluxCDs `OCIRepository`.
+  More details can be retrieved from the respective Deployment ADR.
+
 
 ### Pros and Cons of the Options
 
