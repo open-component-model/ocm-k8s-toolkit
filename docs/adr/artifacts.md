@@ -26,8 +26,8 @@ decided to not use a plain http-server but an internal OCI registry to store and
 the OCM controllers as single layer OCI artifacts.
 
 Arguments:
-- In comparison to a plain http-server that requires an implementation of access, GC, ... the usage of an OCI registry 
-would simplify the implementation
+- In comparison to the current plain http-server that requires an implementation of access, GC, ... the usage of an OCI registry 
+could simplify the implementation (e.g. deleting dangling blobs after a manifest was deleted)
 - Stop support at the level of the distribution spec of OCI
 - We will need an abstraction that handles OCI registries anyway to convert resources into a flux consumable format
 (= single layer oci artifact)
