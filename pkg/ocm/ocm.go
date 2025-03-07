@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/mandelsoft/goutils/matcher"
@@ -13,6 +14,7 @@ import (
 	"ocm.software/ocm/api/ocm/compdesc"
 	"ocm.software/ocm/api/ocm/cpi"
 	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
+	"ocm.software/ocm/api/ocm/extensions/repositories/genericocireg"
 	"ocm.software/ocm/api/ocm/tools/signing"
 	"ocm.software/ocm/api/utils/runtime"
 	"ocm.software/ocm/api/utils/semverutils"
@@ -321,4 +323,9 @@ func NewRedirectedResourceAccess(r cpi.ResourceAccess, bacc cpi.DataAccess) (cpi
 		ResourceAccess:         r,
 		RedirectedAccessMethod: rm,
 	}, nil
+}
+
+// NormalizeVersion replace eventual '+' character according to OCI spec.
+func NormalizeVersion(v string) string {
+	return strings.ReplaceAll(v, "+", genericocireg.META_SEPARATOR)
 }

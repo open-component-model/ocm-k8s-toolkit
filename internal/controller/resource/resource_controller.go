@@ -345,6 +345,8 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		return ctrl.Result{}, err
 	}
 
+	tag := resourceAccess.Meta().GetVersion()
+
 	if resourceAccessSpec.GetType() == "ociArtifact" {
 		manifestDigest, err = repositoryResource.CopyOCIArtifactForResourceAccess(ctx, resourceAccess)
 		if err != nil {
@@ -382,7 +384,8 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 			return ctrl.Result{}, fmt.Errorf("failed to auto compress data: %w", err)
 		}
 
-		manifestDigest, err = repositoryResource.PushArtifact(ctx, resourceAccess.Meta().GetVersion(), resourceContentCompressed)
+		tag = ocm.NormalizeVersion(tag)
+		manifestDigest, err = repositoryResource.PushArtifact(ctx, tag, resourceContentCompressed)
 		if err != nil {
 			status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.PushOCIArtifactFailedReason, err.Error())
 
@@ -398,7 +401,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		Digest:     manifestDigest.String(),
 		Blob: &v1alpha1.BlobInfo{
 			Digest: resourceAccess.Meta().Digest.Value,
-			Tag:    resourceAccess.Meta().Version,
+			Tag:    tag,
 			Size:   blobSize,
 		},
 	}); err != nil {

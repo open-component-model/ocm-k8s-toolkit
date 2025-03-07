@@ -35,10 +35,10 @@ type RepositoryType interface {
 
 	// FetchArtifact is a wrapper to fetch a single layer OCI artifact with a manifest digest. It expects and returns
 	// the single data layer.
-	FetchArtifact(ctx context.Context, reference string) ([]byte, error)
+	FetchArtifact(ctx context.Context, manifestDigest string) ([]byte, error)
 
 	// DeleteArtifact is a wrapper to delete a single layer OCI artifact with a manifest digest.
-	DeleteArtifact(ctx context.Context, digest string) error
+	DeleteArtifact(ctx context.Context, manifestDigest string) error
 
 	// ExistsArtifact is a wrapper to check if an OCI repository exists using the manifest digest.
 	ExistsArtifact(ctx context.Context, manifestDigest string) (bool, error)

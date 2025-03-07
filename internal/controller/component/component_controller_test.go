@@ -394,6 +394,49 @@ var _ = Describe("Component Controller", func() {
 			By("delete resources manually")
 			deleteComponent(ctx, component)
 		})
+
+		It("reconcile a component with a plus in the version", func(ctx SpecContext) {
+			componentName := Component + "-with-plus"
+			componentObjName := ComponentObj + "-with-plus"
+			componentVersionPlus := Version1 + "+componentVersionSuffix"
+			expectedBlobTag := Version1 + ".build-componentVersionSuffix"
+
+			By("creating a component in CTF repository")
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(componentVersionPlus)
+				})
+			})
+
+			By("creating a component resource")
+			component := &v1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace.GetName(),
+					Name:      componentObjName,
+				},
+				Spec: v1alpha1.ComponentSpec{
+					RepositoryRef: v1alpha1.ObjectKey{
+						Namespace: namespace.GetName(),
+						Name:      repositoryObj.GetName(),
+					},
+					Component: componentName,
+					Semver:    componentVersionPlus,
+					Interval:  metav1.Duration{Duration: time.Minute * 10},
+				},
+				Status: v1alpha1.ComponentStatus{},
+			}
+			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+
+			By("checking that the component has been reconciled successfully")
+			waitUntilComponentIsReady(ctx, component, componentVersionPlus)
+			validateArtifact(ctx, component, env, ctfpath)
+
+			By("checking that artifact's blob tag is properly set")
+			Expect(component.Status.OCIArtifact.Blob.Tag).To(Equal(expectedBlobTag))
+
+			By("delete resources manually")
+			deleteComponent(ctx, component)
+		})
 	})
 
 	Context("ocm config handling", func() {

@@ -330,7 +330,8 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 		return ctrl.Result{}, err
 	}
 
-	manifestDigest, err := ociRepository.PushArtifact(ctx, version, descriptorsBytes)
+	tag := ocm.NormalizeVersion(version)
+	manifestDigest, err := ociRepository.PushArtifact(ctx, tag, descriptorsBytes)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.PushOCIArtifactFailedReason, err.Error())
 
@@ -342,7 +343,7 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 		Digest:     manifestDigest.String(),
 		Blob: &v1alpha1.BlobInfo{
 			Digest: digest.FromBytes(descriptorsBytes).String(),
-			Tag:    version,
+			Tag:    tag,
 			Size:   int64(len(descriptorsBytes)),
 		},
 	}
