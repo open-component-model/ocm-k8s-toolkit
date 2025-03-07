@@ -26,7 +26,6 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/goutils/sliceutils"
 	"github.com/opencontainers/go-digest"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/resolvers"
@@ -58,54 +57,50 @@ var _ ocm.Reconciler = (*Reconciler)(nil)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
-	const (
-		ocmRepositoryKey = "spec.ocmRepositoryRef.name"
-	)
-
-	// Create an index to watch for OCMRepository changes.
-	if err := mgr.GetFieldIndexer().IndexField(context.TODO(), &v1alpha1.Component{}, ocmRepositoryKey, func(rawObj client.Object) []string {
-		component, ok := rawObj.(*v1alpha1.Component)
+	// Create index for ocmrepository reference name from components
+	const fieldName = "spec.repositoryRef.name"
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Resource{}, fieldName, func(obj client.Object) []string {
+		component, ok := obj.(*v1alpha1.Component)
 		if !ok {
 			return nil
 		}
 
-		ns := component.Spec.RepositoryRef.Namespace
-		if ns == "" {
-			ns = component.GetNamespace()
-		}
-
-		return []string{fmt.Sprintf("%s/%s", ns, component.Spec.RepositoryRef.Name)}
+		return []string{component.Spec.RepositoryRef.Name}
 	}); err != nil {
-		return fmt.Errorf("failed setting index fields: %w", err)
+		return err
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Component{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&v1alpha1.OCMRepository{}, handler.EnqueueRequestsFromMapFunc(r.findOCMRepositories(ocmRepositoryKey))).
+		Watches(
+			&v1alpha1.OCMRepository{},
+			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+				ocmRepository, ok := obj.(*v1alpha1.OCMRepository)
+				if !ok {
+					return []reconcile.Request{}
+				}
+
+				// Get list of components that reference the ocmrepository
+				list := &v1alpha1.ComponentList{}
+				if err := r.List(ctx, list, client.MatchingFields{fieldName: ocmRepository.GetName()}); err != nil {
+					return []reconcile.Request{}
+				}
+
+				// For every component that references the ocmrepository create a reconciliation request for that
+				// component
+				requests := make([]reconcile.Request, 0, len(list.Items))
+				for _, component := range list.Items {
+					requests = append(requests, reconcile.Request{
+						NamespacedName: types.NamespacedName{
+							Namespace: component.GetNamespace(),
+							Name:      component.GetName(),
+						},
+					})
+				}
+
+				return requests
+			})).
 		Complete(r)
-}
-
-func (r *Reconciler) findOCMRepositories(key string) handler.MapFunc {
-	return func(ctx context.Context, obj client.Object) []reconcile.Request {
-		repository := &v1alpha1.OCMRepositoryList{}
-		if err := r.List(ctx, repository, &client.ListOptions{
-			FieldSelector: fields.OneTermEqualSelector(key, client.ObjectKeyFromObject(obj).String()),
-		}); err != nil {
-			return []reconcile.Request{}
-		}
-
-		requests := make([]reconcile.Request, len(repository.Items))
-		for i, item := range repository.Items {
-			requests[i] = reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      item.GetName(),
-					Namespace: item.GetNamespace(),
-				},
-			}
-		}
-
-		return requests
-	}
 }
 
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=components,verbs=get;list;watch;create;update;patch;delete
@@ -194,7 +189,6 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 		err := errors.New("repository is being deleted, please do not use it")
 		logger.Error(err, "waiting for deletion", "name", component.Spec.RepositoryRef.Name)
 
-		// Triggered through cache
 		return ctrl.Result{}, nil
 	}
 
@@ -206,8 +200,7 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 		logger.Info("repository is not ready", "name", component.Spec.RepositoryRef.Name)
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositoryIsNotReadyReason, "repository is not ready yet")
 
-		// Triggered through cache
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, errors.New("ocmRepository is not ready")
 	}
 
 	return r.reconcileOCM(ctx, component, repo)
