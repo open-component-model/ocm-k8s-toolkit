@@ -314,10 +314,8 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	//   present resource-layer. Otherwise the GC would delete the resource-layer if the previously present manifest
 	//   would be deleted.
 
-	// The digest from the resource access is used, so it can be used to compare resource with the same name/identity
-	// on a digest-level.
-	repositoryResourceName := resourceAccess.Meta().Digest.Value
-	repositoryResource, err := r.Registry.NewRepository(ctx, repositoryResourceName)
+	ociRepositoryName, err := ociartifact.CreateRepositoryName(resource.Spec.ComponentRef.Name, resource.GetName())
+	ociRepository, err := r.Registry.NewRepository(ctx, ociRepositoryName)
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.CreateOCIRepositoryFailedReason, err.Error())
 
@@ -348,7 +346,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	tag := resourceAccess.Meta().GetVersion()
 
 	if resourceAccessSpec.GetType() == "ociArtifact" {
-		manifestDigest, err = repositoryResource.CopyOCIArtifactForResourceAccess(ctx, resourceAccess)
+		manifestDigest, err = ociRepository.CopyOCIArtifactForResourceAccess(ctx, resourceAccess)
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.CopyOCIArtifactFailedReason, err.Error())
 
@@ -385,7 +383,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		}
 
 		tag = ocm.NormalizeVersion(tag)
-		manifestDigest, err = repositoryResource.PushArtifact(ctx, tag, resourceContentCompressed)
+		manifestDigest, err = ociRepository.PushArtifact(ctx, tag, resourceContentCompressed)
 		if err != nil {
 			status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.PushOCIArtifactFailedReason, err.Error())
 
@@ -397,7 +395,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 
 	// Update status
 	if err = setResourceStatus(ctx, configs, resource, resourceAccess, &v1alpha1.OCIArtifactInfo{
-		Repository: repositoryResourceName,
+		Repository: ociRepositoryName,
 		Digest:     manifestDigest.String(),
 		Blob: &v1alpha1.BlobInfo{
 			Digest: resourceAccess.Meta().Digest.Value,

@@ -207,7 +207,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 			return ctrl.Result{}, fmt.Errorf("failed to create TGZ from path: %w", err)
 		}
 
-		repositoryName, err := ociartifact.CreateRepositoryName(configuration.GetName())
+		repositoryName, err := ociartifact.CreateRepositoryName(combinedDigest)
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.CreateOCIRepositoryNameFailedReason, err.Error())
 
