@@ -22,18 +22,18 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"io"
-	"os"
-
 	"github.com/fluxcd/pkg/runtime/conditions"
 	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/opencontainers/go-digest"
+	"io"
 	"k8s.io/apimachinery/pkg/api/errors"
 	. "ocm.software/ocm/api/helper/builder"
 	"ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
 	"ocm.software/ocm/api/utils/mime"
+	"os"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
 	"github.com/mandelsoft/vfs/pkg/osfs"
@@ -55,11 +55,10 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
+	ociartifactlocal "github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	ocmPkg "github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
 )
-
-var ()
 
 const (
 	CTFPath          = "ocm-k8s-ctfstore--*"
@@ -432,6 +431,159 @@ var _ = Describe("Resource Controller", func() {
 				resourceAcc, err := cv.GetResource(v1.NewIdentity(ResourceObj))
 				Expect(err).NotTo(HaveOccurred())
 				validateArtifact(ctx, resource, resourceAcc, expectedBlobTag)
+
+				By("delete resource manually")
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+				Eventually(func(ctx context.Context) bool {
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)
+					return errors.IsNotFound(err)
+				}, "15s").WithContext(ctx).Should(BeTrue())
+			})
+
+			FIt("can find updated resource", func() {
+				resourceType := artifacttypes.PLAIN_TEXT
+
+				By("creating an ocm resource from a plain text")
+				env.OCMCommonTransport(resourceLocalPath, accessio.FormatDirectory, func() {
+					env.Component(Component, func() {
+						env.Version(ComponentVersion, func() {
+							env.Resource(ResourceObj, ResourceVersion, resourceType, v1.LocalRelation, func() {
+								env.BlobData(mime.MIME_TEXT, []byte(ResourceContent))
+							})
+						})
+					})
+				})
+
+				repo, err := ctf.Open(env, accessobj.ACC_WRITABLE, resourceLocalPath, vfs.FileMode(vfs.O_RDWR), env)
+				Expect(err).NotTo(HaveOccurred())
+				cv, err := repo.LookupComponentVersion(Component, ComponentVersion)
+				Expect(err).NotTo(HaveOccurred())
+				cd, err := ocmPkg.ListComponentDescriptors(ctx, cv, repo)
+				Expect(err).NotTo(HaveOccurred())
+				dataCds, err := yaml.Marshal(cd)
+				Expect(err).NotTo(HaveOccurred())
+
+				spec, err := ctf.NewRepositorySpec(ctf.ACC_READONLY, resourceLocalPath)
+				specData, err := spec.MarshalJSON()
+
+				By("creating a mocked component")
+				componentObj = test.SetupComponentWithDescriptorList(ctx, componentName, namespace.GetName(), dataCds, &test.MockComponentOptions{
+					Registry: registry,
+					Client:   k8sClient,
+					Recorder: recorder,
+					Info: v1alpha1.ComponentInfo{
+						Component:      Component,
+						Version:        ComponentVersion,
+						RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
+					},
+					Repository: RepositoryObj,
+				})
+
+				By("creating a resource object")
+				resource := &v1alpha1.Resource{
+					ObjectMeta: k8smetav1.ObjectMeta{
+						Namespace: namespace.GetName(),
+						Name:      ResourceObj,
+					},
+					Spec: v1alpha1.ResourceSpec{
+						ComponentRef: corev1.LocalObjectReference{
+							Name: componentName,
+						},
+						Resource: v1alpha1.ResourceID{
+							ByReference: v1alpha1.ResourceReference{
+								Resource: v1.NewIdentity(ResourceObj),
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+
+				By("checking that the resource has been reconciled successfully")
+				waitUntilResourceIsReady(ctx, resource)
+				Expect(resource).To(HaveField("Status.Resource.Name", Equal(ResourceObj)))
+				Expect(resource).To(HaveField("Status.Resource.Type", Equal(resourceType)))
+				Expect(resource).To(HaveField("Status.Resource.Version", Equal(ResourceVersion)))
+
+				resourceAcc, err := cv.GetResource(v1.NewIdentity(ResourceObj))
+				Expect(err).NotTo(HaveOccurred())
+				validateArtifact(ctx, resource, resourceAcc, ResourceVersion)
+
+				// Increase component and resource versions
+				By("creating new component version in the file system")
+				const ComponentVersionNew = "1.0.1"
+				const ResourceVersionNew = "1.0.1"
+				const ResourceContentNew = "another important content"
+				env.OCMCommonTransport(resourceLocalPath, accessio.FormatDirectory, func() {
+					env.Component(Component, func() {
+						env.Version(ComponentVersion, func() {
+							env.Resource(ResourceObj, ResourceVersion, resourceType, v1.LocalRelation, func() {
+								env.BlobData(mime.MIME_TEXT, []byte(ResourceContent))
+							})
+						})
+					})
+					env.Component(Component, func() {
+						env.Version(ComponentVersionNew, func() {
+							env.Resource(ResourceObj, ResourceVersionNew, resourceType, v1.LocalRelation, func() {
+								env.BlobData(mime.MIME_TEXT, []byte(ResourceContentNew))
+							})
+						})
+					})
+				})
+
+				By("getting new component descriptors")
+				repo, err = ctf.Open(env, accessobj.ACC_WRITABLE, resourceLocalPath, vfs.FileMode(vfs.O_RDWR), env)
+				Expect(err).NotTo(HaveOccurred())
+				cv, err = repo.LookupComponentVersion(Component, ComponentVersionNew)
+				Expect(err).NotTo(HaveOccurred())
+				cd, err = ocmPkg.ListComponentDescriptors(ctx, cv, repo)
+				Expect(err).NotTo(HaveOccurred())
+				dataCds, err = yaml.Marshal(cd)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("uploading new component descriptors as OCI artifact")
+				repositoryName, err := ociartifactlocal.CreateRepositoryName(RepositoryObj, Component)
+				Expect(err).ToNot(HaveOccurred())
+				repository, err := registry.NewRepository(ctx, repositoryName)
+				Expect(err).ToNot(HaveOccurred())
+				manifestDigest, err := repository.PushArtifact(ctx, ComponentVersionNew, dataCds)
+				Expect(err).ToNot(HaveOccurred())
+
+				By("updating mock component status")
+				componentObj = &v1alpha1.Component{
+					ObjectMeta: k8smetav1.ObjectMeta{
+						Namespace: componentObj.GetNamespace(),
+						Name:      componentObj.GetName(),
+					},
+				}
+				err = k8sClient.Get(ctx, client.ObjectKeyFromObject(componentObj), componentObj)
+				Expect(err).ToNot(HaveOccurred())
+				componentObj.Spec.Semver = ComponentVersionNew
+				componentObj.Status.OCIArtifact = &v1alpha1.OCIArtifactInfo{
+					Repository: repositoryName,
+					Digest:     manifestDigest.String(),
+					Blob: &v1alpha1.BlobInfo{
+						Digest: digest.FromBytes(dataCds).String(),
+						Tag:    ComponentVersionNew,
+						Size:   int64(len(dataCds)),
+					},
+				}
+				componentObj.Status.Component.Component = Component
+				componentObj.Status.Component.Version = ComponentVersionNew
+				componentObj.Status.Component.RepositorySpec = &apiextensionsv1.JSON{Raw: specData}
+				// conditions.MarkTrue(componentObj, meta.ReadyCondition, "ready", "")
+				Expect(k8sClient.Update(ctx, componentObj)).To(Succeed())
+				//Expect(k8sClient.Status().Update(ctx, componentObj)).To(Succeed())
+				Eventually(komega.Object(componentObj), "15s").Should(
+					HaveField("Status.OCIArtifact.Blob.Tag", Equal(ComponentVersionNew)))
+
+				//time.Sleep(5 * time.Second)
+				By("checking that the resource now has the right version of ")
+				Eventually(komega.Object(resource), "15s").Should(
+					HaveField("Status.OCIArtifact.Blob.Tag", Equal(ResourceVersionNew)))
+
+				resourceAcc, err = cv.GetResource(v1.NewIdentity(ResourceObj))
+				Expect(err).NotTo(HaveOccurred())
+				validateArtifact(ctx, resource, resourceAcc, ResourceVersionNew)
 
 				By("delete resource manually")
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())

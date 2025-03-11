@@ -18,6 +18,7 @@ package component
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -227,6 +228,9 @@ var _ = Describe("Component Controller", func() {
 			waitUntilComponentIsReady(ctx, component, Version1)
 			validateArtifact(ctx, component, env, ctfpath)
 
+			// Save artifact information to check afterward, that it has been deleted as obsolete.
+			artifactBeforeUpdate := component.GetOCIArtifact().DeepCopy()
+
 			By("increasing the component version")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
 				env.Component(Component, func() {
@@ -239,6 +243,9 @@ var _ = Describe("Component Controller", func() {
 
 			By("checking that the increased version has been discovered successfully")
 			waitUntilComponentIsReady(ctx, component, Version2)
+
+			By("checking if the previous artifact was deleted")
+			expectArtifactToNotExist(ctx, artifactBeforeUpdate)
 
 			By("checking that increased version is reflected in the OCI artifact")
 			validateArtifact(ctx, component, env, ctfpath)
@@ -284,12 +291,20 @@ var _ = Describe("Component Controller", func() {
 			waitUntilComponentIsReady(ctx, component, "0.0.3")
 			validateArtifact(ctx, component, env, ctfpath)
 
+			// Save artifact information to check afterward, that it has been deleted as obsolete.
+			artifactBeforeUpdate := component.GetOCIArtifact().DeepCopy()
+
 			By("decreasing the component version")
 			component.Spec.Semver = "0.0.2"
 			Expect(k8sClient.Update(ctx, component)).To(Succeed())
 
 			By("checking that the decreased version has been discovered successfully")
 			waitUntilComponentIsReady(ctx, component, "0.0.2")
+
+			By("checking if the previous artifact was deleted")
+			expectArtifactToNotExist(ctx, artifactBeforeUpdate)
+
+			By("checking that decreased version is reflected in the OCI artifact")
 			validateArtifact(ctx, component, env, ctfpath)
 
 			By("delete resources manually")
@@ -383,12 +398,20 @@ var _ = Describe("Component Controller", func() {
 			waitUntilComponentIsReady(ctx, component, "0.0.3")
 			validateArtifact(ctx, component, env, ctfpath)
 
+			// Save artifact information to check afterward, that it has been deleted as obsolete.
+			artifactBeforeUpdate := component.GetOCIArtifact().DeepCopy()
+
 			By("decreasing the component version")
 			component.Spec.Semver = "0.0.2"
 			Expect(k8sClient.Update(ctx, component)).To(Succeed())
 
 			By("checking that the decreased version has been discovered successfully")
 			waitUntilComponentIsReady(ctx, component, "0.0.2")
+
+			By("checking if the previous artifact was deleted")
+			expectArtifactToNotExist(ctx, artifactBeforeUpdate)
+
+			By("checking that decreased version is reflected in the OCI artifact")
 			validateArtifact(ctx, component, env, ctfpath)
 
 			By("delete resources manually")
@@ -682,6 +705,23 @@ var _ = Describe("Component Controller", func() {
 		})
 	})
 })
+
+func expectArtifactToNotExist(ctx context.Context, a *v1alpha1.OCIArtifactInfo) {
+	GinkgoHelper()
+	ociRepo := Must(registry.NewRepository(ctx, a.Repository))
+	Eventually(func(g Gomega, ctx context.Context) error {
+		exists, err := ociRepo.ExistsArtifact(ctx, a.Digest)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return fmt.Errorf("artifact not expected to exist: %s/%s", a.Repository, a.Digest)
+		}
+		return nil
+	}, "15s").WithContext(ctx).Should(BeNil())
+
+	Expect(ociRepo.ExistsArtifact(ctx, a.Digest)).To(BeFalse())
+}
 
 func waitUntilComponentIsReady(ctx context.Context, component *v1alpha1.Component, expectedVersion string) {
 	GinkgoHelper()

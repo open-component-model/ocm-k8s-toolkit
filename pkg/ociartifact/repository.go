@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -17,6 +18,7 @@ import (
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content"
+	"oras.land/oras-go/v2/errdef"
 	"oras.land/oras-go/v2/registry/remote"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -187,6 +189,10 @@ func (r *Repository) ExistsArtifact(ctx context.Context, manifestDigest string) 
 
 	manifestDescriptor, _, err := r.FetchReference(ctx, manifestDigest)
 	if err != nil {
+		if errors.Is(err, errdef.ErrNotFound) {
+			return false, nil
+		}
+
 		return false, fmt.Errorf("error fetching manifest: %w", err)
 	}
 
@@ -285,4 +291,42 @@ func CreateRepositoryName(args ...string) (string, error) {
 	}
 
 	return repositoryName, nil
+}
+
+// DeleteForObject checks if the object holds a name for an OCI repository, checks if the OCI repository exists, and if
+// so, deletes the OCI artifact from the OCI repository.
+func DeleteForObject(ctx context.Context, registry RegistryType, obj v1alpha1.OCIArtifactCreator) error {
+	info := obj.GetOCIArtifact()
+	if info == nil {
+		return nil
+	}
+
+	if info.Repository != "" {
+		ociRepository, err := registry.NewRepository(ctx, info.Repository)
+		if err != nil {
+			return err
+		}
+
+		exists, err := ociRepository.ExistsArtifact(ctx, info.Digest)
+		if err != nil {
+			return err
+		}
+
+		if exists {
+			return ociRepository.DeleteArtifact(ctx, info.Digest)
+		}
+	}
+
+	return nil
+}
+
+// DeleteForObjectIfNotMatching removes the OCI artifact of an object, if its digest does not match the reference digest.
+func DeleteForObjectIfNotMatching(ctx context.Context, registry RegistryType, obj v1alpha1.OCIArtifactCreator, reference digest.Digest) error {
+	if obj.GetOCIArtifact() != nil && obj.GetManifestDigest() != reference.String() {
+		if err := DeleteForObject(ctx, registry, obj); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

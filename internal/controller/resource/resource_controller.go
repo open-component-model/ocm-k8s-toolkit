@@ -399,6 +399,14 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		blobSize = int64(len(resourceContentCompressed))
 	}
 
+	// Delete previous artifact version, if any. Note that resource's status isn't updated yet.
+	err = ociartifact.DeleteForObjectIfNotMatching(ctx, r.Registry, resource, manifestDigest)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.DeleteOCIArtifactFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+
 	// Update status
 	if err = setResourceStatus(ctx, configs, resource, resourceAccess, &v1alpha1.OCIArtifactInfo{
 		Repository: ociRepositoryName,

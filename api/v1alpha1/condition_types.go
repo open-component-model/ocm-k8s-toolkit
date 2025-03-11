@@ -72,6 +72,9 @@ const (
 	// CopyOCIArtifactFailedReason is used when we fail to copy an OCI artifact.
 	CopyOCIArtifactFailedReason = "CopyOCIArtifactFailed"
 
+	// DeleteArtifactFailedReason is used when we fail to copy an OCI artifact.
+	DeleteOCIArtifactFailedReason = "DeleteOCIArtifactFailed"
+
 	// OCIRepositoryExistsFailedReason is used when we fail to check the existence of an OCI repository.
 	OCIRepositoryExistsFailedReason = "OCIRepositoryExistsFailed"
 
