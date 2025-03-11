@@ -73,33 +73,6 @@ func compressViaBuffer(buf *bytes.Buffer, reader io.Reader) (retErr error) {
 	return nil
 }
 
-func ExtractDataFromTGZ(data []byte) (_ []byte, retErr error) {
-	buf := bytes.NewReader(data)
-
-	gzipReader, err := gzip.NewReader(buf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gzip reader: %w", err)
-	}
-	defer func() {
-		retErr = gzipReader.Close()
-	}()
-
-	tarReader := tar.NewReader(gzipReader)
-
-	_, err = tarReader.Next()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read tar header: %w", err)
-	}
-
-	var extractedData bytes.Buffer
-	//nolint:gosec // TODO: Decision needed
-	if _, err := io.Copy(&extractedData, tarReader); err != nil {
-		return nil, fmt.Errorf("failed to extract file content: %w", err)
-	}
-
-	return extractedData.Bytes(), nil
-}
-
 func CreateTGZFromPath(srcDir string) (_ []byte, retErr error) {
 	var buf bytes.Buffer
 

@@ -1,6 +1,7 @@
 package configuration
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	_ "embed"
 
 	"github.com/fluxcd/pkg/runtime/conditions"
+	"github.com/fluxcd/pkg/tar"
 	. "github.com/mandelsoft/goutils/testutils"
 	"github.com/mandelsoft/vfs/pkg/osfs"
 	"github.com/mandelsoft/vfs/pkg/projectionfs"
@@ -25,7 +27,6 @@ import (
 	environment "ocm.software/ocm/api/helper/env"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
 )
 
@@ -162,11 +163,14 @@ var _ = Describe("ConfiguredResource Controller", func() {
 
 		ociRepository, err := registry.NewRepository(ctx, configuredResource.GetOCIRepository())
 		Expect(err).NotTo(HaveOccurred())
-		resourceContent, err := ociRepository.FetchArtifact(ctx, configuredResource.GetManifestDigest())
+		resourceContentTGZ, err := ociRepository.FetchArtifact(ctx, configuredResource.GetManifestDigest())
 		Expect(err).NotTo(HaveOccurred())
-		dataExtracted, err := compression.ExtractDataFromTGZ(resourceContent)
+		tmpArtifact := filepath.Join(tmp, "artifact")
+		Expect(os.Mkdir(tmpArtifact, os.ModePerm|os.ModeDir)).To(Succeed())
+		Expect(tar.Untar(bytes.NewReader(resourceContentTGZ), tmpArtifact)).To(Succeed())
+		content, err := os.ReadFile(filepath.Join(tmpArtifact, fileToConfigure))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(dataExtracted).To(MatchYAML(fileContentAfterConfiguration))
+		Expect(content).To(MatchYAML(fileContentAfterConfiguration))
 
 		By("delete resources manually")
 		Expect(k8sClient.Delete(ctx, configuredResource)).To(Succeed())
