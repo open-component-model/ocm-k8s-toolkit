@@ -315,6 +315,12 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	//   would be deleted.
 
 	ociRepositoryName, err := ociartifact.CreateRepositoryName(resource.Spec.ComponentRef.Name, resource.GetName())
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.CreateOCIRepositoryNameFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+
 	ociRepository, err := r.Registry.NewRepository(ctx, ociRepositoryName)
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.CreateOCIRepositoryFailedReason, err.Error())
