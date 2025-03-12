@@ -320,8 +320,8 @@ func DeleteForObject(ctx context.Context, registry RegistryType, obj v1alpha1.OC
 	return nil
 }
 
-// DeleteForObjectIfNotMatching removes the OCI artifact of an object, if its digest does not match the reference digest.
-func DeleteForObjectIfNotMatching(ctx context.Context, registry RegistryType, obj v1alpha1.OCIArtifactCreator, reference digest.Digest) error {
+// DeleteIfDigestMismatch removes the OCI artifact of an object, if its digest does not match the reference digest.
+func DeleteIfDigestMismatch(ctx context.Context, registry RegistryType, obj v1alpha1.OCIArtifactCreator, reference digest.Digest) error {
 	if obj.GetOCIArtifact() != nil && obj.GetManifestDigest() != reference.String() {
 		if err := DeleteForObject(ctx, registry, obj); err != nil {
 			return err

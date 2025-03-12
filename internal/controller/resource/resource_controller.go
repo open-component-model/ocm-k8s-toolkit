@@ -400,7 +400,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	}
 
 	// Delete previous artifact version, if any. Note that resource's status isn't updated yet.
-	err = ociartifact.DeleteForObjectIfNotMatching(ctx, r.Registry, resource, manifestDigest)
+	err = ociartifact.DeleteIfDigestMismatch(ctx, r.Registry, resource, manifestDigest)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.DeleteOCIArtifactFailedReason, err.Error())
 

@@ -332,7 +332,7 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 	}
 
 	// Delete previous artifact version, if any. Note that component's status isn't updated yet.
-	err = ociartifact.DeleteForObjectIfNotMatching(ctx, r.Registry, component, manifestDigest)
+	err = ociartifact.DeleteIfDigestMismatch(ctx, r.Registry, component, manifestDigest)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.DeleteOCIArtifactFailedReason, err.Error())
 
