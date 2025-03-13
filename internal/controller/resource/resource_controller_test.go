@@ -22,18 +22,19 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"io"
+	"os"
+
 	"github.com/fluxcd/pkg/runtime/conditions"
 	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/opencontainers/go-digest"
-	"io"
 	"k8s.io/apimachinery/pkg/api/errors"
 	. "ocm.software/ocm/api/helper/builder"
 	"ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
 	"ocm.software/ocm/api/utils/mime"
-	"os"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
 	"github.com/mandelsoft/vfs/pkg/osfs"
@@ -556,8 +557,6 @@ var _ = Describe("Resource Controller", func() {
 					},
 				}
 				err = k8sClient.Get(ctx, client.ObjectKeyFromObject(componentObj), componentObj)
-				Expect(err).ToNot(HaveOccurred())
-				componentObj.Spec.Semver = ComponentVersionNew
 				componentObj.Status.OCIArtifact = &v1alpha1.OCIArtifactInfo{
 					Repository: repositoryName,
 					Digest:     manifestDigest.String(),
@@ -570,9 +569,11 @@ var _ = Describe("Resource Controller", func() {
 				componentObj.Status.Component.Component = Component
 				componentObj.Status.Component.Version = ComponentVersionNew
 				componentObj.Status.Component.RepositorySpec = &apiextensionsv1.JSON{Raw: specData}
-				// conditions.MarkTrue(componentObj, meta.ReadyCondition, "ready", "")
+				Expect(k8sClient.Status().Update(ctx, componentObj)).To(Succeed())
+				Expect(err).ToNot(HaveOccurred())
+
+				componentObj.Spec.Semver = ComponentVersionNew
 				Expect(k8sClient.Update(ctx, componentObj)).To(Succeed())
-				//Expect(k8sClient.Status().Update(ctx, componentObj)).To(Succeed())
 				Eventually(komega.Object(componentObj), "15s").Should(
 					HaveField("Status.OCIArtifact.Blob.Tag", Equal(ComponentVersionNew)))
 
