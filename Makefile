@@ -138,26 +138,46 @@ install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~
 uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f -
 
-.PHONY: deploy-dev
-deploy-dev: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config. In-cluster zot registry is accessible via http. If you need https, use deploy target.
+# Deploys ocm-k8s-toolkit controller
+.PHONY: deploy
+deploy: manifests kustomize
 	$(call set-images)
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 
-.PHONY: undeploy-dev
-undeploy-dev: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+# Undeploys ocm-k8s-toolkit controller
+.PHONY: undeploy
+undeploy: kustomize
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f -
 
-.PHONY: deploy
-deploy: deploy-cert-manager manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config. In-cluster zot registry is accessible via https. If you need http, use deploy-dev target.
-	$(call set-images)
-	$(KUSTOMIZE) build config/default-zot-https | $(KUBECTL) apply -f -
+# Deploys zot registry.
+.PHONY: zot
+zot: deploy-cert-manager kustomize
+	$(KUSTOMIZE) build config/zot | $(KUBECTL) apply -f -
 
-# Undeploy target undeploys the controller, its zot regostry and related certificates. 
+# Undeploys zot registry and related certificates.
 # However, it does not undeploy the cert-manager, which might still be needed by other applications in the cluster.
 # If you wish to undeploy cert manager as well, execute 'make undeploy-cert-manager' in addition.
-.PHONY: undeploy
-undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/default-zot-https | $(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f -
+.PHONY: undeploy-zot
+undeploy-zot: kustomize
+	$(KUSTOMIZE) build config/zot | $(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f -
+
+# Deploys insecure zot registry.
+.PHONY: zot-dev
+zot-dev: kustomize
+	$(KUSTOMIZE) build config/zot-dev | $(KUBECTL) apply -f -
+
+# Undeploys insecure zot registry.
+.PHONY: undeploy-zot-dev
+undeploy-zot-dev: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	$(KUSTOMIZE) build config/zot-dev | $(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f -
+
+# Deploys ocm-k8s-toolkit controller and a insecure zot registry
+.PHONY: setup-dev
+setup-dev: deploy zot-dev
+
+# Undeploys ocm-k8s-toolkit controller and the insecure zot registry
+.PHONY: teardown-dev
+teardown-dev: undeploy-zot-dev undeploy
 
 ##@ Dependencies
 

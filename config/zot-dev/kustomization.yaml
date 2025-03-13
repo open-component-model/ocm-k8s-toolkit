@@ -5,7 +5,6 @@ namespace: ocm-k8s-toolkit-system
 namePrefix: ocm-k8s-toolkit-
 
 resources:
-- certificate.yaml
 - configmap.yaml
 - deployment.yaml
 - service.yaml

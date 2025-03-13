@@ -3,6 +3,7 @@ kind: ConfigMap
 metadata:
   name: zot-config
 data:
+  # for docker compatibility, add '"http": { "compat": "docker2s2" }'
   config.json: |
     {
       "storage": {
@@ -15,11 +16,7 @@ data:
       },
       "http": {
         "address":"0.0.0.0",
-        "port": "5000",
-        "tls": {
-          "cert":"/etc/zot/tls/tls.crt",
-          "key":"/etc/zot/tls/tls.key"
-        }
+        "port": "5000"
       },
       "log": {
           "level": "debug"
