@@ -212,7 +212,7 @@ func (r *Reconciler) reconcileOCM(ctx context.Context, resource *v1alpha1.Resour
 	return result, nil
 }
 
-//nolint:funlen,cyclop // we do not want to cut function at an arbitrary point
+//nolint:funlen,cyclop,maintidx // we do not want to cut function at an arbitrary point
 func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context, resource *v1alpha1.Resource, component *v1alpha1.Component) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("reconciling resource")

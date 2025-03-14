@@ -18,7 +18,6 @@ package component
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"time"
 
@@ -125,8 +124,6 @@ var _ = Describe("Component Controller", func() {
 
 			Expect(k8sClient.List(ctx, components, client.InNamespace(namespace.GetName()))).To(Succeed())
 			Expect(components.Items).To(HaveLen(0))
-
-			// TODO: test if OCI artifact was deleted
 		})
 
 		It("reconcileComponent a component", func(ctx SpecContext) {
@@ -196,12 +193,7 @@ var _ = Describe("Component Controller", func() {
 			Expect(component).To(HaveField("Status.OCIArtifact", BeNil()))
 
 			By("deleting the resources manually")
-			Expect(k8sClient.Delete(ctx, component)).To(Succeed())
-			Eventually(func(ctx context.Context) bool {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
-
-				return errors.IsNotFound(err)
-			}, "15s").WithContext(ctx).Should(BeTrue())
+			deleteComponent(ctx, component)
 		})
 
 		It("grabs the new version when it becomes available", func(ctx SpecContext) {
@@ -245,7 +237,7 @@ var _ = Describe("Component Controller", func() {
 			waitUntilComponentIsReady(ctx, component, Version2)
 
 			By("checking if the previous artifact was deleted")
-			expectArtifactToNotExist(ctx, artifactBeforeUpdate)
+			test.ExpectArtifactToNotExist(ctx, registry, artifactBeforeUpdate)
 
 			By("checking that increased version is reflected in the OCI artifact")
 			validateArtifact(ctx, component, env, ctfpath)
@@ -302,7 +294,7 @@ var _ = Describe("Component Controller", func() {
 			waitUntilComponentIsReady(ctx, component, "0.0.2")
 
 			By("checking if the previous artifact was deleted")
-			expectArtifactToNotExist(ctx, artifactBeforeUpdate)
+			test.ExpectArtifactToNotExist(ctx, registry, artifactBeforeUpdate)
 
 			By("checking that decreased version is reflected in the OCI artifact")
 			validateArtifact(ctx, component, env, ctfpath)
@@ -409,7 +401,7 @@ var _ = Describe("Component Controller", func() {
 			waitUntilComponentIsReady(ctx, component, "0.0.2")
 
 			By("checking if the previous artifact was deleted")
-			expectArtifactToNotExist(ctx, artifactBeforeUpdate)
+			test.ExpectArtifactToNotExist(ctx, registry, artifactBeforeUpdate)
 
 			By("checking that decreased version is reflected in the OCI artifact")
 			validateArtifact(ctx, component, env, ctfpath)
@@ -637,8 +629,6 @@ var _ = Describe("Component Controller", func() {
 				g.Expect(k8sClient.List(ctx, components, client.InNamespace(namespace.GetName()))).To(Succeed())
 				g.Expect(components.Items).To(HaveLen(0))
 			}, "15s").WithContext(ctx).Should(Succeed())
-
-			// TODO: check that the OCI artifact is not in the registry anymore
 		})
 
 		It("component resolves and propagates config from repository", func(ctx SpecContext) {
@@ -706,23 +696,6 @@ var _ = Describe("Component Controller", func() {
 	})
 })
 
-func expectArtifactToNotExist(ctx context.Context, a *v1alpha1.OCIArtifactInfo) {
-	GinkgoHelper()
-	ociRepo := Must(registry.NewRepository(ctx, a.Repository))
-	Eventually(func(g Gomega, ctx context.Context) error {
-		exists, err := ociRepo.ExistsArtifact(ctx, a.Digest)
-		if err != nil {
-			return err
-		}
-
-		if exists {
-			return fmt.Errorf("artifact not expected to exist: %s/%s", a.Repository, a.Digest)
-		}
-
-		return nil
-	}, "15s").WithContext(ctx).Should(BeNil())
-}
-
 func waitUntilComponentIsReady(ctx context.Context, component *v1alpha1.Component, expectedVersion string) {
 	GinkgoHelper()
 	Eventually(func(g Gomega, ctx context.Context) bool {
@@ -765,7 +738,7 @@ func deleteComponent(ctx context.Context, component *v1alpha1.Component) {
 		return errors.IsNotFound(err)
 	}, "15s").WithContext(ctx).Should(BeTrue())
 
-	expectArtifactToNotExist(ctx, component.GetOCIArtifact())
+	test.ExpectArtifactToNotExist(ctx, registry, component.GetOCIArtifact())
 }
 
 func createTestConfigsAndSecrets(ctx context.Context, namespace string) (configs []*corev1.ConfigMap, secrets []*corev1.Secret) {

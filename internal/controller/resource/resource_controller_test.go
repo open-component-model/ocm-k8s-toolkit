@@ -33,7 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	. "ocm.software/ocm/api/helper/builder"
 	"ocm.software/ocm/api/ocm"
-	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
+	ocmociartifact "ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
 	"ocm.software/ocm/api/utils/mime"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
@@ -56,7 +56,7 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
-	ociartifactlocal "github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
+	toolkitociartifact "github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	ocmPkg "github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
 )
@@ -184,14 +184,10 @@ var _ = Describe("Resource Controller", func() {
 
 				resourceAcc, err := cv.GetResource(v1.NewIdentity(ResourceObj))
 				Expect(err).NotTo(HaveOccurred())
-				validateArtifact(ctx, resource, resourceAcc, ResourceVersion)
+				validateArtifact(ctx, resource, resourceAcc, ResourceVersion, ResourceContent)
 
 				By("delete resource manually")
-				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-				Eventually(func(ctx context.Context) bool {
-					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)
-					return errors.IsNotFound(err)
-				}, "15s").WithContext(ctx).Should(BeTrue())
+				deleteResource(ctx, resource)
 			})
 
 			It("can reconcile a compressed plaintext resource", func() {
@@ -265,14 +261,10 @@ var _ = Describe("Resource Controller", func() {
 
 				resourceAcc, err := cv.GetResource(v1.NewIdentity(ResourceObj))
 				Expect(err).NotTo(HaveOccurred())
-				validateArtifact(ctx, resource, resourceAcc, ResourceVersion)
+				validateArtifact(ctx, resource, resourceAcc, ResourceVersion, ResourceContent)
 
 				By("delete resource manually")
-				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-				Eventually(func(ctx context.Context) bool {
-					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)
-					return errors.IsNotFound(err)
-				}, "15s").WithContext(ctx).Should(BeTrue())
+				deleteResource(ctx, resource)
 			})
 
 			It("can reconcile a OCI artifact resource", func() {
@@ -294,7 +286,7 @@ var _ = Describe("Resource Controller", func() {
 					env.Component(Component, func() {
 						env.Version(ComponentVersion, func() {
 							env.Resource(ResourceObj, ResourceVersion, resourceType, v1.LocalRelation, func() {
-								env.Access(ociartifact.New(fmt.Sprintf("http://%s/%s:%s", repository.GetHost(), repository.GetName(), ResourceVersion)))
+								env.Access(ocmociartifact.New(fmt.Sprintf("http://%s/%s:%s", repository.GetHost(), repository.GetName(), ResourceVersion)))
 							})
 						})
 					})
@@ -353,14 +345,10 @@ var _ = Describe("Resource Controller", func() {
 
 				resourceAcc, err := cv.GetResource(v1.NewIdentity(ResourceObj))
 				Expect(err).NotTo(HaveOccurred())
-				validateArtifact(ctx, resource, resourceAcc, ResourceVersion)
+				validateArtifact(ctx, resource, resourceAcc, ResourceVersion, ResourceContent)
 
 				By("delete resource manually")
-				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-				Eventually(func(ctx context.Context) bool {
-					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)
-					return errors.IsNotFound(err)
-				}, "15s").WithContext(ctx).Should(BeTrue())
+				deleteResource(ctx, resource)
 			})
 
 			It("can reconcile a plaintext resource with a plus in the version", func() {
@@ -431,17 +419,13 @@ var _ = Describe("Resource Controller", func() {
 
 				resourceAcc, err := cv.GetResource(v1.NewIdentity(ResourceObj))
 				Expect(err).NotTo(HaveOccurred())
-				validateArtifact(ctx, resource, resourceAcc, expectedBlobTag)
+				validateArtifact(ctx, resource, resourceAcc, expectedBlobTag, ResourceContent)
 
 				By("delete resource manually")
-				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-				Eventually(func(ctx context.Context) bool {
-					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)
-					return errors.IsNotFound(err)
-				}, "15s").WithContext(ctx).Should(BeTrue())
+				deleteResource(ctx, resource)
 			})
 
-			FIt("can find updated resource", func() {
+			It("can find updated resource", func() {
 				resourceType := artifacttypes.PLAIN_TEXT
 
 				By("creating an ocm resource from a plain text")
@@ -507,12 +491,15 @@ var _ = Describe("Resource Controller", func() {
 
 				resourceAcc, err := cv.GetResource(v1.NewIdentity(ResourceObj))
 				Expect(err).NotTo(HaveOccurred())
-				validateArtifact(ctx, resource, resourceAcc, ResourceVersion)
+				validateArtifact(ctx, resource, resourceAcc, ResourceVersion, ResourceContent)
+
+				// Save artifact information to check afterward, that it has been deleted as obsolete.
+				artifactBeforeUpdate := resource.GetOCIArtifact().DeepCopy()
 
 				// Increase component and resource versions
 				By("creating new component version in the file system")
-				const ComponentVersionNew = "1.0.1"
-				const ResourceVersionNew = "1.0.1"
+				const ComponentVersionNew = "1.0.1-component"
+				const ResourceVersionNew = "1.0.1-resource"
 				const ResourceContentNew = "another important content"
 				env.OCMCommonTransport(resourceLocalPath, accessio.FormatDirectory, func() {
 					env.Component(Component, func() {
@@ -542,7 +529,7 @@ var _ = Describe("Resource Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				By("uploading new component descriptors as OCI artifact")
-				repositoryName, err := ociartifactlocal.CreateRepositoryName(RepositoryObj, Component)
+				repositoryName, err := toolkitociartifact.CreateRepositoryName(RepositoryObj, Component)
 				Expect(err).ToNot(HaveOccurred())
 				repository, err := registry.NewRepository(ctx, repositoryName)
 				Expect(err).ToNot(HaveOccurred())
@@ -550,13 +537,16 @@ var _ = Describe("Resource Controller", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				By("updating mock component status")
+				// Get fresh component resource.
 				componentObj = &v1alpha1.Component{
 					ObjectMeta: k8smetav1.ObjectMeta{
 						Namespace: componentObj.GetNamespace(),
 						Name:      componentObj.GetName(),
 					},
 				}
-				err = k8sClient.Get(ctx, client.ObjectKeyFromObject(componentObj), componentObj)
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(componentObj), componentObj)).To(Succeed())
+
+				// Update status fields.
 				componentObj.Status.OCIArtifact = &v1alpha1.OCIArtifactInfo{
 					Repository: repositoryName,
 					Digest:     manifestDigest.String(),
@@ -570,36 +560,68 @@ var _ = Describe("Resource Controller", func() {
 				componentObj.Status.Component.Version = ComponentVersionNew
 				componentObj.Status.Component.RepositorySpec = &apiextensionsv1.JSON{Raw: specData}
 				Expect(k8sClient.Status().Update(ctx, componentObj)).To(Succeed())
+
+				By("updating mock component spec")
+				// Get fresh component resource.
+				componentObj = &v1alpha1.Component{
+					ObjectMeta: k8smetav1.ObjectMeta{
+						Namespace: componentObj.GetNamespace(),
+						Name:      componentObj.GetName(),
+					},
+				}
+				err = k8sClient.Get(ctx, client.ObjectKeyFromObject(componentObj), componentObj)
 				Expect(err).ToNot(HaveOccurred())
 
+				// Update spec fields.
+				// This step should trigger reconciliation of the dependent resource object.
 				componentObj.Spec.Semver = ComponentVersionNew
 				Expect(k8sClient.Update(ctx, componentObj)).To(Succeed())
-				Eventually(komega.Object(componentObj), "15s").Should(
-					HaveField("Status.OCIArtifact.Blob.Tag", Equal(ComponentVersionNew)))
 
-				//time.Sleep(5 * time.Second)
-				By("checking that the resource now has the right version of ")
-				Eventually(komega.Object(resource), "15s").Should(
-					HaveField("Status.OCIArtifact.Blob.Tag", Equal(ResourceVersionNew)))
+				By("checking that the resource now refers to new OCI artifact")
+				resource = &v1alpha1.Resource{
+					ObjectMeta: k8smetav1.ObjectMeta{
+						Namespace: resource.GetNamespace(),
+						Name:      resource.GetName(),
+					},
+				}
+				Eventually(func(g Gomega, ctx context.Context) bool {
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)
+					if err != nil {
+						return false
+					}
+					g.Expect(resource.Status.OCIArtifact.Blob.Tag).To(Equal(ResourceVersionNew))
+
+					return conditions.IsReady(resource)
+				}, "15s").WithContext(ctx).Should(BeTrue())
 
 				resourceAcc, err = cv.GetResource(v1.NewIdentity(ResourceObj))
 				Expect(err).NotTo(HaveOccurred())
-				validateArtifact(ctx, resource, resourceAcc, ResourceVersionNew)
+				validateArtifact(ctx, resource, resourceAcc, ResourceVersionNew, ResourceContentNew)
+
+				By("checking if the previous artifact was deleted")
+				test.ExpectArtifactToNotExist(ctx, registry, artifactBeforeUpdate)
 
 				By("delete resource manually")
-				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-				Eventually(func(ctx context.Context) bool {
-					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)
-					return errors.IsNotFound(err)
-				}, "15s").WithContext(ctx).Should(BeTrue())
+				deleteResource(ctx, resource)
 			})
-
-			// TODO: Add more testcases
 		})
 	})
 })
 
-func validateArtifact(ctx context.Context, resource *v1alpha1.Resource, resourceAccess ocm.ResourceAccess, expectedTag string) {
+func deleteResource(ctx context.Context, resource *v1alpha1.Resource) {
+	GinkgoHelper()
+
+	Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+
+	Eventually(func(ctx context.Context) bool {
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)
+		return errors.IsNotFound(err)
+	}, "15s").WithContext(ctx).Should(BeTrue())
+
+	test.ExpectArtifactToNotExist(ctx, registry, resource.GetOCIArtifact())
+}
+
+func validateArtifact(ctx context.Context, resource *v1alpha1.Resource, resourceAccess ocm.ResourceAccess, expectedTag, expectedContent string) {
 	GinkgoHelper()
 
 	By("checking that resource has a reference to OCI artifact")
@@ -612,7 +634,7 @@ func validateArtifact(ctx context.Context, resource *v1alpha1.Resource, resource
 	gzipReader, err := gzip.NewReader(bytes.NewReader(contentCompressed))
 	Expect(err).NotTo(HaveOccurred())
 	content, err := io.ReadAll(gzipReader)
-	Expect(string(content)).To(Equal(ResourceContent))
+	Expect(string(content)).To(Equal(expectedContent))
 
 	Expect(resource.GetBlobDigest()).To(Equal(resourceAccess.Meta().Digest.Value))
 	Expect(resource.Status.OCIArtifact.Blob.Tag).To(Equal(expectedTag))
