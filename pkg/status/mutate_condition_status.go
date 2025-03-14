@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2022 SAP SE or an SAP affiliate company and Open Component Model contributors.
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package status
 
 import (
@@ -13,15 +17,15 @@ import (
 // MarkNotReady sets the condition status of an Object to `Not Ready`.
 func MarkNotReady(recorder kuberecorder.EventRecorder, obj conditions.Setter, reason, msg string) {
 	conditions.Delete(obj, meta.ReconcilingCondition)
-	conditions.MarkFalse(obj, meta.ReadyCondition, "%s - %s", reason, msg)
+	conditions.MarkFalse(obj, meta.ReadyCondition, reason, msg) //nolint:govet // Error is currently not relevant
 	event.New(recorder, obj, nil, eventv1.EventSeverityError, msg)
 }
 
 // MarkAsStalled sets the condition status of an Object to `Stalled`.
 func MarkAsStalled(recorder kuberecorder.EventRecorder, obj conditions.Setter, reason, msg string) {
 	conditions.Delete(obj, meta.ReconcilingCondition)
-	conditions.MarkFalse(obj, meta.ReadyCondition, "%s - %s", reason, msg)
-	conditions.MarkStalled(obj, "%s - %s", reason, msg)
+	conditions.MarkFalse(obj, meta.ReadyCondition, reason, msg) //nolint:govet // Error is currently not relevant
+	conditions.MarkStalled(obj, reason, msg)                    //nolint:govet // Error is currently not relevant
 	event.New(recorder, obj, nil, eventv1.EventSeverityError, msg)
 }
 
