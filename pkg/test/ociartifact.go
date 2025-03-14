@@ -31,5 +31,5 @@ func ExpectArtifactToNotExist(ctx context.Context, registry *ociartifact.Registr
 		}
 
 		return nil
-	}, "15s").WithContext(ctx).Should(BeNil())
+	}, "15s").WithContext(ctx).Should(Succeed())
 }
