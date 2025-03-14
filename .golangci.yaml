@@ -105,12 +105,14 @@ linters:
     - gochecknoinits
     - godox
     - gomoddirectives
+    - iface
     - ireturn
     - nilnil
     - nonamedreturns
     - paralleltest
     - perfsprint
     - prealloc
+    - recvcheck
     - staticcheck
     - tagliatelle
     - varnamelen
