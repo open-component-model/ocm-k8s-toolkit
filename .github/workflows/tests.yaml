@@ -112,7 +112,7 @@ jobs:
         run: flux install
 
       - name: Setup ocm
-        uses: open-component-model/ocm-setup-action@main
+        uses: open-component-model/ocm-setup-action@v1.0.0
 
       - name: Run e2e test
         env:
