@@ -10,7 +10,7 @@ spec:
     mediaType: "application/vnd.oci.image.layer.v1.tar+gzip"
     operation: copy
   # URL points to the internal zot-registry that is (currently) deployed with the controllers
-  url: oci://ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000/sha-13925607299920746055
+  url: oci://ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000/sha-17792573031511022715
   ref:
     tag: "1.0.0"
 ---

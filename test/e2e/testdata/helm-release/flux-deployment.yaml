@@ -10,7 +10,7 @@ spec:
     mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
     operation: copy
   # URL points to the internal zot-registry that is (currently) deployed with the controllers
-  url: oci://ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000/sha-6488615125277388297
+  url: oci://ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000/sha-15499801959991517825
   ref:
     tag: "6.7.1"
 ---
