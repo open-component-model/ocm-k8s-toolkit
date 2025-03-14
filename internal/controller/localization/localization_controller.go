@@ -239,7 +239,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		Namespace: configuredResource.GetNamespace(),
 	}
 
-	logger.V(1).Info(fmt.Sprintf("localized resource %s", localization.Spec.Target))
+	logger.V(1).Info(fmt.Sprintf("localized resource %s", localization.Spec.Target.Name))
 	status.MarkReady(r.EventRecorder, localization, "localized successfully")
 
 	return ctrl.Result{RequeueAfter: localization.Spec.Interval.Duration}, nil

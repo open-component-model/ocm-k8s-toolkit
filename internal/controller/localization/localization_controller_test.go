@@ -18,11 +18,13 @@ import (
 	. "github.com/onsi/gomega"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	ocmbuilder "ocm.software/ocm/api/helper/builder"
 	environment "ocm.software/ocm/api/helper/env"
 	"ocm.software/ocm/api/utils/tarutils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
@@ -115,7 +117,7 @@ var _ = Describe("Localization Controller", func() {
 			},
 		)
 
-		localization := setupLocalizedResource(ctx, map[string]string{
+		setupLocalizedResource(ctx, map[string]string{
 			"Namespace":          Namespace,
 			"Name":               Localization,
 			"TargetResourceName": targetResource.Name,
@@ -123,6 +125,12 @@ var _ = Describe("Localization Controller", func() {
 		})
 
 		By("checking that the resource has been reconciled successfully")
+		localization := &v1alpha1.LocalizedResource{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      Localization,
+				Namespace: Namespace,
+			},
+		}
 		Eventually(func(ctx context.Context) error {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(localization), localization)
 			if err != nil {
@@ -136,14 +144,8 @@ var _ = Describe("Localization Controller", func() {
 			return nil
 		}, "15s").WithContext(ctx).Should(Succeed())
 
-		Eventually(func(ctx context.Context) error {
-			artifact := localization.GetOCIArtifact()
-			if artifact == nil {
-				return fmt.Errorf("expected OCI artifact of localization %s to not be nil", localization.GetName())
-			}
-
-			return nil
-		}, "15s").WithContext(ctx).Should(Succeed())
+		Eventually(komega.Object(localization), "15s").Should(
+			HaveField("Status.OCIArtifact", Not(BeNil())))
 
 		repository, err := registry.NewRepository(ctx, localization.GetOCIRepository())
 		Expect(err).ToNot(HaveOccurred())
@@ -174,7 +176,7 @@ var _ = Describe("Localization Controller", func() {
 	})
 })
 
-func setupLocalizedResource(ctx context.Context, data map[string]string) *v1alpha1.LocalizedResource {
+func setupLocalizedResource(ctx context.Context, data map[string]string) {
 	localizationTemplate, err := template.New("localization").Parse(localizationTemplateKustomizePatch)
 	Expect(err).ToNot(HaveOccurred())
 	var ltpl bytes.Buffer
@@ -184,5 +186,4 @@ func setupLocalizedResource(ctx context.Context, data map[string]string) *v1alph
 	_, _, err = serializerFactory.Decode(ltpl.Bytes(), nil, localization)
 	Expect(err).To(Not(HaveOccurred()))
 	Expect(k8sClient.Create(ctx, localization)).To(Succeed())
-	return localization
 }
