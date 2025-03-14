@@ -9,7 +9,7 @@ on:
       - '**/*.mod'
       - '**/*.sum'
       - 'config/**'
-      - 'Dockefile'
+      - 'Dockerfile'
 jobs:
   docker_publish:
     runs-on: ubuntu-latest
