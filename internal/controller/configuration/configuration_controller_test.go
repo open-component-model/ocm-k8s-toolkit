@@ -31,9 +31,9 @@ import (
 )
 
 const (
-	Namespace          = "test-namespace"
-	ResourceConfig     = "cfg-test-util"
-	TargetResourceObj  = "target-test-util"
+	Namespace          = "configuration-namespace"
+	ResourceConfig     = "cfg-configuration-util"
+	TargetResourceObj  = "target-configuration-util"
 	ConfiguredResource = "configured-resource"
 )
 

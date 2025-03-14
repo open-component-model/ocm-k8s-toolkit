@@ -3,6 +3,7 @@ package localization
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"path/filepath"
 	"text/template"
 
@@ -41,11 +42,11 @@ var (
 )
 
 const (
-	Namespace         = "test-namespace"
-	RepositoryObj     = "test-repository"
-	ComponentObj      = "test-component"
-	CfgResourceObj    = "cfg-test-util"
-	TargetResourceObj = "target-test-util"
+	Namespace         = "localisation-namespace"
+	RepositoryObj     = "localisation-repository"
+	ComponentObj      = "localisation-component"
+	CfgResourceObj    = "cfg-localisation-util"
+	TargetResourceObj = "target-localisation-util"
 	Localization      = "test-localization"
 )
 
@@ -122,15 +123,27 @@ var _ = Describe("Localization Controller", func() {
 		})
 
 		By("checking that the resource has been reconciled successfully")
-		Eventually(func(ctx context.Context) bool {
+		Eventually(func(ctx context.Context) error {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(localization), localization)
 			if err != nil {
-				return false
+				return err
 			}
-			return conditions.IsReady(localization)
-		}, "15s").WithContext(ctx).Should(BeTrue())
 
-		Expect(localization.GetOCIArtifact()).ToNot(BeNil())
+			if !conditions.IsReady(localization) {
+				return fmt.Errorf("expected localization %s to be ready, but it was not", localization.GetName())
+			}
+
+			return nil
+		}, "15s").WithContext(ctx).Should(Succeed())
+
+		Eventually(func() error {
+			artifact := localization.GetOCIArtifact()
+			if artifact == nil {
+				return fmt.Errorf("expected OCI artifact of localization %s to not be nil", localization.GetName())
+			}
+
+			return nil
+		}, "15s").WithContext(ctx).Should(Succeed())
 
 		repository, err := registry.NewRepository(ctx, localization.GetOCIRepository())
 		Expect(err).ToNot(HaveOccurred())
