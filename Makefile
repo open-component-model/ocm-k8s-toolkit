@@ -156,7 +156,7 @@ deploy: deploy-cert-manager manifests kustomize ## Deploy controller to the K8s 
 	$(call set-images)
 	$(KUSTOMIZE) build config/default-zot-https | $(KUBECTL) apply -f -
 
-# Undeploy target undeploys the controller, its zot regostry and related certificates. 
+# Undeploy target undeploys the controller, its zot registry and related certificates.
 # However, it does not undeploy the cert-manager, which might still be needed by other applications in the cluster.
 # If you wish to undeploy cert manager as well, execute 'make undeploy-cert-manager' in addition.
 .PHONY: undeploy

@@ -1,0 +1,29 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: OCIRepository
+metadata:
+  name: kustomize-podinfo
+  namespace: default
+spec:
+  interval: 1m0s
+  layerSelector:
+    mediaType: "application/vnd.oci.image.layer.v1.tar+gzip"
+    operation: copy
+  # URL points to the internal zot-registry that is (currently) deployed with the controllers
+  url: oci://ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000/sha-13925607299920746055
+  ref:
+    tag: "1.0.0"
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: kustomize-flux
+  namespace: default
+spec:
+  interval: 1m
+  targetNamespace: default
+  prune: true
+  sourceRef:
+    kind: OCIRepository
+    name: kustomize-podinfo
+    namespace: default

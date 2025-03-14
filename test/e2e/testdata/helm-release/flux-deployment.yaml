@@ -1,0 +1,28 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: OCIRepository
+metadata:
+  name: helm-podinfo
+  namespace: default
+spec:
+  interval: 1m0s
+  layerSelector:
+    mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+    operation: copy
+  # URL points to the internal zot-registry that is (currently) deployed with the controllers
+  url: oci://ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000/sha-6488615125277388297
+  ref:
+    tag: "6.7.1"
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: helm-podinfo
+  namespace: default
+spec:
+  interval: 1m
+  timeout: 5m
+  chartRef:
+    kind: OCIRepository
+    name: helm-podinfo
+    namespace: default
