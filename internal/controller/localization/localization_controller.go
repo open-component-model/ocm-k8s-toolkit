@@ -231,7 +231,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 
 		return ctrl.Result{}, fmt.Errorf("configured resource containing localization is not yet ready")
 	}
-	logger.V(1).Info(fmt.Sprintf("configured resource containing localization is ready"))
+	logger.V(1).Info("configured resource containing localization is ready")
 
 	localization.Status.OCIArtifact = configuredResource.GetOCIArtifact()
 	localization.Status.ConfiguredResourceRef = &v1alpha1.ObjectKey{
