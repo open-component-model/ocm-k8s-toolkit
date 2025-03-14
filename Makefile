@@ -77,12 +77,12 @@ test-e2e:
 	PROJECT_DIR=$(REPOSITORY_ROOT) go test ./test/e2e/ -v -timeout 30m -ginkgo.v
 
 .PHONY: lint
-lint: golangci-lint ## Run golangci-lint linter
-	$(GOLANGCI_LINT) run
+lint: ## Run golangci-lint linter
+	go tool golangci-lint run
 
 .PHONY: lint-fix
-lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
-	$(GOLANGCI_LINT) run --fix
+lint-fix: ## Run golangci-lint linter and perform fixes
+	go tool golangci-lint run --fix
 
 ##@ Build
 
@@ -175,14 +175,12 @@ KUBECTL ?= kubectl
 KUSTOMIZE ?= $(LOCALBIN)/kustomize-$(KUSTOMIZE_VERSION)
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
-GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 ZOT_BINARY ?= $(LOCALBIN)/zot-registry
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.1
 CONTROLLER_TOOLS_VERSION ?= v0.16.0
 ENVTEST_VERSION ?= release-0.18
-GOLANGCI_LINT_VERSION ?= v1.61.0
 ZOT_VERSION ?= v2.1.2
 
 ## ZOT OCI Registry
@@ -226,11 +224,6 @@ ifeq (, $(shell which $(ZOT_BINARY)))
 		-O $(ZOT_BINARY) \
 		&& chmod u+x $(ZOT_BINARY)
 endif
-
-.PHONY: golangci-lint
-golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
-$(GOLANGCI_LINT): $(LOCALBIN)
-	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,${GOLANGCI_LINT_VERSION})
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary (ideally with version)
