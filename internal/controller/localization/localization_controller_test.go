@@ -136,7 +136,7 @@ var _ = Describe("Localization Controller", func() {
 			return nil
 		}, "15s").WithContext(ctx).Should(Succeed())
 
-		Eventually(func() error {
+		Eventually(func(ctx context.Context) error {
 			artifact := localization.GetOCIArtifact()
 			if artifact == nil {
 				return fmt.Errorf("expected OCI artifact of localization %s to not be nil", localization.GetName())
