@@ -314,7 +314,11 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	//   present resource-layer. Otherwise the GC would delete the resource-layer if the previously present manifest
 	//   would be deleted.
 
-	ociRepositoryName, err := ociartifact.CreateRepositoryName(resource.Spec.ComponentRef.Name, resource.GetName())
+	ociRepositoryName, err := ociartifact.CreateRepositoryName(
+		cv.GetName(),
+		resourceAccess.Meta().GetName(),
+		resourceAccess.Meta().GetVersion(),
+	)
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.CreateOCIRepositoryNameFailedReason, err.Error())
 

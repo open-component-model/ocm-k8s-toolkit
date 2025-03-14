@@ -48,7 +48,7 @@ func SetupComponentWithDescriptorList(
 
 	patchHelper := patch.NewSerialPatcher(component, options.Client)
 
-	repositoryName, err := ociartifact.CreateRepositoryName(options.Repository, name)
+	repositoryName, err := ociartifact.CreateRepositoryName(component.Spec.Component)
 	Expect(err).ToNot(HaveOccurred())
 
 	repository, err := options.Registry.NewRepository(ctx, repositoryName)
