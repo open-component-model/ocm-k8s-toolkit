@@ -117,15 +117,12 @@ jobs:
       - name: Run e2e test
         env:
           RESOURCE_TIMEOUT: 5m
-          HELM_CHART: ghcr.io/stefanprodan/charts/podinfo:6.7.1
           IMAGE_REFERENCE: ghcr.io/stefanprodan/podinfo:6.7.1
           CONTROLLER_LOG_PATH: ./ocm-k8s-toolkit-controller.log
-          IMAGE_REGISTRY_URL: http://localhost:31000
-          INTERNAL_IMAGE_REGISTRY_URL: http://registry-internal.default.svc.cluster.local:5000
-          PROTECTED_REGISTRY_URL: http://localhost:31001
-          INTERNAL_PROTECTED_REGISTRY_URL: http://protected-registry1-internal.default.svc.cluster.local:5001
-          PROTECTED_REGISTRY_URL2: http://localhost:31002
-          INTERNAL_PROTECTED_REGISTRY_URL2: http://protected-registry2-internal.default.svc.cluster.local:5002
+          PROTECTED_REGISTRY_URL: http://localhost:31002
+          INTERNAL_PROTECTED_REGISTRY_URL: http://protected-registry1-internal.default.svc.cluster.local:5002
+          PROTECTED_REGISTRY_URL2: http://localhost:31003
+          INTERNAL_PROTECTED_REGISTRY_URL2: http://protected-registry2-internal.default.svc.cluster.local:5003
         run: make test-e2e
 
       - name: Publish logs on failure
