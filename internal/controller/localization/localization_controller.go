@@ -231,6 +231,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 
 		return ctrl.Result{}, fmt.Errorf("configured resource containing localization is not yet ready")
 	}
+	logger.V(1).Info(fmt.Sprintf("configured resource containing localization is ready"))
 
 	localization.Status.OCIArtifact = configuredResource.GetOCIArtifact()
 	localization.Status.ConfiguredResourceRef = &v1alpha1.ObjectKey{
@@ -238,6 +239,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 		Namespace: configuredResource.GetNamespace(),
 	}
 
+	logger.V(1).Info(fmt.Sprintf("localized resource %s", localization.Spec.Target))
 	status.MarkReady(r.EventRecorder, localization, "localized successfully")
 
 	return ctrl.Result{RequeueAfter: localization.Spec.Interval.Duration}, nil
