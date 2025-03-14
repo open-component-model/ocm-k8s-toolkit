@@ -714,13 +714,13 @@ func expectArtifactToNotExist(ctx context.Context, a *v1alpha1.OCIArtifactInfo) 
 		if err != nil {
 			return err
 		}
+
 		if exists {
 			return fmt.Errorf("artifact not expected to exist: %s/%s", a.Repository, a.Digest)
 		}
+
 		return nil
 	}, "15s").WithContext(ctx).Should(BeNil())
-
-	Expect(ociRepo.ExistsArtifact(ctx, a.Digest)).To(BeFalse())
 }
 
 func waitUntilComponentIsReady(ctx context.Context, component *v1alpha1.Component, expectedVersion string) {
@@ -764,6 +764,8 @@ func deleteComponent(ctx context.Context, component *v1alpha1.Component) {
 		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
 		return errors.IsNotFound(err)
 	}, "15s").WithContext(ctx).Should(BeTrue())
+
+	expectArtifactToNotExist(ctx, component.GetOCIArtifact())
 }
 
 func createTestConfigsAndSecrets(ctx context.Context, namespace string) (configs []*corev1.ConfigMap, secrets []*corev1.Secret) {
