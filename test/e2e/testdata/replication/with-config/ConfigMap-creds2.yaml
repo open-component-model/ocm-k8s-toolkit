@@ -13,7 +13,7 @@ data:
           - identity:
               type: OCIRegistry
               hostname: localhost
-              port: 31002
+              port: 31003
             credentials:
               - type: Credentials
                 properties:
@@ -22,7 +22,7 @@ data:
           - identity:
               type: OCIRegistry
               hostname: protected-registry2-internal.default.svc.cluster.local
-              port: 5002
+              port: 5003
             credentials:
               - type: Credentials
                 properties:

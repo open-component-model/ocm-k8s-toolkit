@@ -27,9 +27,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/google/go-containerregistry/pkg/crane"
-	"github.com/google/go-containerregistry/pkg/name"
-
 	"github.com/open-component-model/ocm-k8s-toolkit/test/utils"
 )
 
@@ -72,36 +69,8 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 		timeout = "1m"
 	}
 
-	By("Checking for an image registry", func() {
-		imageRegistry = os.Getenv("IMAGE_REGISTRY_URL")
-		Expect(imageRegistry).NotTo(BeEmpty())
-	})
-
-	By("Checking for an internal image registry", func() {
-		// If an internal image registry in the kubernetes-cluster is used, the registry-url for the ocm repository must be adjusted
-		// (see deployment of OCM repository below)
-		internalImageRegistry = os.Getenv("INTERNAL_IMAGE_REGISTRY_URL")
-		if internalImageRegistry == "" {
-			internalImageRegistry = imageRegistry
-		}
-	})
-
-	// TODO: Replace image with demo-CV image (see https://github.com/open-component-model/ocm-project/issues/317)
-	By("Providing referenced images to the image registry", func() {
-		imageReferenceURL := os.Getenv("IMAGE_REFERENCE")
-		Expect(imageReferenceURL).NotTo(BeEmpty())
-
-		var err error
-		parsed, err := name.ParseReference(imageReferenceURL)
-		ExpectWithOffset(1, err).NotTo(HaveOccurred())
-
-		imageReference = internalImageRegistry + "/" + parsed.Context().RepositoryStr() + ":" + parsed.Identifier()
-		ExpectWithOffset(1, err).NotTo(HaveOccurred())
-
-		// Provide referenced images to our image registry to test localization
-		// Note: Trim 'http://' from imageRegistry in case it is passed as insecure registry
-		Expect(crane.Copy(imageReferenceURL, fmt.Sprintf("%s/%s", strings.TrimLeft(imageRegistry, "http://"), parsed.Context().RepositoryStr()+":"+parsed.Identifier()))).To(Succeed())
-	})
+	imageRegistry = "http://localhost:31001"
+	internalImageRegistry = "http://registry-external.default.svc.cluster.local:5001"
 
 	By("Starting the operator", func() {
 		// projectimage stores the name of the image used in the example
@@ -133,13 +102,13 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 		})
 
 		By("Deploying the controller-manager")
-		cmd = exec.Command("make", "deploy")
+		cmd = exec.Command("make", "deploy-dev")
 		cmd.Env = []string{"IMG=" + projectimage}
 		_, err = utils.Run(cmd)
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
 		DeferCleanup(func() error {
 			By("Un-deploying the controller-manager")
-			cmd = exec.Command("make", "undeploy")
+			cmd = exec.Command("make", "undeploy-dev")
 			cmd.Env = []string{"IMG=" + projectimage}
 			_, err = utils.Run(cmd)
 

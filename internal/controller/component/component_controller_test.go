@@ -18,74 +18,63 @@ package component
 
 import (
 	"context"
-	"fmt"
-	"net/http"
 	"os"
 	"time"
 
+	"github.com/fluxcd/pkg/apis/meta"
 	. "github.com/mandelsoft/goutils/testutils"
+	"github.com/mandelsoft/vfs/pkg/vfs"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	. "ocm.software/ocm/api/helper/builder"
-
-	"github.com/fluxcd/pkg/apis/meta"
-	"github.com/fluxcd/pkg/runtime/conditions"
-	"github.com/fluxcd/pkg/tar"
-	"github.com/mandelsoft/filepath/pkg/filepath"
-	"github.com/mandelsoft/vfs/pkg/osfs"
-	"github.com/mandelsoft/vfs/pkg/vfs"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
-	"ocm.software/ocm/api/utils/accessio"
+	. "ocm.software/ocm/api/helper/builder"
 	"ocm.software/ocm/api/utils/accessobj"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 	"sigs.k8s.io/yaml"
 
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
+	"github.com/fluxcd/pkg/runtime/conditions"
+	"github.com/mandelsoft/vfs/pkg/osfs"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	environment "ocm.software/ocm/api/helper/env"
+	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
+	"ocm.software/ocm/api/utils/accessio"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
 )
 
 const (
-	CTFPath       = "ocm-k8s-ctfstore--*"
-	Namespace     = "test-namespace"
-	RepositoryObj = "test-repository"
-	Component     = "ocm.software/test-component"
-	ComponentObj  = "test-component"
-	Version1      = "1.0.0"
-	Version2      = "1.0.1"
+	CTFPath      = "ocm-k8s-ctfstore--*"
+	Component    = "ocm.software/test-component"
+	ComponentObj = "test-component"
+	Version1     = "1.0.0"
+	Version2     = "1.0.1"
 )
 
 var _ = Describe("Component Controller", func() {
 	var (
-		ctx     context.Context
-		cancel  context.CancelFunc
 		env     *Builder
 		ctfpath string
-
-		repositoryName string
-		testNumber     int
-		repositoryObj  *v1alpha1.OCMRepository
 	)
 	BeforeEach(func() {
 		ctfpath = Must(os.MkdirTemp("", CTFPath))
 		env = NewBuilder(environment.FileSystem(osfs.OsFs))
-		ctx = context.Background()
-		ctx, cancel = context.WithCancel(context.Background())
 	})
 	AfterEach(func() {
 		Expect(os.RemoveAll(ctfpath)).To(Succeed())
 		Expect(env.Cleanup()).To(Succeed())
-		cancel()
 	})
 
 	Context("component controller", func() {
-		BeforeEach(func() {
+		var repositoryObj *v1alpha1.OCMRepository
+		var namespace *corev1.Namespace
+
+		BeforeEach(func(ctx SpecContext) {
 			By("creating a repository with name")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
 				env.Component(Component, func() {
@@ -96,10 +85,18 @@ var _ = Describe("Component Controller", func() {
 			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
 			specdata := Must(spec.MarshalJSON())
 
-			repositoryName = fmt.Sprintf("%s-%d", RepositoryObj, testNumber)
+			namespaceName := test.GenerateNamespace(ctx.SpecReport().LeafNodeText)
+			namespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: namespaceName,
+				},
+			}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+
+			repositoryName := "repository"
 			repositoryObj = &v1alpha1.OCMRepository{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: Namespace,
+					Namespace: namespaceName,
 					Name:      repositoryName,
 				},
 				Spec: v1alpha1.OCMRepositorySpec{
@@ -113,27 +110,33 @@ var _ = Describe("Component Controller", func() {
 
 			conditions.MarkTrue(repositoryObj, "Ready", "ready", "message")
 			Expect(k8sClient.Status().Update(ctx, repositoryObj)).To(Succeed())
-
-			testNumber++
 		})
 
-		AfterEach(func() {
-			// make sure the repo is still ready
-			conditions.MarkTrue(repositoryObj, "Ready", "ready", "message")
-			Expect(k8sClient.Status().Update(ctx, repositoryObj)).To(Succeed())
+		AfterEach(func(ctx SpecContext) {
+			By("deleting the repository")
+			Expect(k8sClient.Delete(ctx, repositoryObj)).To(Succeed())
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(repositoryObj), repositoryObj)
+				return errors.IsNotFound(err)
+			}).WithContext(ctx).Should(BeTrue())
+
+			components := &v1alpha1.ComponentList{}
+
+			Expect(k8sClient.List(ctx, components, client.InNamespace(namespace.GetName()))).To(Succeed())
+			Expect(components.Items).To(HaveLen(0))
 		})
 
-		It("reconcileComponent a component", func() {
+		It("reconcileComponent a component", func(ctx SpecContext) {
 			By("creating a component")
 			component := &v1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: Namespace,
-					Name:      fmt.Sprintf("%s-%d", ComponentObj, testNumber),
+					Namespace: namespace.GetName(),
+					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
 					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: Namespace,
-						Name:      repositoryName,
+						Namespace: namespace.GetName(),
+						Name:      repositoryObj.GetName(),
 					},
 					Component: Component,
 					Semver:    "1.0.0",
@@ -143,39 +146,15 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that artifact has been created successfully")
+			By("checking that the component has been reconciled successfully")
+			waitUntilComponentIsReady(ctx, component, "1.0.0")
+			validateArtifact(ctx, component, env, ctfpath)
 
-			Eventually(komega.Object(component), "15s").Should(
-				HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
-
-			artifact := &artifactv1.Artifact{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: component.Namespace,
-					Name:      component.Status.ArtifactRef.Name,
-				},
-			}
-			Eventually(komega.Get(artifact)).Should(Succeed())
-
-			By("check if the component descriptor list can be retrieved from the artifact server")
-			r := Must(http.Get(artifact.Spec.URL))
-
-			tmpdir := Must(os.MkdirTemp("/tmp", "descriptors-"))
-			DeferCleanup(func() error {
-				return os.RemoveAll(tmpdir)
-			})
-			MustBeSuccessful(tar.Untar(r.Body, tmpdir))
-
-			repo := Must(ctf.Open(env, accessobj.ACC_WRITABLE, ctfpath, vfs.FileMode(vfs.O_RDWR), env))
-			cv := Must(repo.LookupComponentVersion(Component, Version1))
-			expecteddescs := Must(ocm.ListComponentDescriptors(ctx, cv, repo))
-
-			data := Must(os.ReadFile(filepath.Join(tmpdir, v1alpha1.OCMComponentDescriptorList)))
-			descs := &ocm.Descriptors{}
-			MustBeSuccessful(yaml.Unmarshal(data, descs))
-			Expect(descs).To(YAMLEqual(expecteddescs))
+			By("delete resources manually")
+			deleteComponent(ctx, component)
 		})
 
-		It("does not reconcile when the repository is not ready", func() {
+		It("does not reconcile when the repository is not ready", func(ctx SpecContext) {
 			By("marking the repository as not ready")
 			conditions.MarkFalse(repositoryObj, "Ready", "notReady", "reason")
 			Expect(k8sClient.Status().Update(ctx, repositoryObj)).To(Succeed())
@@ -183,13 +162,13 @@ var _ = Describe("Component Controller", func() {
 			By("creating a component object")
 			component := &v1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: Namespace,
-					Name:      ComponentObj + "-not-ready",
+					Namespace: namespace.GetName(),
+					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
 					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: Namespace,
-						Name:      repositoryName,
+						Namespace: namespace.GetName(),
+						Name:      repositoryObj.GetName(),
 					},
 					Component: Component,
 					Semver:    "1.0.0",
@@ -199,22 +178,35 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that no artifact has been created")
-			Eventually(komega.Object(component), "15s").Should(
-				HaveField("Status.ArtifactRef.Name", BeEmpty()))
+			By("checking that the component has not been reconciled successfully")
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+				if err != nil {
+					return false
+				}
+
+				// Conditions are not nil, if reconciliation has run at least once.
+				return component.Status.Conditions != nil && !conditions.IsReady(component)
+			}, "15s").WithContext(ctx).Should(BeTrue())
+
+			By("checking that reference to OCI artifact has not been created")
+			Expect(component).To(HaveField("Status.OCIArtifact", BeNil()))
+
+			By("deleting the resources manually")
+			deleteComponent(ctx, component)
 		})
 
-		It("grabs the new version when it becomes available", func() {
+		It("grabs the new version when it becomes available", func(ctx SpecContext) {
 			By("creating a component")
 			component := &v1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: Namespace,
-					Name:      fmt.Sprintf("%s-%d", ComponentObj, testNumber),
+					Namespace: namespace.GetName(),
+					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
 					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: Namespace,
-						Name:      repositoryName,
+						Namespace: namespace.GetName(),
+						Name:      repositoryObj.GetName(),
 					},
 					Component: Component,
 					Semver:    ">=1.0.0",
@@ -224,14 +216,14 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that artifact has been created successfully")
+			By("checking that the component has been reconciled successfully")
+			waitUntilComponentIsReady(ctx, component, Version1)
+			validateArtifact(ctx, component, env, ctfpath)
 
-			Eventually(komega.Object(component), "15s").Should(
-				HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+			// Save artifact information to check afterward, that it has been deleted as obsolete.
+			artifactBeforeUpdate := component.GetOCIArtifact().DeepCopy()
 
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
-			Expect(component.Status.Component.Version).To(Equal(Version1))
-
+			By("increasing the component version")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
 				env.Component(Component, func() {
 					env.Version(Version1)
@@ -241,14 +233,20 @@ var _ = Describe("Component Controller", func() {
 				})
 			})
 
-			Eventually(func() bool {
-				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
+			By("checking that the increased version has been discovered successfully")
+			waitUntilComponentIsReady(ctx, component, Version2)
 
-				return component.Status.Component.Version == Version2
-			}).WithTimeout(15 * time.Second).Should(BeTrue())
+			By("checking if the previous artifact was deleted")
+			test.ExpectArtifactToNotExist(ctx, registry, artifactBeforeUpdate)
+
+			By("checking that increased version is reflected in the OCI artifact")
+			validateArtifact(ctx, component, env, ctfpath)
+
+			By("delete resources manually")
+			deleteComponent(ctx, component)
 		})
 
-		It("grabs lower version if downgrade is allowed", func() {
+		It("grabs lower version if downgrade is allowed", func(ctx SpecContext) {
 			componentName := Component + "-downgrade"
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
 				env.Component(componentName, func() {
@@ -264,13 +262,13 @@ var _ = Describe("Component Controller", func() {
 			By("creating a component")
 			component := &v1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: Namespace,
-					Name:      fmt.Sprintf("%s-%d", ComponentObj, testNumber),
+					Namespace: namespace.GetName(),
+					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
 					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: Namespace,
-						Name:      repositoryName,
+						Namespace: namespace.GetName(),
+						Name:      repositoryObj.GetName(),
 					},
 					Component:       componentName,
 					DowngradePolicy: v1alpha1.DowngradePolicyAllow,
@@ -281,24 +279,31 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that artifact has been created successfully")
+			By("checking that the component has been reconciled successfully")
+			waitUntilComponentIsReady(ctx, component, "0.0.3")
+			validateArtifact(ctx, component, env, ctfpath)
 
-			Eventually(komega.Object(component), "15s").Should(HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+			// Save artifact information to check afterward, that it has been deleted as obsolete.
+			artifactBeforeUpdate := component.GetOCIArtifact().DeepCopy()
 
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
-			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
-
+			By("decreasing the component version")
 			component.Spec.Semver = "0.0.2"
 			Expect(k8sClient.Update(ctx, component)).To(Succeed())
 
-			Eventually(func() bool {
-				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
+			By("checking that the decreased version has been discovered successfully")
+			waitUntilComponentIsReady(ctx, component, "0.0.2")
 
-				return component.Status.Component.Version == "0.0.2"
-			}).WithTimeout(15 * time.Second).Should(BeTrue())
+			By("checking if the previous artifact was deleted")
+			test.ExpectArtifactToNotExist(ctx, registry, artifactBeforeUpdate)
+
+			By("checking that decreased version is reflected in the OCI artifact")
+			validateArtifact(ctx, component, env, ctfpath)
+
+			By("delete resources manually")
+			deleteComponent(ctx, component)
 		})
 
-		It("does not grab lower version if downgrade is denied", func() {
+		It("does not grab lower version if downgrade is denied", func(ctx SpecContext) {
 			componentName := Component + "-downgrade-2"
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
 				env.Component(componentName, func() {
@@ -314,13 +319,13 @@ var _ = Describe("Component Controller", func() {
 			By("creating a component")
 			component := &v1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: Namespace,
-					Name:      fmt.Sprintf("%s-%d", ComponentObj, testNumber),
+					Namespace: namespace.GetName(),
+					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
 					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: Namespace,
-						Name:      repositoryName,
+						Namespace: namespace.GetName(),
+						Name:      repositoryObj.GetName(),
 					},
 					Component:       componentName,
 					DowngradePolicy: v1alpha1.DowngradePolicyDeny,
@@ -330,24 +335,29 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that artifact has been created successfully")
-			Eventually(komega.Object(component), "15s").Should(HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+			By("checking that the component has been reconciled successfully")
+			waitUntilComponentIsReady(ctx, component, "0.0.3")
+			validateArtifact(ctx, component, env, ctfpath)
 
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
-			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
-
+			By("trying to decrease component version")
 			component.Spec.Semver = "0.0.2"
 			Expect(k8sClient.Update(ctx, component)).To(Succeed())
 
+			By("checking that downgrade was not allowed")
 			Eventually(func() bool {
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
 
 				cond := conditions.Get(component, meta.ReadyCondition)
 				return cond.Message == "terminal error: component version cannot be downgraded from version 0.0.3 to version 0.0.2"
 			}).WithTimeout(15 * time.Second).Should(BeTrue())
+			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
+			Expect(component.Status.OCIArtifact.Blob.Tag).To(Equal("0.0.3"))
+
+			By("delete resources manually")
+			deleteComponent(ctx, component)
 		})
 
-		It("can force downgrade even if not allowed by the component", func() {
+		It("can force downgrade even if not allowed by the component", func(ctx SpecContext) {
 			componentName := Component + "-downgrade-3"
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
 				env.Component(componentName, func() {
@@ -359,13 +369,13 @@ var _ = Describe("Component Controller", func() {
 			By("creating a component")
 			component := &v1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: Namespace,
-					Name:      fmt.Sprintf("%s-%d", ComponentObj, testNumber),
+					Namespace: namespace.GetName(),
+					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
 					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: Namespace,
-						Name:      repositoryName,
+						Namespace: namespace.GetName(),
+						Name:      repositoryObj.GetName(),
 					},
 					Component:       componentName,
 					DowngradePolicy: v1alpha1.DowngradePolicyEnforce,
@@ -376,36 +386,83 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
-			By("check that artifact has been created successfully")
+			By("checking that the component has been reconciled successfully")
+			waitUntilComponentIsReady(ctx, component, "0.0.3")
+			validateArtifact(ctx, component, env, ctfpath)
 
-			Eventually(komega.Object(component), "15s").Should(
-				HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+			// Save artifact information to check afterward, that it has been deleted as obsolete.
+			artifactBeforeUpdate := component.GetOCIArtifact().DeepCopy()
 
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
-			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
-
+			By("decreasing the component version")
 			component.Spec.Semver = "0.0.2"
 			Expect(k8sClient.Update(ctx, component)).To(Succeed())
 
-			Eventually(func() bool {
-				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
+			By("checking that the decreased version has been discovered successfully")
+			waitUntilComponentIsReady(ctx, component, "0.0.2")
 
-				return component.Status.Component.Version == "0.0.2"
-			}).WithTimeout(15 * time.Second).Should(BeTrue())
+			By("checking if the previous artifact was deleted")
+			test.ExpectArtifactToNotExist(ctx, registry, artifactBeforeUpdate)
+
+			By("checking that decreased version is reflected in the OCI artifact")
+			validateArtifact(ctx, component, env, ctfpath)
+
+			By("delete resources manually")
+			deleteComponent(ctx, component)
+		})
+
+		It("reconcile a component with a plus in the version", func(ctx SpecContext) {
+			componentName := Component + "-with-plus"
+			componentObjName := ComponentObj + "-with-plus"
+			componentVersionPlus := Version1 + "+componentVersionSuffix"
+			expectedBlobTag := Version1 + ".build-componentVersionSuffix"
+
+			By("creating a component in CTF repository")
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(componentVersionPlus)
+				})
+			})
+
+			By("creating a component resource")
+			component := &v1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace.GetName(),
+					Name:      componentObjName,
+				},
+				Spec: v1alpha1.ComponentSpec{
+					RepositoryRef: v1alpha1.ObjectKey{
+						Namespace: namespace.GetName(),
+						Name:      repositoryObj.GetName(),
+					},
+					Component: componentName,
+					Semver:    componentVersionPlus,
+					Interval:  metav1.Duration{Duration: time.Minute * 10},
+				},
+				Status: v1alpha1.ComponentStatus{},
+			}
+			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+
+			By("checking that the component has been reconciled successfully")
+			waitUntilComponentIsReady(ctx, component, componentVersionPlus)
+			validateArtifact(ctx, component, env, ctfpath)
+
+			By("checking that artifact's blob tag is properly set")
+			Expect(component.Status.OCIArtifact.Blob.Tag).To(Equal(expectedBlobTag))
+
+			By("delete resources manually")
+			deleteComponent(ctx, component)
 		})
 	})
 
 	Context("ocm config handling", func() {
-		const (
-			Namespace = "test-namespace"
-		)
-
 		var (
-			configs []*corev1.ConfigMap
-			secrets []*corev1.Secret
+			configs       []*corev1.ConfigMap
+			secrets       []*corev1.Secret
+			namespace     *corev1.Namespace
+			repositoryObj *v1alpha1.OCMRepository
 		)
 
-		BeforeEach(func() {
+		BeforeEach(func(ctx SpecContext) {
 			By("creating a repository with name")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
 				env.Component(Component, func() {
@@ -416,12 +473,20 @@ var _ = Describe("Component Controller", func() {
 			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
 			specdata := Must(spec.MarshalJSON())
 
-			configs, secrets = createTestConfigsAndSecrets(ctx)
+			namespaceName := test.GenerateNamespace(ctx.SpecReport().LeafNodeText)
+			namespace = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: namespaceName,
+				},
+			}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 
-			repositoryName = fmt.Sprintf("%s-%d", RepositoryObj, testNumber)
+			configs, secrets = createTestConfigsAndSecrets(ctx, namespace.GetName())
+
+			repositoryName := "repository"
 			repositoryObj = &v1alpha1.OCMRepository{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: Namespace,
+					Namespace: namespace.GetName(),
 					Name:      repositoryName,
 				},
 				Spec: v1alpha1.OCMRepositorySpec{
@@ -543,28 +608,40 @@ var _ = Describe("Component Controller", func() {
 
 			conditions.MarkTrue(repositoryObj, "Ready", "ready", "message")
 			Expect(k8sClient.Status().Update(ctx, repositoryObj)).To(Succeed())
-
-			testNumber++
 		})
 
-		AfterEach(func() {
-			// make sure the repo is still ready
+		AfterEach(func(ctx SpecContext) {
+			By("make sure the repo is still ready")
 			conditions.MarkTrue(repositoryObj, "Ready", "ready", "message")
 			Expect(k8sClient.Status().Update(ctx, repositoryObj)).To(Succeed())
 			cleanupTestConfigsAndSecrets(ctx, configs, secrets)
+
+			By("delete repository")
+			Expect(k8sClient.Delete(ctx, repositoryObj)).To(Succeed())
+			Eventually(func(ctx context.Context) bool {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(repositoryObj), repositoryObj)
+				return errors.IsNotFound(err)
+			}, "15s").WithContext(ctx).Should(BeTrue())
+
+			By("ensuring no components are left")
+			Eventually(func(g Gomega, ctx SpecContext) {
+				components := &v1alpha1.ComponentList{}
+				g.Expect(k8sClient.List(ctx, components, client.InNamespace(namespace.GetName()))).To(Succeed())
+				g.Expect(components.Items).To(HaveLen(0))
+			}, "15s").WithContext(ctx).Should(Succeed())
 		})
 
-		It("component resolves and propagates config from repository", func() {
+		It("component resolves and propagates config from repository", func(ctx SpecContext) {
 			By("creating a component")
 			component := &v1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: Namespace,
-					Name:      fmt.Sprintf("%s-%d", ComponentObj, testNumber),
+					Namespace: namespace.GetName(),
+					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
 					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: Namespace,
-						Name:      repositoryName,
+						Namespace: namespace.GetName(),
+						Name:      repositoryObj.GetName(),
 					},
 					Component: Component,
 					Semver:    "1.0.0",
@@ -573,8 +650,8 @@ var _ = Describe("Component Controller", func() {
 							NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 								APIVersion: v1alpha1.GroupVersion.String(),
 								Kind:       v1alpha1.KindOCMRepository,
-								Name:       repositoryName,
-								Namespace:  Namespace,
+								Namespace:  namespace.GetName(),
+								Name:       repositoryObj.GetName(),
 							},
 							Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
 						},
@@ -585,6 +662,11 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
+			By("checking that the component has been reconciled successfully")
+			waitUntilComponentIsReady(ctx, component, "1.0.0")
+			validateArtifact(ctx, component, env, ctfpath)
+
+			By("checking component's effective OCM config")
 			Eventually(komega.Object(component), "15s").Should(
 				HaveField("Status.EffectiveOCMConfig", ConsistOf(
 					v1alpha1.OCMConfiguration{
@@ -605,12 +687,61 @@ var _ = Describe("Component Controller", func() {
 						},
 						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
 					},
-				)))
+				)),
+			)
+
+			By("delete resources manually")
+			deleteComponent(ctx, component)
 		})
 	})
 })
 
-func createTestConfigsAndSecrets(ctx context.Context) (configs []*corev1.ConfigMap, secrets []*corev1.Secret) {
+func waitUntilComponentIsReady(ctx context.Context, component *v1alpha1.Component, expectedVersion string) {
+	GinkgoHelper()
+	Eventually(func(g Gomega, ctx context.Context) bool {
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+		if err != nil {
+			return false
+		}
+		g.Expect(component).Should(HaveField("Status.Component.Version", expectedVersion))
+
+		return conditions.IsReady(component)
+	}, "15s").WithContext(ctx).Should(BeTrue())
+}
+
+func validateArtifact(ctx context.Context, component *v1alpha1.Component, env *Builder, ctfPath string) {
+	GinkgoHelper()
+
+	By("checking that component has a reference to OCI artifact")
+	Eventually(komega.Object(component), "15s").Should(
+		HaveField("Status.OCIArtifact", Not(BeNil())))
+
+	By("checking that the OCI artifact contains the correct content")
+	ociRepo := Must(registry.NewRepository(ctx, component.GetOCIRepository()))
+	componentContent := Must(ociRepo.FetchArtifact(ctx, component.GetManifestDigest()))
+
+	descriptors := &ocm.Descriptors{}
+	MustBeSuccessful(yaml.Unmarshal(componentContent, descriptors))
+	ctfRepo := Must(ctf.Open(env, accessobj.ACC_WRITABLE, ctfPath, vfs.FileMode(vfs.O_RDWR), env))
+	cv := Must(ctfRepo.LookupComponentVersion(component.Status.Component.Component, component.Status.Component.Version))
+	expectedDescriptors := Must(ocm.ListComponentDescriptors(ctx, cv, ctfRepo))
+	Expect(descriptors).To(YAMLEqual(expectedDescriptors))
+}
+
+func deleteComponent(ctx context.Context, component *v1alpha1.Component) {
+	GinkgoHelper()
+
+	Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+
+	Eventually(func(ctx context.Context) bool {
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+		return errors.IsNotFound(err)
+	}, "15s").WithContext(ctx).Should(BeTrue())
+
+	test.ExpectArtifactToNotExist(ctx, registry, component.GetOCIArtifact())
+}
+
+func createTestConfigsAndSecrets(ctx context.Context, namespace string) (configs []*corev1.ConfigMap, secrets []*corev1.Secret) {
 	const (
 		Config1 = "config1"
 		Config2 = "config2"
@@ -624,7 +755,7 @@ func createTestConfigsAndSecrets(ctx context.Context) (configs []*corev1.ConfigM
 	By("setup configs")
 	config1 := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: Namespace,
+			Namespace: namespace,
 			Name:      Config1,
 		},
 		Data: map[string]string{
@@ -653,7 +784,7 @@ sets:
 
 	config2 := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: Namespace,
+			Namespace: namespace,
 			Name:      Config2,
 		},
 		Data: map[string]string{
@@ -682,7 +813,7 @@ sets:
 
 	config3 := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: Namespace,
+			Namespace: namespace,
 			Name:      Config3,
 		},
 		Data: map[string]string{
@@ -712,7 +843,7 @@ sets:
 	By("setup secrets")
 	secret1 := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: Namespace,
+			Namespace: namespace,
 			Name:      Secret1,
 		},
 		Data: map[string][]byte{
@@ -736,7 +867,7 @@ consumers:
 
 	secret2 := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: Namespace,
+			Namespace: namespace,
 			Name:      Secret2,
 		},
 		Data: map[string][]byte{
@@ -760,7 +891,7 @@ consumers:
 
 	secret3 := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: Namespace,
+			Namespace: namespace,
 			Name:      Secret3,
 		},
 		Data: map[string][]byte{
