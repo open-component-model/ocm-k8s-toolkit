@@ -178,6 +178,7 @@ var _ = Describe("ConfiguredResource Controller", func() {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(configuredResource), configuredResource)
 			return errors.IsNotFound(err)
 		}, "15s").WithContext(ctx).Should(BeTrue())
+		test.ExpectArtifactToNotExist(ctx, registry, configuredResource.GetOCIArtifact())
 
 		Expect(k8sClient.Delete(ctx, &cfg)).To(Succeed())
 		Eventually(func(ctx context.Context) bool {
