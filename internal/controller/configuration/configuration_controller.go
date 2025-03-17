@@ -25,6 +25,7 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -93,7 +94,25 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	if configuration.GetDeletionTimestamp() != nil {
+		if err := ociartifact.DeleteForObject(ctx, r.Registry, configuration); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		if updated := controllerutil.RemoveFinalizer(configuration, v1alpha1.ArtifactFinalizer); updated {
+			if err := r.Update(ctx, configuration); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
+			}
+		}
+
 		logger.Info("configuration is being deleted and cannot be used", "name", configuration.Name)
+
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	if updated := controllerutil.AddFinalizer(configuration, v1alpha1.ArtifactFinalizer); updated {
+		if err := r.Update(ctx, configuration); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
+		}
 
 		return ctrl.Result{Requeue: true}, nil
 	}
@@ -231,6 +250,14 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.ConfigurationFailedReason, err.Error())
 
 			return ctrl.Result{}, fmt.Errorf("failed to configure: %w", err)
+		}
+
+		// Delete previous artifact version, if any.
+		err = ociartifact.DeleteIfDigestMismatch(ctx, r.Registry, configuration, manifestDigest)
+		if err != nil {
+			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.DeleteOCIArtifactFailedReason, err.Error())
+
+			return ctrl.Result{}, err
 		}
 
 		// We use the combinedDigest calculated above for the blob-info combinedDigest, so we can compare for any changes
