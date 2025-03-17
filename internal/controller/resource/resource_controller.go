@@ -426,7 +426,8 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		return ctrl.Result{}, fmt.Errorf("failed to set resource status: %w", err)
 	}
 
-	status.MarkReady(r.EventRecorder, resource, "Applied version %s", resourceAccess.Meta().Version)
+	status.MarkReady(r.EventRecorder, resource, "Applied version %s", tag)
+	logger.Info("resource is ready", "name", resource.GetName())
 
 	return ctrl.Result{RequeueAfter: resource.GetRequeueAfter()}, nil
 }

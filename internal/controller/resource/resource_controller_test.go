@@ -64,9 +64,9 @@ import (
 const (
 	CTFPath          = "ocm-k8s-ctfstore--*"
 	RepositoryObj    = "test-repository"
-	Component        = "ocm.software/test-component"
-	ComponentVersion = "1.0.0"
+	ComponentObj     = "test-component"
 	ResourceObj      = "test-resource"
+	ComponentVersion = "1.0.0"
 	ResourceVersion  = "1.0.0"
 	ResourceContent  = "some important content"
 )
@@ -78,12 +78,12 @@ var _ = Describe("Resource Controller", func() {
 	)
 
 	Context("resource controller", func() {
-		var componentName string
+		var componentName, resourceName string
 		var componentObj *v1alpha1.Component
 		var namespace *corev1.Namespace
 
 		BeforeEach(func(ctx SpecContext) {
-			namespaceName := test.GenerateNamespace(ctx.SpecReport().LeafNodeText)
+			namespaceName := test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
 			namespace = &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: namespaceName,
@@ -91,7 +91,8 @@ var _ = Describe("Resource Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 
-			componentName = test.GenerateComponentName(ctx.SpecReport().LeafNodeText)
+			componentName = "ocm.software/component-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
+			resourceName = "resource-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
 
 			resourceLocalPath = Must(os.MkdirTemp("", CTFPath))
 			DeferCleanup(func() error {
@@ -123,9 +124,9 @@ var _ = Describe("Resource Controller", func() {
 
 				By("creating an ocm resource from a plain text")
 				env.OCMCommonTransport(resourceLocalPath, accessio.FormatDirectory, func() {
-					env.Component(Component, func() {
+					env.Component(componentName, func() {
 						env.Version(ComponentVersion, func() {
-							env.Resource(ResourceObj, ResourceVersion, resourceType, v1.LocalRelation, func() {
+							env.Resource(resourceName, ResourceVersion, resourceType, v1.LocalRelation, func() {
 								env.BlobData(mime.MIME_TEXT, []byte(ResourceContent))
 							})
 						})
@@ -134,7 +135,7 @@ var _ = Describe("Resource Controller", func() {
 
 				repo, err := ctf.Open(env, accessobj.ACC_WRITABLE, resourceLocalPath, vfs.FileMode(vfs.O_RDWR), env)
 				Expect(err).NotTo(HaveOccurred())
-				cv, err := repo.LookupComponentVersion(Component, ComponentVersion)
+				cv, err := repo.LookupComponentVersion(componentName, ComponentVersion)
 				Expect(err).NotTo(HaveOccurred())
 				cd, err := ocmPkg.ListComponentDescriptors(ctx, cv, repo)
 				Expect(err).NotTo(HaveOccurred())
@@ -145,12 +146,12 @@ var _ = Describe("Resource Controller", func() {
 				specData, err := spec.MarshalJSON()
 
 				By("creating a mocked component")
-				componentObj = test.SetupComponentWithDescriptorList(ctx, componentName, namespace.GetName(), dataCds, &test.MockComponentOptions{
+				componentObj = test.SetupComponentWithDescriptorList(ctx, ComponentObj, namespace.GetName(), dataCds, &test.MockComponentOptions{
 					Registry: registry,
 					Client:   k8sClient,
 					Recorder: recorder,
 					Info: v1alpha1.ComponentInfo{
-						Component:      Component,
+						Component:      componentName,
 						Version:        ComponentVersion,
 						RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
 					},
@@ -165,11 +166,11 @@ var _ = Describe("Resource Controller", func() {
 					},
 					Spec: v1alpha1.ResourceSpec{
 						ComponentRef: corev1.LocalObjectReference{
-							Name: componentName,
+							Name: ComponentObj,
 						},
 						Resource: v1alpha1.ResourceID{
 							ByReference: v1alpha1.ResourceReference{
-								Resource: v1.NewIdentity(ResourceObj),
+								Resource: v1.NewIdentity(resourceName),
 							},
 						},
 					},
@@ -178,11 +179,11 @@ var _ = Describe("Resource Controller", func() {
 
 				By("checking that the resource has been reconciled successfully")
 				waitUntilResourceIsReady(ctx, resource)
-				Expect(resource).To(HaveField("Status.Resource.Name", Equal(ResourceObj)))
+				Expect(resource).To(HaveField("Status.Resource.Name", Equal(resourceName)))
 				Expect(resource).To(HaveField("Status.Resource.Type", Equal(resourceType)))
 				Expect(resource).To(HaveField("Status.Resource.Version", Equal(ResourceVersion)))
 
-				resourceAcc, err := cv.GetResource(v1.NewIdentity(ResourceObj))
+				resourceAcc, err := cv.GetResource(v1.NewIdentity(resourceName))
 				Expect(err).NotTo(HaveOccurred())
 				validateArtifact(ctx, resource, resourceAcc, ResourceVersion, ResourceContent)
 
@@ -200,9 +201,9 @@ var _ = Describe("Resource Controller", func() {
 
 				By("creating an ocm resource from a plain text")
 				env.OCMCommonTransport(resourceLocalPath, accessio.FormatDirectory, func() {
-					env.Component(Component, func() {
+					env.Component(componentName, func() {
 						env.Version(ComponentVersion, func() {
-							env.Resource(ResourceObj, ResourceVersion, resourceType, v1.LocalRelation, func() {
+							env.Resource(resourceName, ResourceVersion, resourceType, v1.LocalRelation, func() {
 								env.BlobData(mime.MIME_TEXT, resourceContentCompressed)
 							})
 						})
@@ -211,7 +212,7 @@ var _ = Describe("Resource Controller", func() {
 
 				repo, err := ctf.Open(env, accessobj.ACC_WRITABLE, resourceLocalPath, vfs.FileMode(vfs.O_RDWR), env)
 				Expect(err).NotTo(HaveOccurred())
-				cv, err := repo.LookupComponentVersion(Component, ComponentVersion)
+				cv, err := repo.LookupComponentVersion(componentName, ComponentVersion)
 				Expect(err).NotTo(HaveOccurred())
 				cd, err := ocmPkg.ListComponentDescriptors(ctx, cv, repo)
 				Expect(err).NotTo(HaveOccurred())
@@ -222,12 +223,12 @@ var _ = Describe("Resource Controller", func() {
 				specData, err := spec.MarshalJSON()
 
 				By("creating a mocked component")
-				componentObj = test.SetupComponentWithDescriptorList(ctx, componentName, namespace.GetName(), dataCds, &test.MockComponentOptions{
+				componentObj = test.SetupComponentWithDescriptorList(ctx, ComponentObj, namespace.GetName(), dataCds, &test.MockComponentOptions{
 					Registry: registry,
 					Client:   k8sClient,
 					Recorder: recorder,
 					Info: v1alpha1.ComponentInfo{
-						Component:      Component,
+						Component:      componentName,
 						Version:        ComponentVersion,
 						RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
 					},
@@ -242,11 +243,11 @@ var _ = Describe("Resource Controller", func() {
 					},
 					Spec: v1alpha1.ResourceSpec{
 						ComponentRef: corev1.LocalObjectReference{
-							Name: componentName,
+							Name: ComponentObj,
 						},
 						Resource: v1alpha1.ResourceID{
 							ByReference: v1alpha1.ResourceReference{
-								Resource: v1.NewIdentity(ResourceObj),
+								Resource: v1.NewIdentity(resourceName),
 							},
 						},
 					},
@@ -255,11 +256,11 @@ var _ = Describe("Resource Controller", func() {
 
 				By("checking that the resource has been reconciled successfully")
 				waitUntilResourceIsReady(ctx, resource)
-				Expect(resource).To(HaveField("Status.Resource.Name", Equal(ResourceObj)))
+				Expect(resource).To(HaveField("Status.Resource.Name", Equal(resourceName)))
 				Expect(resource).To(HaveField("Status.Resource.Type", Equal(resourceType)))
 				Expect(resource).To(HaveField("Status.Resource.Version", Equal(ResourceVersion)))
 
-				resourceAcc, err := cv.GetResource(v1.NewIdentity(ResourceObj))
+				resourceAcc, err := cv.GetResource(v1.NewIdentity(resourceName))
 				Expect(err).NotTo(HaveOccurred())
 				validateArtifact(ctx, resource, resourceAcc, ResourceVersion, ResourceContent)
 
@@ -271,7 +272,7 @@ var _ = Describe("Resource Controller", func() {
 				resourceType := artifacttypes.OCI_ARTIFACT
 
 				By("creating an OCI artifact")
-				repository, err := registry.NewRepository(ctx, ResourceObj)
+				repository, err := registry.NewRepository(ctx, resourceName)
 				Expect(err).NotTo(HaveOccurred())
 				contentCompressed, err := compression.AutoCompressAsGzip(ctx, []byte(ResourceContent))
 				Expect(err).ToNot(HaveOccurred())
@@ -283,9 +284,9 @@ var _ = Describe("Resource Controller", func() {
 
 				By("creating an ocm resource from an OCI artifact")
 				env.OCMCommonTransport(resourceLocalPath, accessio.FormatDirectory, func() {
-					env.Component(Component, func() {
+					env.Component(componentName, func() {
 						env.Version(ComponentVersion, func() {
-							env.Resource(ResourceObj, ResourceVersion, resourceType, v1.LocalRelation, func() {
+							env.Resource(resourceName, ResourceVersion, resourceType, v1.LocalRelation, func() {
 								env.Access(ocmociartifact.New(fmt.Sprintf("http://%s/%s:%s", repository.GetHost(), repository.GetName(), ResourceVersion)))
 							})
 						})
@@ -294,7 +295,7 @@ var _ = Describe("Resource Controller", func() {
 
 				repo, err := ctf.Open(env, accessobj.ACC_WRITABLE, resourceLocalPath, vfs.FileMode(vfs.O_RDWR), env)
 				Expect(err).NotTo(HaveOccurred())
-				cv, err := repo.LookupComponentVersion(Component, ComponentVersion)
+				cv, err := repo.LookupComponentVersion(componentName, ComponentVersion)
 				Expect(err).NotTo(HaveOccurred())
 				cd, err := ocmPkg.ListComponentDescriptors(ctx, cv, repo)
 				Expect(err).NotTo(HaveOccurred())
@@ -306,12 +307,12 @@ var _ = Describe("Resource Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				By("creating a mocked component")
-				componentObj = test.SetupComponentWithDescriptorList(ctx, componentName, namespace.GetName(), dataCds, &test.MockComponentOptions{
+				componentObj = test.SetupComponentWithDescriptorList(ctx, ComponentObj, namespace.GetName(), dataCds, &test.MockComponentOptions{
 					Registry: registry,
 					Client:   k8sClient,
 					Recorder: recorder,
 					Info: v1alpha1.ComponentInfo{
-						Component:      Component,
+						Component:      componentName,
 						Version:        ComponentVersion,
 						RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
 					},
@@ -326,11 +327,11 @@ var _ = Describe("Resource Controller", func() {
 					},
 					Spec: v1alpha1.ResourceSpec{
 						ComponentRef: corev1.LocalObjectReference{
-							Name: componentName,
+							Name: ComponentObj,
 						},
 						Resource: v1alpha1.ResourceID{
 							ByReference: v1alpha1.ResourceReference{
-								Resource: v1.NewIdentity(ResourceObj),
+								Resource: v1.NewIdentity(resourceName),
 							},
 						},
 					},
@@ -339,11 +340,11 @@ var _ = Describe("Resource Controller", func() {
 
 				By("checking that the resource has been reconciled successfully")
 				waitUntilResourceIsReady(ctx, resource)
-				Expect(resource).To(HaveField("Status.Resource.Name", Equal(ResourceObj)))
+				Expect(resource).To(HaveField("Status.Resource.Name", Equal(resourceName)))
 				Expect(resource).To(HaveField("Status.Resource.Type", Equal(resourceType)))
 				Expect(resource).To(HaveField("Status.Resource.Version", Equal(ResourceVersion)))
 
-				resourceAcc, err := cv.GetResource(v1.NewIdentity(ResourceObj))
+				resourceAcc, err := cv.GetResource(v1.NewIdentity(resourceName))
 				Expect(err).NotTo(HaveOccurred())
 				validateArtifact(ctx, resource, resourceAcc, ResourceVersion, ResourceContent)
 
@@ -358,9 +359,9 @@ var _ = Describe("Resource Controller", func() {
 
 				By("creating an ocm resource from a plain text")
 				env.OCMCommonTransport(resourceLocalPath, accessio.FormatDirectory, func() {
-					env.Component(Component, func() {
+					env.Component(componentName, func() {
 						env.Version(ComponentVersion, func() {
-							env.Resource(ResourceObj, resourceVersionPlus, resourceType, v1.LocalRelation, func() {
+							env.Resource(resourceName, resourceVersionPlus, resourceType, v1.LocalRelation, func() {
 								env.BlobData(mime.MIME_TEXT, []byte(ResourceContent))
 							})
 						})
@@ -369,7 +370,7 @@ var _ = Describe("Resource Controller", func() {
 
 				repo, err := ctf.Open(env, accessobj.ACC_WRITABLE, resourceLocalPath, vfs.FileMode(vfs.O_RDWR), env)
 				Expect(err).NotTo(HaveOccurred())
-				cv, err := repo.LookupComponentVersion(Component, ComponentVersion)
+				cv, err := repo.LookupComponentVersion(componentName, ComponentVersion)
 				Expect(err).NotTo(HaveOccurred())
 				cd, err := ocmPkg.ListComponentDescriptors(ctx, cv, repo)
 				Expect(err).NotTo(HaveOccurred())
@@ -380,12 +381,12 @@ var _ = Describe("Resource Controller", func() {
 				specData, err := spec.MarshalJSON()
 
 				By("creating a mocked component")
-				componentObj = test.SetupComponentWithDescriptorList(ctx, componentName, namespace.GetName(), dataCds, &test.MockComponentOptions{
+				componentObj = test.SetupComponentWithDescriptorList(ctx, ComponentObj, namespace.GetName(), dataCds, &test.MockComponentOptions{
 					Registry: registry,
 					Client:   k8sClient,
 					Recorder: recorder,
 					Info: v1alpha1.ComponentInfo{
-						Component:      Component,
+						Component:      componentName,
 						Version:        ComponentVersion,
 						RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
 					},
@@ -400,11 +401,11 @@ var _ = Describe("Resource Controller", func() {
 					},
 					Spec: v1alpha1.ResourceSpec{
 						ComponentRef: corev1.LocalObjectReference{
-							Name: componentName,
+							Name: ComponentObj,
 						},
 						Resource: v1alpha1.ResourceID{
 							ByReference: v1alpha1.ResourceReference{
-								Resource: v1.NewIdentity(ResourceObj),
+								Resource: v1.NewIdentity(resourceName),
 							},
 						},
 					},
@@ -413,11 +414,11 @@ var _ = Describe("Resource Controller", func() {
 
 				By("checking that the resource has been reconciled successfully")
 				waitUntilResourceIsReady(ctx, resource)
-				Expect(resource).To(HaveField("Status.Resource.Name", Equal(ResourceObj)))
+				Expect(resource).To(HaveField("Status.Resource.Name", Equal(resourceName)))
 				Expect(resource).To(HaveField("Status.Resource.Type", Equal(resourceType)))
 				Expect(resource).To(HaveField("Status.Resource.Version", Equal(resourceVersionPlus)))
 
-				resourceAcc, err := cv.GetResource(v1.NewIdentity(ResourceObj))
+				resourceAcc, err := cv.GetResource(v1.NewIdentity(resourceName))
 				Expect(err).NotTo(HaveOccurred())
 				validateArtifact(ctx, resource, resourceAcc, expectedBlobTag, ResourceContent)
 
@@ -430,9 +431,9 @@ var _ = Describe("Resource Controller", func() {
 
 				By("creating an ocm resource from a plain text")
 				env.OCMCommonTransport(resourceLocalPath, accessio.FormatDirectory, func() {
-					env.Component(Component, func() {
+					env.Component(componentName, func() {
 						env.Version(ComponentVersion, func() {
-							env.Resource(ResourceObj, ResourceVersion, resourceType, v1.LocalRelation, func() {
+							env.Resource(resourceName, ResourceVersion, resourceType, v1.LocalRelation, func() {
 								env.BlobData(mime.MIME_TEXT, []byte(ResourceContent))
 							})
 						})
@@ -441,7 +442,7 @@ var _ = Describe("Resource Controller", func() {
 
 				repo, err := ctf.Open(env, accessobj.ACC_WRITABLE, resourceLocalPath, vfs.FileMode(vfs.O_RDWR), env)
 				Expect(err).NotTo(HaveOccurred())
-				cv, err := repo.LookupComponentVersion(Component, ComponentVersion)
+				cv, err := repo.LookupComponentVersion(componentName, ComponentVersion)
 				Expect(err).NotTo(HaveOccurred())
 				cd, err := ocmPkg.ListComponentDescriptors(ctx, cv, repo)
 				Expect(err).NotTo(HaveOccurred())
@@ -452,12 +453,12 @@ var _ = Describe("Resource Controller", func() {
 				specData, err := spec.MarshalJSON()
 
 				By("creating a mocked component")
-				componentObj = test.SetupComponentWithDescriptorList(ctx, componentName, namespace.GetName(), dataCds, &test.MockComponentOptions{
+				componentObj = test.SetupComponentWithDescriptorList(ctx, ComponentObj, namespace.GetName(), dataCds, &test.MockComponentOptions{
 					Registry: registry,
 					Client:   k8sClient,
 					Recorder: recorder,
 					Info: v1alpha1.ComponentInfo{
-						Component:      Component,
+						Component:      componentName,
 						Version:        ComponentVersion,
 						RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
 					},
@@ -472,11 +473,11 @@ var _ = Describe("Resource Controller", func() {
 					},
 					Spec: v1alpha1.ResourceSpec{
 						ComponentRef: corev1.LocalObjectReference{
-							Name: componentName,
+							Name: ComponentObj,
 						},
 						Resource: v1alpha1.ResourceID{
 							ByReference: v1alpha1.ResourceReference{
-								Resource: v1.NewIdentity(ResourceObj),
+								Resource: v1.NewIdentity(resourceName),
 							},
 						},
 					},
@@ -485,11 +486,11 @@ var _ = Describe("Resource Controller", func() {
 
 				By("checking that the resource has been reconciled successfully")
 				waitUntilResourceIsReady(ctx, resource)
-				Expect(resource).To(HaveField("Status.Resource.Name", Equal(ResourceObj)))
+				Expect(resource).To(HaveField("Status.Resource.Name", Equal(resourceName)))
 				Expect(resource).To(HaveField("Status.Resource.Type", Equal(resourceType)))
 				Expect(resource).To(HaveField("Status.Resource.Version", Equal(ResourceVersion)))
 
-				resourceAcc, err := cv.GetResource(v1.NewIdentity(ResourceObj))
+				resourceAcc, err := cv.GetResource(v1.NewIdentity(resourceName))
 				Expect(err).NotTo(HaveOccurred())
 				validateArtifact(ctx, resource, resourceAcc, ResourceVersion, ResourceContent)
 
@@ -502,16 +503,16 @@ var _ = Describe("Resource Controller", func() {
 				const ResourceVersionNew = "1.0.1-resource"
 				const ResourceContentNew = "another important content"
 				env.OCMCommonTransport(resourceLocalPath, accessio.FormatDirectory, func() {
-					env.Component(Component, func() {
+					env.Component(componentName, func() {
 						env.Version(ComponentVersion, func() {
-							env.Resource(ResourceObj, ResourceVersion, resourceType, v1.LocalRelation, func() {
+							env.Resource(resourceName, ResourceVersion, resourceType, v1.LocalRelation, func() {
 								env.BlobData(mime.MIME_TEXT, []byte(ResourceContent))
 							})
 						})
 					})
-					env.Component(Component, func() {
+					env.Component(componentName, func() {
 						env.Version(ComponentVersionNew, func() {
-							env.Resource(ResourceObj, ResourceVersionNew, resourceType, v1.LocalRelation, func() {
+							env.Resource(resourceName, ResourceVersionNew, resourceType, v1.LocalRelation, func() {
 								env.BlobData(mime.MIME_TEXT, []byte(ResourceContentNew))
 							})
 						})
@@ -521,7 +522,7 @@ var _ = Describe("Resource Controller", func() {
 				By("getting new component descriptors")
 				repo, err = ctf.Open(env, accessobj.ACC_WRITABLE, resourceLocalPath, vfs.FileMode(vfs.O_RDWR), env)
 				Expect(err).NotTo(HaveOccurred())
-				cv, err = repo.LookupComponentVersion(Component, ComponentVersionNew)
+				cv, err = repo.LookupComponentVersion(componentName, ComponentVersionNew)
 				Expect(err).NotTo(HaveOccurred())
 				cd, err = ocmPkg.ListComponentDescriptors(ctx, cv, repo)
 				Expect(err).NotTo(HaveOccurred())
@@ -529,7 +530,7 @@ var _ = Describe("Resource Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				By("uploading new component descriptors as OCI artifact")
-				repositoryName, err := toolkitociartifact.CreateRepositoryName(RepositoryObj, Component)
+				repositoryName, err := toolkitociartifact.CreateRepositoryName(RepositoryObj, componentName)
 				Expect(err).ToNot(HaveOccurred())
 				repository, err := registry.NewRepository(ctx, repositoryName)
 				Expect(err).ToNot(HaveOccurred())
@@ -556,7 +557,7 @@ var _ = Describe("Resource Controller", func() {
 						Size:   int64(len(dataCds)),
 					},
 				}
-				componentObj.Status.Component.Component = Component
+				componentObj.Status.Component.Component = componentName
 				componentObj.Status.Component.Version = ComponentVersionNew
 				componentObj.Status.Component.RepositorySpec = &apiextensionsv1.JSON{Raw: specData}
 				Expect(k8sClient.Status().Update(ctx, componentObj)).To(Succeed())
@@ -594,7 +595,7 @@ var _ = Describe("Resource Controller", func() {
 					return conditions.IsReady(resource)
 				}, "15s").WithContext(ctx).Should(BeTrue())
 
-				resourceAcc, err = cv.GetResource(v1.NewIdentity(ResourceObj))
+				resourceAcc, err = cv.GetResource(v1.NewIdentity(resourceName))
 				Expect(err).NotTo(HaveOccurred())
 				validateArtifact(ctx, resource, resourceAcc, ResourceVersionNew, ResourceContentNew)
 
@@ -648,13 +649,17 @@ func validateArtifact(ctx context.Context, resource *v1alpha1.Resource, resource
 
 func waitUntilResourceIsReady(ctx context.Context, resource *v1alpha1.Resource) {
 	GinkgoHelper()
-	Eventually(func(g Gomega, ctx context.Context) bool {
+	Eventually(func(g Gomega, ctx context.Context) error {
 		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)
 		if err != nil {
-			return false
+			return err
 		}
 		g.Expect(resource).Should(HaveField("Status.Resource", Not(BeNil())))
 
-		return conditions.IsReady(resource)
-	}, "15s").WithContext(ctx).Should(BeTrue())
+		if !conditions.IsReady(resource) {
+			return fmt.Errorf("resource %s is not ready", resource.Name)
+		}
+
+		return nil
+	}, "5m").WithContext(ctx).Should(Succeed())
 }

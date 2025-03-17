@@ -2,7 +2,6 @@ package test
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	//nolint:revive,stylecheck // dot import necessary for Ginkgo DSL
@@ -76,14 +75,4 @@ func SetupComponentWithDescriptorList(
 	}).WithContext(ctx).Should(Succeed())
 
 	return component
-}
-
-func GenerateComponentName(testName string) string {
-	replaced := strings.ToLower(strings.ReplaceAll(testName, " ", "-"))
-	maxLength := 63 // RFC 1123 Label Names
-	if len(replaced) > maxLength {
-		return replaced[:maxLength]
-	}
-
-	return replaced
 }

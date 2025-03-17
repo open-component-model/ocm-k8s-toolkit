@@ -22,7 +22,6 @@ import (
 	"runtime"
 	"testing"
 
-	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -106,21 +105,33 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	recorder = &record.FakeRecorder{
-		Events:        make(chan string, 32),
-		IncludeObject: true,
-	}
-
 	// Setup zot registry and start it up
-	zotRootDir = Must(os.MkdirTemp("", ""))
+	zotRootDir, err = os.MkdirTemp("", "")
+	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(func() {
 		Expect(os.RemoveAll(zotRootDir)).To(Succeed())
 	})
 
 	zotCmd, registry = test.SetupRegistry(filepath.Join("..", "..", "..", "bin", "zot-registry"), zotRootDir, "0.0.0.0", "8081")
 
+	events := make(chan string)
+	recorder = &record.FakeRecorder{
+		Events:        events,
+		IncludeObject: true,
+	}
 	ctx, cancel = context.WithCancel(context.Background())
 	DeferCleanup(cancel)
+
+	go func() {
+		for {
+			select {
+			case event := <-events:
+				GinkgoLogr.Info("Event received", "event", event)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
 	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{

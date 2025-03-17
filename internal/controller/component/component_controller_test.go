@@ -85,7 +85,7 @@ var _ = Describe("Component Controller", func() {
 			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
 			specdata := Must(spec.MarshalJSON())
 
-			namespaceName := test.GenerateNamespace(ctx.SpecReport().LeafNodeText)
+			namespaceName := test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
 			namespace = &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: namespaceName,
@@ -473,7 +473,7 @@ var _ = Describe("Component Controller", func() {
 			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
 			specdata := Must(spec.MarshalJSON())
 
-			namespaceName := test.GenerateNamespace(ctx.SpecReport().LeafNodeText)
+			namespaceName := test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
 			namespace = &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: namespaceName,
