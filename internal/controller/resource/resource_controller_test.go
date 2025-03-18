@@ -859,6 +859,7 @@ var _ = Describe("Resource Controller", func() {
 
 					g.Expect(resource).Should(HaveField("Status.Conditions", Not(BeNil())))
 					g.Expect(conditions.IsReady(resource)).Should(BeFalse())
+					g.Expect(conditions.GetReason(resource, "Ready")).Should(Equal(v1alpha1.FetchOCIArtifactFailedReason))
 
 					return nil
 				}, "15s").WithContext(ctx).Should(Succeed())
