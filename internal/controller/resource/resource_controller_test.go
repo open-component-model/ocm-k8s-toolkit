@@ -715,6 +715,160 @@ var _ = Describe("Resource Controller", func() {
 				By("delete resource manually")
 				deleteResource(ctx, resource)
 			})
+
+			It("does not reconcile if component is not ready", func() {
+				By("creating a mocked component")
+				componentObj = &v1alpha1.Component{
+					ObjectMeta: k8smetav1.ObjectMeta{
+						Namespace: namespace.GetName(),
+						Name:      ComponentObj,
+					},
+					Spec: v1alpha1.ComponentSpec{
+						Component:     componentName,
+						Semver:        ComponentVersion,
+						RepositoryRef: v1alpha1.ObjectKey{Name: RepositoryObj, Namespace: namespace.GetName()},
+					},
+				}
+				Expect(k8sClient.Create(ctx, componentObj)).To(Succeed())
+
+				By("creating a resource object")
+				resource := &v1alpha1.Resource{
+					ObjectMeta: k8smetav1.ObjectMeta{
+						Namespace: namespace.GetName(),
+						Name:      ResourceObj,
+					},
+					Spec: v1alpha1.ResourceSpec{
+						ComponentRef: corev1.LocalObjectReference{
+							Name: ComponentObj,
+						},
+						Resource: v1alpha1.ResourceID{
+							ByReference: v1alpha1.ResourceReference{
+								Resource: v1.NewIdentity(resourceName),
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+
+				By("resource reconciliation is not successful, if component is not ready")
+				Eventually(func(g Gomega, ctx context.Context) error {
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(componentObj), componentObj)
+					if err != nil {
+						return err
+					}
+					err = k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)
+					if err != nil {
+						return err
+					}
+
+					g.Expect(conditions.IsReady(componentObj)).Should(BeFalse())
+
+					g.Expect(resource).Should(HaveField("Status.Conditions", Not(BeNil())))
+					g.Expect(conditions.IsReady(resource)).Should(BeFalse())
+
+					return nil
+				}, "15s").WithContext(ctx).Should(Succeed())
+
+				Expect(resource).To(HaveField("Status.Resource", BeNil()))
+				Expect(resource).To(HaveField("Status.OCIArtifact", BeNil()))
+
+				By("delete resource manually")
+				deleteResource(ctx, resource)
+			})
+
+			It("does not reconcile if component descriptor is cannot be fetched", func() {
+				resourceType := artifacttypes.PLAIN_TEXT
+
+				resourceContentCompressed, err := compression.AutoCompressAsGzip(ctx, []byte(ResourceContent))
+				Expect(err).NotTo(HaveOccurred())
+
+				By("creating an ocm resource from a plain text")
+				env.OCMCommonTransport(resourceLocalPath, accessio.FormatDirectory, func() {
+					env.Component(componentName, func() {
+						env.Version(ComponentVersion, func() {
+							env.Resource(resourceName, ResourceVersion, resourceType, v1.LocalRelation, func() {
+								env.BlobData(mime.MIME_TEXT, resourceContentCompressed)
+							})
+						})
+					})
+				})
+
+				repo, err := ctf.Open(env, accessobj.ACC_WRITABLE, resourceLocalPath, vfs.FileMode(vfs.O_RDWR), env)
+				Expect(err).NotTo(HaveOccurred())
+				cv, err := repo.LookupComponentVersion(componentName, ComponentVersion)
+				Expect(err).NotTo(HaveOccurred())
+				cd, err := ocmPkg.ListComponentDescriptors(ctx, cv, repo)
+				Expect(err).NotTo(HaveOccurred())
+				dataCds, err := yaml.Marshal(cd)
+				Expect(err).NotTo(HaveOccurred())
+
+				spec, err := ctf.NewRepositorySpec(ctf.ACC_READONLY, resourceLocalPath)
+				specData, err := spec.MarshalJSON()
+
+				By("creating a mocked component")
+				componentObj = test.SetupComponentWithDescriptorList(ctx, ComponentObj, namespace.GetName(), dataCds, &test.MockComponentOptions{
+					Registry: registry,
+					Client:   k8sClient,
+					Recorder: recorder,
+					Info: v1alpha1.ComponentInfo{
+						Component:      componentName,
+						Version:        ComponentVersion,
+						RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
+					},
+					Repository: RepositoryObj,
+				})
+
+				By("simulating accidental removal of component's OCI artifact")
+				ociRepository, err := registry.NewRepository(ctx, componentObj.GetOCIRepository())
+				Expect(err).NotTo(HaveOccurred())
+				err = ociRepository.DeleteArtifact(ctx, componentObj.GetManifestDigest())
+				Expect(err).NotTo(HaveOccurred())
+
+				By("creating a resource object")
+				resource := &v1alpha1.Resource{
+					ObjectMeta: k8smetav1.ObjectMeta{
+						Namespace: namespace.GetName(),
+						Name:      ResourceObj,
+					},
+					Spec: v1alpha1.ResourceSpec{
+						ComponentRef: corev1.LocalObjectReference{
+							Name: ComponentObj,
+						},
+						Resource: v1alpha1.ResourceID{
+							ByReference: v1alpha1.ResourceReference{
+								Resource: v1.NewIdentity(resourceName),
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+
+				By("resource reconciliation is not successful, component OCIArtifact not available")
+				Eventually(func(g Gomega, ctx context.Context) error {
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(componentObj), componentObj)
+					if err != nil {
+						return err
+					}
+					err = k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)
+					if err != nil {
+						return err
+					}
+
+					g.Expect(conditions.IsReady(componentObj)).Should(BeTrue())
+					g.Expect(componentObj).Should(HaveField("Status.OCIArtifact", Not(BeNil())))
+
+					g.Expect(resource).Should(HaveField("Status.Conditions", Not(BeNil())))
+					g.Expect(conditions.IsReady(resource)).Should(BeFalse())
+
+					return nil
+				}, "15s").WithContext(ctx).Should(Succeed())
+
+				Expect(resource).To(HaveField("Status.Resource", BeNil()))
+				Expect(resource).To(HaveField("Status.OCIArtifact", BeNil()))
+
+				By("delete resource manually")
+				deleteResource(ctx, resource)
+			})
 		})
 	})
 })
@@ -771,5 +925,5 @@ func waitUntilResourceIsReady(ctx context.Context, resource *v1alpha1.Resource) 
 		}
 
 		return nil
-	}, "5m").WithContext(ctx).Should(Succeed())
+	}, "15s").WithContext(ctx).Should(Succeed())
 }
