@@ -744,11 +744,12 @@ func waitUntilComponentIsReady(ctx context.Context, component *v1alpha1.Componen
 		if err != nil {
 			return err
 		}
-		g.Expect(component).Should(HaveField("Status.Component.Version", expectedVersion))
 
 		if !conditions.IsReady(component) {
 			return fmt.Errorf("expected component %s to be ready", component.GetName())
 		}
+
+		g.Expect(component).Should(HaveField("Status.Component.Version", expectedVersion))
 
 		return nil
 	}, "15s").WithContext(ctx).Should(Succeed())
