@@ -313,6 +313,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	//   If so, we cannot not return immediately because we need to create a manifest-file to point to the already
 	//   present resource-layer. Otherwise the GC would delete the resource-layer if the previously present manifest
 	//   would be deleted.
+	// See also https://github.com/open-component-model/ocm-k8s-toolkit/issues/138
 
 	ociRepositoryName, err := ociartifact.CreateRepositoryName(
 		cv.GetName(),

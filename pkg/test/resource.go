@@ -74,6 +74,8 @@ func SetupMockResourceWithData(
 		Expect(err).ToNot(HaveOccurred())
 	}
 
+	// The resource controller takes the version/tag that is specified in the resource access metadata. Since we do not
+	// have a version/tag in the mock resource, we use a dummy version/tag.
 	version := "dummy"
 	repositoryName, err := ociartifact.CreateRepositoryName(options.ComponentRef.Name, name)
 	Expect(err).ToNot(HaveOccurred())

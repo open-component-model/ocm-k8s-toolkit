@@ -170,9 +170,10 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 
 	// TODO: we cannot use `combinedDigest` to determine a change as the combinedDigest calculation is incorrect
 	//   (it takes a k8s object with managed fields that change on every update).
+	// See https://github.com/open-component-model/ocm-k8s-toolkit/issues/150
 
-	// Check if an OCI artifact of the configuration resource already exists and if it holds the same calculated combinedDigest
-	// from above
+	// Check if an OCI artifact of the configuration resource already exists and if it holds the same calculated
+	// combinedDigest from above. If so, we can skip the configuration process as the target is already configured.
 	logger.V(1).Info("verifying configuration", "combinedDigest", combinedDigest, "revision", revision)
 
 	hasValidArtifact := false
@@ -191,6 +192,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 
 			return ctrl.Result{}, err
 		}
+
 		if exists {
 			hasValidArtifact = combinedDigest == configuration.GetBlobDigest()
 		}
@@ -244,6 +246,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		//  Things to consider:
 		//   - HelmRelease (FluxCD) requires the OCI artifact to have the same tag as the helm chart itself
 		//     - But how to get the helm chart version? (User input, parse from content)
+		// See https://github.com/open-component-model/ocm-k8s-toolkit/issues/151
 		tag := "dummy"
 		manifestDigest, err := repository.PushArtifact(ctx, tag, dataTGZ)
 		if err != nil {

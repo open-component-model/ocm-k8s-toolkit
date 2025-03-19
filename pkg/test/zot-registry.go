@@ -27,14 +27,15 @@ func SetupRegistry(binPath, rootDir, address, port string) (*exec.Cmd, *ociartif
 	Expect(err).NotTo(HaveOccurred())
 
 	// Start zot-registry
-	zotCmd := exec.Command(binPath, "serve", configFile)
+	zotCmd := exec.Command(binPath, "serve", configFile) // #nosec G204 -- This is only used for tests.
 	err = zotCmd.Start()
 	Expect(err).NotTo(HaveOccurred(), "Failed to start Zot")
 
 	// Wait for Zot to be ready
-	Eventually(func() error {
+	ctx := context.Background()
+	Eventually(func(ctx context.Context) error {
 		url := fmt.Sprintf("http://%s/v2/", net.JoinHostPort(address, port))
-		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
 			return err
 		}
@@ -50,7 +51,7 @@ func SetupRegistry(binPath, rootDir, address, port string) (*exec.Cmd, *ociartif
 		}
 
 		return nil
-	}, timeout).Should(Succeed(), "Zot registry did not start in time")
+	}, timeout).WithContext(ctx).Should(Succeed(), "Zot registry did not start in time")
 
 	registry, err := ociartifact.NewRegistry(fmt.Sprintf("%s:%s", address, port))
 	Expect(err).NotTo(HaveOccurred())

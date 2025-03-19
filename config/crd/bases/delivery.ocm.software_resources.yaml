@@ -271,17 +271,18 @@ spec:
                     description: Blob
                     properties:
                       digest:
-                        description: Digest is the digest of the blob in the form
-                          of '<algorithm>:<checksum>'.
+                        description: Digest is the digest of the blob.
                         type: string
                       size:
                         description: |-
                           Size is the number of bytes of the blob.
-                          Can be used to determine how to file should be handled when downloaded (memory/disk)
+                          Can be used to determine how to file should be handled when downloaded (memory/disk).
                         format: int64
                         type: integer
                       tag:
-                        description: Tag/Version of the blob
+                        description: |-
+                          Tag/Version of the blob.
+                          Corresponds to the tag the blob is available in the OCI registry.
                         type: string
                     required:
                     - digest
@@ -289,8 +290,9 @@ spec:
                     - tag
                     type: object
                   digest:
-                    description: Manifest digest (required to delete the manifest
-                      and prepare OCI artifact for GC)
+                    description: |-
+                      Manifest digest
+                      Used to fetch single layer OCI artifact and remove manifests
                     type: string
                   repository:
                     description: OCI repository name

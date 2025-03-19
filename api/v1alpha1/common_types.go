@@ -115,14 +115,15 @@ type ResourceInfo struct {
 }
 
 type BlobInfo struct {
-	// Digest is the digest of the blob in the form of '<algorithm>:<checksum>'.
+	// Digest is the digest of the blob.
 	Digest string `json:"digest"`
 
-	// Tag/Version of the blob
+	// Tag/Version of the blob.
+	// Corresponds to the tag the blob is available in the OCI registry.
 	Tag string `json:"tag"`
 
 	// Size is the number of bytes of the blob.
-	// Can be used to determine how to file should be handled when downloaded (memory/disk)
+	// Can be used to determine how to file should be handled when downloaded (memory/disk).
 	Size int64 `json:"size"`
 }
 
@@ -132,7 +133,8 @@ type OCIArtifactInfo struct {
 	// +required
 	Repository string `json:"repository"`
 
-	// Manifest digest (required to delete the manifest and prepare OCI artifact for GC)
+	// Manifest digest
+	// Used to fetch single layer OCI artifact and remove manifests
 	// +required
 	Digest string `json:"digest"`
 

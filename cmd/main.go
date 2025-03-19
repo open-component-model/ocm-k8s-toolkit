@@ -95,6 +95,15 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
+	registry, err := ociartifact.NewRegistry(registryAddr)
+	if err != nil {
+		setupLog.Error(err, "unable to initialize registry object")
+		os.Exit(1)
+	}
+
+	// TODO: Adjust when https can be used
+	registry.PlainHTTP = true
+
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
 	// prevent from being vulnerable to the HTTP/2 Stream Cancellation and
@@ -158,13 +167,6 @@ func main() {
 		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OCMRepository")
-		os.Exit(1)
-	}
-
-	registry, err := ociartifact.NewRegistry(registryAddr)
-	registry.PlainHTTP = true
-	if err != nil {
-		setupLog.Error(err, "unable to initialize registry object")
 		os.Exit(1)
 	}
 

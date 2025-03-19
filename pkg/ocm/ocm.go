@@ -325,7 +325,8 @@ func NewRedirectedResourceAccess(r cpi.ResourceAccess, bacc cpi.DataAccess) (cpi
 	}, nil
 }
 
-// NormalizeVersion replace eventual '+' character according to OCI spec.
+// NormalizeVersion replaces '+' characters to comply with the OCI spec.
+// This behavior is mimicked from the OCM library.
 func NormalizeVersion(v string) string {
 	return strings.ReplaceAll(v, "+", genericocireg.META_SEPARATOR)
 }
