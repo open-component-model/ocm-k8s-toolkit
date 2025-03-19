@@ -18,6 +18,7 @@ package component
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -50,7 +51,6 @@ import (
 
 const (
 	CTFPath      = "ocm-k8s-ctfstore--*"
-	Component    = "ocm.software/test-component"
 	ComponentObj = "test-component"
 	Version1     = "1.0.0"
 	Version2     = "1.0.1"
@@ -73,11 +73,14 @@ var _ = Describe("Component Controller", func() {
 	Context("component controller", func() {
 		var repositoryObj *v1alpha1.OCMRepository
 		var namespace *corev1.Namespace
+		var componentName string
 
 		BeforeEach(func(ctx SpecContext) {
+			componentName = "ocm.software/test-component-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
+
 			By("creating a repository with name")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
-				env.Component(Component, func() {
+				env.Component(componentName, func() {
 					env.Version(Version1)
 				})
 			})
@@ -93,11 +96,10 @@ var _ = Describe("Component Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 
-			repositoryName := "repository"
 			repositoryObj = &v1alpha1.OCMRepository{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: namespaceName,
-					Name:      repositoryName,
+					Name:      "repository-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText),
 				},
 				Spec: v1alpha1.OCMRepositorySpec{
 					RepositorySpec: &apiextensionsv1.JSON{
@@ -115,10 +117,18 @@ var _ = Describe("Component Controller", func() {
 		AfterEach(func(ctx SpecContext) {
 			By("deleting the repository")
 			Expect(k8sClient.Delete(ctx, repositoryObj)).To(Succeed())
-			Eventually(func(ctx context.Context) bool {
+			Eventually(func(ctx context.Context) error {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(repositoryObj), repositoryObj)
-				return errors.IsNotFound(err)
-			}).WithContext(ctx).Should(BeTrue())
+				if errors.IsNotFound(err) {
+					return nil
+				}
+
+				if err != nil {
+					return err
+				}
+
+				return fmt.Errorf("expect not-found error for ocm repository %s, but got no error", repositoryObj.GetName())
+			}, "15s").WithContext(ctx).Should(Succeed())
 
 			components := &v1alpha1.ComponentList{}
 
@@ -138,7 +148,7 @@ var _ = Describe("Component Controller", func() {
 						Namespace: namespace.GetName(),
 						Name:      repositoryObj.GetName(),
 					},
-					Component: Component,
+					Component: componentName,
 					Semver:    "1.0.0",
 					Interval:  metav1.Duration{Duration: time.Minute * 10},
 				},
@@ -170,7 +180,7 @@ var _ = Describe("Component Controller", func() {
 						Namespace: namespace.GetName(),
 						Name:      repositoryObj.GetName(),
 					},
-					Component: Component,
+					Component: componentName,
 					Semver:    "1.0.0",
 					Interval:  metav1.Duration{Duration: time.Minute * 10},
 				},
@@ -179,15 +189,23 @@ var _ = Describe("Component Controller", func() {
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("checking that the component has not been reconciled successfully")
-			Eventually(func(ctx context.Context) bool {
+			Eventually(func(ctx context.Context) error {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
 				if err != nil {
-					return false
+					return err
 				}
 
-				// Conditions are not nil, if reconciliation has run at least once.
-				return component.Status.Conditions != nil && !conditions.IsReady(component)
-			}, "15s").WithContext(ctx).Should(BeTrue())
+				if conditions.IsReady(component) {
+					return fmt.Errorf("expected component %s to not be ready, but it was ready", component.GetName())
+				}
+
+				reason := conditions.GetReason(component, "Ready")
+				if reason != v1alpha1.RepositoryIsNotReadyReason {
+					return fmt.Errorf("expected component ready-condition reason to be %s, but it was %s", v1alpha1.RepositoryIsNotReadyReason, reason)
+				}
+
+				return nil
+			}, "15s").WithContext(ctx).Should(Succeed())
 
 			By("checking that reference to OCI artifact has not been created")
 			Expect(component).To(HaveField("Status.OCIArtifact", BeNil()))
@@ -208,7 +226,7 @@ var _ = Describe("Component Controller", func() {
 						Namespace: namespace.GetName(),
 						Name:      repositoryObj.GetName(),
 					},
-					Component: Component,
+					Component: componentName,
 					Semver:    ">=1.0.0",
 					Interval:  metav1.Duration{Duration: time.Second},
 				},
@@ -225,10 +243,10 @@ var _ = Describe("Component Controller", func() {
 
 			By("increasing the component version")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
-				env.Component(Component, func() {
+				env.Component(componentName, func() {
 					env.Version(Version1)
 				})
-				env.Component(Component, func() {
+				env.Component(componentName, func() {
 					env.Version(Version2)
 				})
 			})
@@ -247,7 +265,6 @@ var _ = Describe("Component Controller", func() {
 		})
 
 		It("grabs lower version if downgrade is allowed", func(ctx SpecContext) {
-			componentName := Component + "-downgrade"
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
 				env.Component(componentName, func() {
 					env.Version("0.0.3", func() {
@@ -304,7 +321,6 @@ var _ = Describe("Component Controller", func() {
 		})
 
 		It("does not grab lower version if downgrade is denied", func(ctx SpecContext) {
-			componentName := Component + "-downgrade-2"
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
 				env.Component(componentName, func() {
 					env.Version("0.0.3", func() {
@@ -344,12 +360,20 @@ var _ = Describe("Component Controller", func() {
 			Expect(k8sClient.Update(ctx, component)).To(Succeed())
 
 			By("checking that downgrade was not allowed")
-			Eventually(func() bool {
-				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)).To(Succeed())
+			Eventually(func(ctx context.Context) error {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: component.Name, Namespace: component.Namespace}, component)
+				if err != nil {
+					return err
+				}
 
 				cond := conditions.Get(component, meta.ReadyCondition)
-				return cond.Message == "terminal error: component version cannot be downgraded from version 0.0.3 to version 0.0.2"
-			}).WithTimeout(15 * time.Second).Should(BeTrue())
+				expectedMessage := "terminal error: component version cannot be downgraded from version 0.0.3 to version 0.0.2"
+				if cond.Message != expectedMessage {
+					return fmt.Errorf("expected ready-condition message to be '%s', but got '%s'", expectedMessage, cond.Message)
+				}
+
+				return nil
+			}, "15s").WithContext(ctx).Should(Succeed())
 			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
 			Expect(component.Status.OCIArtifact.Blob.Tag).To(Equal("0.0.3"))
 
@@ -358,7 +382,6 @@ var _ = Describe("Component Controller", func() {
 		})
 
 		It("can force downgrade even if not allowed by the component", func(ctx SpecContext) {
-			componentName := Component + "-downgrade-3"
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
 				env.Component(componentName, func() {
 					env.Version("0.0.3")
@@ -410,8 +433,7 @@ var _ = Describe("Component Controller", func() {
 			deleteComponent(ctx, component)
 		})
 
-		It("reconcile a component with a plus in the version", func(ctx SpecContext) {
-			componentName := Component + "-with-plus"
+		It("normalizes a component version with a plus", func(ctx SpecContext) {
 			componentObjName := ComponentObj + "-with-plus"
 			componentVersionPlus := Version1 + "+componentVersionSuffix"
 			expectedBlobTag := Version1 + ".build-componentVersionSuffix"
@@ -460,12 +482,15 @@ var _ = Describe("Component Controller", func() {
 			secrets       []*corev1.Secret
 			namespace     *corev1.Namespace
 			repositoryObj *v1alpha1.OCMRepository
+			componentName string
 		)
 
 		BeforeEach(func(ctx SpecContext) {
+			componentName = "ocm.software/test-component-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
+
 			By("creating a repository with name")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
-				env.Component(Component, func() {
+				env.Component(componentName, func() {
 					env.Version(Version1)
 				})
 			})
@@ -618,10 +643,17 @@ var _ = Describe("Component Controller", func() {
 
 			By("delete repository")
 			Expect(k8sClient.Delete(ctx, repositoryObj)).To(Succeed())
-			Eventually(func(ctx context.Context) bool {
+			Eventually(func(ctx context.Context) error {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(repositoryObj), repositoryObj)
-				return errors.IsNotFound(err)
-			}, "15s").WithContext(ctx).Should(BeTrue())
+				if errors.IsNotFound(err) {
+					return nil
+				}
+				if err != nil {
+					return err
+				}
+
+				return fmt.Errorf("expected not-found error, but got none")
+			}, "15s").WithContext(ctx).Should(Succeed())
 
 			By("ensuring no components are left")
 			Eventually(func(g Gomega, ctx SpecContext) {
@@ -643,7 +675,7 @@ var _ = Describe("Component Controller", func() {
 						Namespace: namespace.GetName(),
 						Name:      repositoryObj.GetName(),
 					},
-					Component: Component,
+					Component: componentName,
 					Semver:    "1.0.0",
 					OCMConfig: []v1alpha1.OCMConfiguration{
 						{
@@ -698,15 +730,20 @@ var _ = Describe("Component Controller", func() {
 
 func waitUntilComponentIsReady(ctx context.Context, component *v1alpha1.Component, expectedVersion string) {
 	GinkgoHelper()
-	Eventually(func(g Gomega, ctx context.Context) bool {
+
+	Eventually(func(g Gomega, ctx context.Context) error {
 		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
 		if err != nil {
-			return false
+			return err
 		}
 		g.Expect(component).Should(HaveField("Status.Component.Version", expectedVersion))
 
-		return conditions.IsReady(component)
-	}, "15s").WithContext(ctx).Should(BeTrue())
+		if !conditions.IsReady(component) {
+			return fmt.Errorf("expected component %s to be ready", component.GetName())
+		}
+
+		return nil
+	}, "15s").WithContext(ctx).Should(Succeed())
 }
 
 func validateArtifact(ctx context.Context, component *v1alpha1.Component, env *Builder, ctfPath string) {
@@ -733,10 +770,18 @@ func deleteComponent(ctx context.Context, component *v1alpha1.Component) {
 
 	Expect(k8sClient.Delete(ctx, component)).To(Succeed())
 
-	Eventually(func(ctx context.Context) bool {
+	Eventually(func(ctx context.Context) error {
 		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
-		return errors.IsNotFound(err)
-	}, "15s").WithContext(ctx).Should(BeTrue())
+		if errors.IsNotFound(err) {
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
+		return fmt.Errorf("expected not-found error, but got none")
+	}, "15s").WithContext(ctx).Should(Succeed())
 
 	test.ExpectArtifactToNotExist(ctx, registry, component.GetOCIArtifact())
 }
