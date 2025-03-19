@@ -56,7 +56,7 @@ import (
 
 type Reconciler struct {
 	*ocm.BaseReconciler
-	Registry ociartifact.RegistryType
+	Registry *ociartifact.Registry
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)

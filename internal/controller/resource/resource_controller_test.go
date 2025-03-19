@@ -270,7 +270,9 @@ var _ = Describe("Resource Controller", func() {
 				resourceType := artifacttypes.OCI_ARTIFACT
 
 				By("creating an OCI artifact")
-				repository, err := registry.NewRepository(ctx, resourceName)
+				repositoryName, err := toolkitociartifact.CreateRepositoryName(resourceName)
+				Expect(err).NotTo(HaveOccurred())
+				repository, err := registry.NewRepository(ctx, repositoryName)
 				Expect(err).NotTo(HaveOccurred())
 				contentCompressed, err := compression.AutoCompressAsGzip(ctx, []byte(ResourceContent))
 				Expect(err).ToNot(HaveOccurred())
@@ -280,12 +282,21 @@ var _ = Describe("Resource Controller", func() {
 					Expect(repository.DeleteArtifact(ctx, manifestDigest.String())).To(Succeed())
 				})
 
+				registryScheme := "https"
+				if registry.PlainHTTP {
+					registryScheme = "http"
+				}
+
 				By("creating an ocm resource from an OCI artifact")
 				env.OCMCommonTransport(resourceLocalPath, accessio.FormatDirectory, func() {
 					env.Component(componentName, func() {
 						env.Version(ComponentVersion, func() {
 							env.Resource(resourceName, ResourceVersion, resourceType, v1.LocalRelation, func() {
-								env.Access(ocmociartifact.New(fmt.Sprintf("http://%s/%s:%s", repository.GetHost(), repository.GetName(), ResourceVersion)))
+								env.Access(ocmociartifact.New(fmt.Sprintf("%s://%s/%s:%s",
+									registryScheme,
+									registry.Registry.Reference.String(),
+									repositoryName,
+									ResourceVersion)))
 							})
 						})
 					})

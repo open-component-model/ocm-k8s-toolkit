@@ -43,7 +43,7 @@ import (
 type Reconciler struct {
 	*ocm.BaseReconciler
 	LocalizationClient localizationclient.Client
-	Registry           ociartifact.RegistryType
+	Registry           *ociartifact.Registry
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -248,7 +248,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, localization *v1alpha1
 func localizeRules(
 	ctx context.Context,
 	c client.Client,
-	r ociartifact.RegistryType,
+	r *ociartifact.Registry,
 	content LocalizableContent,
 	cfg types.LocalizationConfig,
 ) (
@@ -317,7 +317,7 @@ type LocalizableContent interface {
 
 func ComponentDescriptorAndSetFromResource(
 	ctx context.Context,
-	registry ociartifact.RegistryType,
+	registry *ociartifact.Registry,
 	baseComponent *v1alpha1.Component,
 ) (compdesc.ComponentVersionResolver, *compdesc.ComponentDescriptor, error) {
 	ociArtifact := baseComponent.GetOCIArtifact()

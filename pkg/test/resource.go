@@ -31,7 +31,7 @@ type MockResourceOptions struct {
 
 	ComponentRef v1alpha1.ObjectKey
 
-	Registry ociartifact.RegistryType
+	Registry *ociartifact.Registry
 	Clnt     client.Client
 	Recorder record.EventRecorder
 }

@@ -23,7 +23,7 @@ type Client interface {
 	GetTarget(ctx context.Context, ref v1alpha1.ConfigurationReference) (target types.ConfigurationTarget, err error)
 }
 
-func NewClientWithRegistry(r client.Reader, registry ociartifact.RegistryType, scheme *runtime.Scheme) Client {
+func NewClientWithRegistry(r client.Reader, registry *ociartifact.Registry, scheme *runtime.Scheme) Client {
 	factory := serializer.NewCodecFactory(scheme)
 	info, _ := runtime.SerializerInfoForMediaType(factory.SupportedMediaTypes(), runtime.ContentTypeYAML)
 	encoder := factory.EncoderForVersion(info.Serializer, v1alpha1.GroupVersion)
@@ -38,7 +38,7 @@ func NewClientWithRegistry(r client.Reader, registry ociartifact.RegistryType, s
 
 type localStorageBackedClient struct {
 	client.Reader
-	Registry ociartifact.RegistryType
+	Registry *ociartifact.Registry
 	scheme   *runtime.Scheme
 	encoder  runtime.Encoder
 }

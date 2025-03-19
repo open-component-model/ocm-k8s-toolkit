@@ -20,7 +20,7 @@ import (
 )
 
 type MockComponentOptions struct {
-	Registry   ociartifact.RegistryType
+	Registry   *ociartifact.Registry
 	Client     client.Client
 	Recorder   record.EventRecorder
 	Info       v1alpha1.ComponentInfo

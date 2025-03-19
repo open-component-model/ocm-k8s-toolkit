@@ -7,10 +7,6 @@ import (
 	"oras.land/oras-go/v2/registry/remote"
 )
 
-type RegistryType interface {
-	NewRepository(ctx context.Context, name string) (RepositoryType, error)
-}
-
 type Registry struct {
 	*remote.Registry
 }
@@ -24,7 +20,7 @@ func NewRegistry(url string) (*Registry, error) {
 	return &Registry{registry}, nil
 }
 
-func (r *Registry) NewRepository(ctx context.Context, name string) (RepositoryType, error) {
+func (r *Registry) NewRepository(ctx context.Context, name string) (*Repository, error) {
 	repository, err := r.Repository(ctx, name)
 	if err != nil {
 		return nil, err

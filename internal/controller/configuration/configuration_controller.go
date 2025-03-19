@@ -67,7 +67,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 type Reconciler struct {
 	*ocm.BaseReconciler
 	ConfigClient configurationclient.Client
-	Registry     ociartifact.RegistryType
+	Registry     *ociartifact.Registry
 }
 
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=configuredresources,verbs=get;list;watch;create;update;patch;delete

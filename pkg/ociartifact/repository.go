@@ -28,43 +28,14 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
-// A RepositoryType is a type that can push and fetch blobs.
-type RepositoryType interface {
-	// PushArtifact is a wrapper to push a single layer OCI artifact with an empty config and a single data layer
-	// containing the blob. As all OCI artifacts are produced and consumed by us, we do not have to care about the
-	// configuration.
-	PushArtifact(ctx context.Context, reference string, blob []byte) (digest.Digest, error)
-
-	// FetchArtifact is a wrapper to fetch a single layer OCI artifact with a manifest digest. It expects and returns
-	// the single data layer.
-	FetchArtifact(ctx context.Context, manifestDigest string) ([]byte, error)
-
-	// DeleteArtifact is a wrapper to delete a single layer OCI artifact with a manifest digest.
-	DeleteArtifact(ctx context.Context, manifestDigest string) error
-
-	// ExistsArtifact is a wrapper to check if an OCI repository exists using the manifest digest.
-	ExistsArtifact(ctx context.Context, manifestDigest string) (bool, error)
-
-	// CopyOCIArtifactForResourceAccess is a wrapper to copy an OCI artifact from an OCM resource access.
-	CopyOCIArtifactForResourceAccess(ctx context.Context, access ocmctx.ResourceAccess) (digest.Digest, error)
-
-	GetHost() string
-	GetName() string
-}
-
 // Repository is a wrapper for an OCI repository that provides methods to work with OCI artifacts.
 type Repository struct {
 	*remote.Repository
 }
 
-func (r *Repository) GetHost() string {
-	return r.Reference.Host()
-}
-
-func (r *Repository) GetName() string {
-	return r.Reference.Repository
-}
-
+// PushArtifact is a wrapper to push a single layer OCI artifact with an empty config and a single data layer
+// containing the blob. As all OCI artifacts are produced and consumed by us, we do not have to care about the
+// configuration.
 func (r *Repository) PushArtifact(ctx context.Context, tag string, blob []byte) (digest.Digest, error) {
 	logger := log.FromContext(ctx)
 
@@ -141,6 +112,8 @@ func (r *Repository) PushArtifact(ctx context.Context, tag string, blob []byte) 
 	return manifestDigest, nil
 }
 
+// FetchArtifact is a wrapper to fetch a single layer OCI artifact with a manifest digest. It expects and returns
+// the single data layer.
 func (r *Repository) FetchArtifact(ctx context.Context, manifestDigest string) ([]byte, error) {
 	// Fetch manifest descriptor to get manifest.
 	manifestDescriptor, _, err := r.FetchReference(ctx, manifestDigest)
@@ -171,6 +144,7 @@ func (r *Repository) FetchArtifact(ctx context.Context, manifestDigest string) (
 	return io.ReadAll(reader)
 }
 
+// DeleteArtifact is a wrapper to delete a single layer OCI artifact with a manifest digest.
 func (r *Repository) DeleteArtifact(ctx context.Context, manifestDigest string) error {
 	logger := log.FromContext(ctx)
 
@@ -184,6 +158,7 @@ func (r *Repository) DeleteArtifact(ctx context.Context, manifestDigest string) 
 	return r.Delete(ctx, manifestDescriptor)
 }
 
+// ExistsArtifact is a wrapper to check if an OCI repository exists using the manifest digest.
 func (r *Repository) ExistsArtifact(ctx context.Context, manifestDigest string) (bool, error) {
 	logger := log.FromContext(ctx)
 
@@ -201,6 +176,7 @@ func (r *Repository) ExistsArtifact(ctx context.Context, manifestDigest string) 
 	return r.Exists(ctx, manifestDescriptor)
 }
 
+// CopyOCIArtifactForResourceAccess is a wrapper to copy an OCI artifact from an OCM resource access.
 func (r *Repository) CopyOCIArtifactForResourceAccess(ctx context.Context, access ocmctx.ResourceAccess) (digest.Digest, error) {
 	logger := log.FromContext(ctx)
 
@@ -295,7 +271,7 @@ func CreateRepositoryName(args ...string) (string, error) {
 
 // DeleteForObject checks if the object holds a name for an OCI repository, checks if the OCI repository exists, and if
 // so, deletes the OCI artifact from the OCI repository.
-func DeleteForObject(ctx context.Context, registry RegistryType, obj v1alpha1.OCIArtifactCreator) error {
+func DeleteForObject(ctx context.Context, registry *Registry, obj v1alpha1.OCIArtifactCreator) error {
 	info := obj.GetOCIArtifact()
 	if info == nil {
 		return nil
@@ -321,7 +297,7 @@ func DeleteForObject(ctx context.Context, registry RegistryType, obj v1alpha1.OC
 }
 
 // DeleteIfDigestMismatch removes the OCI artifact of an object, if its digest does not match the reference digest.
-func DeleteIfDigestMismatch(ctx context.Context, registry RegistryType, obj v1alpha1.OCIArtifactCreator, reference digest.Digest) error {
+func DeleteIfDigestMismatch(ctx context.Context, registry *Registry, obj v1alpha1.OCIArtifactCreator, reference digest.Digest) error {
 	if obj.GetOCIArtifact() != nil && obj.GetManifestDigest() != reference.String() {
 		if err := DeleteForObject(ctx, registry, obj); err != nil {
 			return err

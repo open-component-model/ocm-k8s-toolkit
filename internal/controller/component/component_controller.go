@@ -50,14 +50,15 @@ import (
 // Reconciler reconciles a Component object.
 type Reconciler struct {
 	*ocm.BaseReconciler
-	Registry ociartifact.RegistryType
+	Registry *ociartifact.Registry
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
-	// Create index for ocmrepository reference name from components
+	// Create index for ocmrepository reference name from components to make sure to reconcile, when the base ocm-
+	// repository changes.
 	const fieldName = "spec.repositoryRef.name"
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Resource{}, fieldName, func(obj client.Object) []string {
 		component, ok := obj.(*v1alpha1.Component)
@@ -187,14 +188,14 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 
 	if !repo.DeletionTimestamp.IsZero() {
 		err := errors.New("repository is being deleted, please do not use it")
-		logger.Error(err, "waiting for deletion", "name", component.Spec.RepositoryRef.Name)
+		logger.Error(err, "repository is being deleted, please do not use it", "name", component.Spec.RepositoryRef.Name)
 
 		return ctrl.Result{}, nil
 	}
 
 	// Note: Marking the component as not ready, when the ocmrepository is not ready is not completely valid. As the
-	// was potentially ready, then the ocmrepository changed, but that does not necessarily mean that the component is
-	// not ready as well.
+	// component was potentially ready, then the ocmrepository changed, but that does not necessarily mean that the
+	// component is not ready as well.
 	// However, as the component is hard-dependant on the ocmrepository, we decided to mark it not ready as well.
 	if !conditions.IsReady(repo) {
 		logger.Info("repository is not ready", "name", component.Spec.RepositoryRef.Name)

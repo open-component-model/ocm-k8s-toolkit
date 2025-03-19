@@ -40,7 +40,7 @@ type Content interface {
 }
 
 func NewContentBackedByComponentResource(
-	registry RegistryType,
+	registry *Registry,
 	component *v1alpha1.Component,
 	resource *v1alpha1.Resource,
 ) Content {
@@ -54,7 +54,7 @@ func NewContentBackedByComponentResource(
 // ContentBackedByArtifactAndComponent contains information to get the component, resource and their respective OCI
 // artifacts.
 type ContentBackedByArtifactAndComponent struct {
-	Registry  RegistryType
+	Registry  *Registry
 	Component *v1alpha1.Component
 	Resource  *v1alpha1.Resource
 }
@@ -166,7 +166,7 @@ func (l *lockedReadCloser) Close() error {
 func GetContentBackedByArtifactFromComponent(
 	ctx context.Context,
 	clnt client.Reader,
-	registry RegistryType,
+	registry *Registry,
 	ref *v1alpha1.ConfigurationReference,
 ) (Content, error) {
 	if ref.APIVersion == "" {
@@ -187,7 +187,7 @@ type ObjectWithTargetReference interface {
 func GetComponentResourceFromReference(
 	ctx context.Context,
 	clnt client.Reader,
-	registry RegistryType,
+	registry *Registry,
 	ref *v1alpha1.ConfigurationReference,
 ) (*v1alpha1.Component, *v1alpha1.Resource, error) {
 	var (
