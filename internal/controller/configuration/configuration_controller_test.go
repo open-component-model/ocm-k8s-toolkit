@@ -31,7 +31,6 @@ import (
 )
 
 const (
-	Namespace          = "configuration-namespace"
 	ResourceConfig     = "cfg-configuration-util"
 	TargetResourceObj  = "target-configuration-util"
 	ConfiguredResource = "configured-resource"
@@ -39,31 +38,72 @@ const (
 
 var _ = Describe("ConfiguredResource Controller", func() {
 	var (
-		tmp string
-		env *ocmbuilder.Builder
+		tmp, namespaceName string
+		env                *ocmbuilder.Builder
+
+		componentObj   *v1alpha1.Component
+		targetResource *v1alpha1.Resource
 	)
 
 	BeforeEach(func() {
 		tmp = GinkgoT().TempDir()
-		testfs, err := projectionfs.New(osfs.New(), tmp)
+		testFs, err := projectionfs.New(osfs.New(), tmp)
 		Expect(err).ToNot(HaveOccurred())
-		env = ocmbuilder.NewBuilder(environment.FileSystem(testfs))
+		env = ocmbuilder.NewBuilder(environment.FileSystem(testFs))
 		DeferCleanup(env.Cleanup)
 	})
 
 	BeforeEach(func(ctx SpecContext) {
-		By("creating namespace object")
+		namespaceName = test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
 		namespace := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: Namespace,
+				Name: namespaceName,
 			},
 		}
 		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 	})
 
+	AfterEach(func(ctx SpecContext) {
+		By("deleting the component")
+		Expect(k8sClient.Delete(ctx, componentObj)).To(Succeed())
+		Eventually(func(ctx context.Context) error {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(componentObj), componentObj)
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+			return fmt.Errorf("expected not-found error, but got none")
+		}, "15s").WithContext(ctx).Should(Succeed())
+
+		By("deleting the target resource")
+		Expect(k8sClient.Delete(ctx, targetResource)).To(Succeed())
+		Eventually(func(ctx context.Context) error {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(targetResource), targetResource)
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+			return fmt.Errorf("expected not-found error, but got none")
+		}, "15s").WithContext(ctx).Should(Succeed())
+
+		confResources := &v1alpha1.ConfiguredResourceList{}
+		Expect(k8sClient.List(ctx, confResources, client.InNamespace(namespaceName))).To(Succeed())
+		Expect(confResources.Items).To(HaveLen(0))
+
+		resConfig := &v1alpha1.ResourceConfigList{}
+		Expect(k8sClient.List(ctx, resConfig, client.InNamespace(namespaceName))).To(Succeed())
+		Expect(resConfig.Items).To(HaveLen(0))
+	})
+
 	It("should configure an artifact from a resource based on a ResourceConfig", func(ctx SpecContext) {
 		By("creating a mock component")
-		component := NoOpComponent(ctx)
+		componentObj = NoOpComponent(ctx, namespaceName)
 
 		By("creating a mock target resource")
 		fileToConfigure := "test.yaml"
@@ -82,14 +122,14 @@ var _ = Describe("ConfiguredResource Controller", func() {
 
 		Must(writer.Write(fileContentBeforeConfiguration))
 
-		targetResource := test.SetupMockResourceWithData(ctx,
+		targetResource = test.SetupMockResourceWithData(ctx,
 			TargetResourceObj,
-			Namespace,
+			namespaceName,
 			&test.MockResourceOptions{
 				DataPath: dir,
 				ComponentRef: v1alpha1.ObjectKey{
-					Namespace: Namespace,
-					Name:      component.GetName(),
+					Namespace: namespaceName,
+					Name:      componentObj.GetName(),
 				},
 				Registry: registry,
 				Clnt:     k8sClient,
@@ -109,7 +149,7 @@ var _ = Describe("ConfiguredResource Controller", func() {
 		cfg := v1alpha1.ResourceConfig{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      ResourceConfig,
-				Namespace: Namespace,
+				Namespace: namespaceName,
 			},
 			Spec: v1alpha1.ResourceConfigSpec{
 				Rules: []v1alpha1.ConfigurationRule{
@@ -137,7 +177,7 @@ var _ = Describe("ConfiguredResource Controller", func() {
 		configuredResource := &v1alpha1.ConfiguredResource{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      ConfiguredResource,
-				Namespace: Namespace,
+				Namespace: namespaceName,
 			},
 			Spec: v1alpha1.ConfiguredResourceSpec{
 				Target:   v1alpha1.ResourceToConfigurationReference(targetResource),
@@ -174,28 +214,38 @@ var _ = Describe("ConfiguredResource Controller", func() {
 
 		By("delete resources manually")
 		Expect(k8sClient.Delete(ctx, configuredResource)).To(Succeed())
-		Eventually(func(ctx context.Context) bool {
+		Eventually(func(ctx context.Context) error {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(configuredResource), configuredResource)
-			return errors.IsNotFound(err)
-		}, "15s").WithContext(ctx).Should(BeTrue())
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+			return fmt.Errorf("expected not-found error, but got none")
+		}, "15s").WithContext(ctx).Should(Succeed())
 		test.ExpectArtifactToNotExist(ctx, registry, configuredResource.GetOCIArtifact())
 
 		Expect(k8sClient.Delete(ctx, &cfg)).To(Succeed())
-		Eventually(func(ctx context.Context) bool {
+		Eventually(func(ctx context.Context) error {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(&cfg), &cfg)
-			return errors.IsNotFound(err)
-		}, "15s").WithContext(ctx).Should(BeTrue())
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
 
-		Expect(k8sClient.Delete(ctx, targetResource)).To(Succeed())
-
-		Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+			return fmt.Errorf("expected not-found error, but got none")
+		}, "15s").WithContext(ctx).Should(Succeed())
 	})
 })
 
-func NoOpComponent(ctx context.Context) *v1alpha1.Component {
+func NoOpComponent(ctx context.Context, namespaceName string) *v1alpha1.Component {
 	component := test.SetupComponentWithDescriptorList(ctx,
 		"any-component-that-should-not-be-introspected",
-		Namespace,
+		namespaceName,
 		[]byte("noop"),
 		&test.MockComponentOptions{
 			Registry: registry,

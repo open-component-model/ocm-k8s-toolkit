@@ -469,7 +469,15 @@ var _ = Describe("Component Controller", func() {
 			validateArtifact(ctx, component, env, ctfpath)
 
 			By("checking that artifact's blob tag is properly set")
-			Expect(component.Status.OCIArtifact.Blob.Tag).To(Equal(expectedBlobTag))
+			Eventually(func(g Gomega, ctx context.Context) error {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+				if err != nil {
+					return err
+				}
+				g.Expect(component.Status.OCIArtifact.Blob.Tag).To(Equal(expectedBlobTag))
+
+				return nil
+			}, "15s").WithContext(ctx).Should(Succeed())
 
 			By("delete resources manually")
 			deleteComponent(ctx, component)

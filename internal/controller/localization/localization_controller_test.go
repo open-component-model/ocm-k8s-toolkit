@@ -16,6 +16,7 @@ import (
 	"github.com/mandelsoft/vfs/pkg/vfs"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,7 +45,6 @@ var (
 )
 
 const (
-	Namespace         = "localisation-namespace"
 	RepositoryObj     = "localisation-repository"
 	ComponentObj      = "localisation-component"
 	CfgResourceObj    = "cfg-localisation-util"
@@ -54,9 +54,10 @@ const (
 
 var _ = Describe("Localization Controller", func() {
 	var (
-		tmp string
-		env *ocmbuilder.Builder
+		tmp, namespaceName string
+		env                *ocmbuilder.Builder
 
+		component      *v1alpha1.Component
 		targetResource *v1alpha1.Resource
 		cfgResource    *v1alpha1.Resource
 	)
@@ -69,10 +70,68 @@ var _ = Describe("Localization Controller", func() {
 		DeferCleanup(env.Cleanup)
 	})
 
+	BeforeEach(func(ctx SpecContext) {
+		namespaceName = test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
+		namespace := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: namespaceName,
+			},
+		}
+		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+	})
+
+	AfterEach(func(ctx SpecContext) {
+		By("deleting the component")
+		Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+		Eventually(func(ctx context.Context) error {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+			return fmt.Errorf("expected not-found error, but got none")
+		}, "15s").WithContext(ctx).Should(Succeed())
+
+		By("deleting the target resource")
+		Expect(k8sClient.Delete(ctx, targetResource)).To(Succeed())
+		Eventually(func(ctx context.Context) error {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(targetResource), targetResource)
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+			return fmt.Errorf("expected not-found error, but got none")
+		}, "15s").WithContext(ctx).Should(Succeed())
+
+		By("deleting the config resource")
+		Expect(k8sClient.Delete(ctx, cfgResource)).To(Succeed())
+		Eventually(func(ctx context.Context) error {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(cfgResource), cfgResource)
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+			return fmt.Errorf("expected not-found error, but got none")
+		}, "15s").WithContext(ctx).Should(Succeed())
+
+		locResource := &v1alpha1.LocalizedResourceList{}
+		Expect(k8sClient.List(ctx, locResource, client.InNamespace(namespaceName))).To(Succeed())
+		Expect(locResource.Items).To(HaveLen(0))
+	})
+
 	It("should localize an OCI artifact from a resource based on a config supplied in a sibling resource", func(ctx SpecContext) {
-		component := test.SetupComponentWithDescriptorList(ctx,
+		component = test.SetupComponentWithDescriptorList(ctx,
 			ComponentObj,
-			Namespace,
+			namespaceName,
 			descriptorListYAML,
 			&test.MockComponentOptions{
 				Registry: registry,
@@ -89,11 +148,11 @@ var _ = Describe("Localization Controller", func() {
 
 		targetResource = test.SetupMockResourceWithData(ctx,
 			TargetResourceObj,
-			Namespace,
+			namespaceName,
 			&test.MockResourceOptions{
 				DataPath: filepath.Join("testdata", "deployment-instruction-helm"),
 				ComponentRef: v1alpha1.ObjectKey{
-					Namespace: Namespace,
+					Namespace: namespaceName,
 					Name:      ComponentObj,
 				},
 				Registry: registry,
@@ -104,11 +163,11 @@ var _ = Describe("Localization Controller", func() {
 
 		cfgResource = test.SetupMockResourceWithData(ctx,
 			CfgResourceObj,
-			Namespace,
+			namespaceName,
 			&test.MockResourceOptions{
 				Data: bytes.NewReader(configYAML),
 				ComponentRef: v1alpha1.ObjectKey{
-					Namespace: Namespace,
+					Namespace: namespaceName,
 					Name:      ComponentObj,
 				},
 				Registry: registry,
@@ -118,7 +177,7 @@ var _ = Describe("Localization Controller", func() {
 		)
 
 		setupLocalizedResource(ctx, map[string]string{
-			"Namespace":          Namespace,
+			"Namespace":          namespaceName,
 			"Name":               Localization,
 			"TargetResourceName": targetResource.Name,
 			"ConfigResourceName": cfgResource.Name,
@@ -128,7 +187,7 @@ var _ = Describe("Localization Controller", func() {
 		localization := &v1alpha1.LocalizedResource{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      Localization,
-				Namespace: Namespace,
+				Namespace: namespaceName,
 			},
 		}
 		Eventually(func(ctx context.Context) error {
@@ -169,10 +228,6 @@ var _ = Describe("Localization Controller", func() {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(localization), localization)
 			return errors.IsNotFound(err)
 		}, "15s").WithContext(ctx).Should(BeTrue())
-
-		Expect(k8sClient.Delete(ctx, cfgResource)).To(Succeed())
-		Expect(k8sClient.Delete(ctx, targetResource)).To(Succeed())
-		Expect(k8sClient.Delete(ctx, component)).To(Succeed())
 	})
 })
 
