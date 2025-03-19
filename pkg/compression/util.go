@@ -16,8 +16,8 @@ import (
 )
 
 // AutoCompressAsGzip compresses the content if it is not already compressed and returns it.
-// If the file is already compressed as gzip, it will be returned as is.
-// If the file is not compressed or not in gzip format, it will be attempting to recompress to gzip and then return.
+// If the data is already compressed as gzip, it will be returned as is.
+// If the data is not compressed or not in gzip format, it will be attempting to recompress to gzip and then return.
 // This is because some source controllers such as kustomize expect this compression format in their artifacts.
 func AutoCompressAsGzip(ctx context.Context, data []byte) (_ []byte, retErr error) {
 	logger := log.FromContext(ctx)
@@ -44,7 +44,7 @@ func AutoCompressAsGzip(ctx context.Context, data []byte) (_ []byte, retErr erro
 			reader = decompressed
 		}
 
-		logger.V(1).Info("gzip-compress data")
+		logger.V(1).Info("compress data to gzip")
 		var buf bytes.Buffer
 		if err := compressViaBuffer(&buf, reader); err != nil {
 			return nil, err
@@ -122,7 +122,7 @@ func CreateTGZFromPath(srcDir string) (_ []byte, retErr error) {
 		}
 
 		// Open the file
-		f, err := os.Open(file)
+		f, err := os.Open(filepath.Clean(file))
 		if err != nil {
 			return fmt.Errorf("could not open file %s: %w", file, err)
 		}
