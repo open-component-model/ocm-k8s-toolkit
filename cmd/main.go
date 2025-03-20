@@ -20,7 +20,10 @@ import (
 	// +kubebuilder:scaffold:imports
 	"context"
 	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"flag"
+	"net/http"
 	"os"
 
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -66,13 +69,15 @@ func init() {
 //nolint:funlen // this is the main function
 func main() {
 	var (
-		metricsAddr          string
-		enableLeaderElection bool
-		probeAddr            string
-		secureMetrics        bool
-		enableHTTP2          bool
-		eventsAddr           string
-		registryAddr         string
+		metricsAddr                string
+		enableLeaderElection       bool
+		probeAddr                  string
+		secureMetrics              bool
+		enableHTTP2                bool
+		eventsAddr                 string
+		registryAddr               string
+		rootCA                     string
+		registryInsecureSkipVerify bool
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metric endpoint binds to. "+
 		"Use the port :8080. If not set, it will be 0 in order to disable the metrics server")
@@ -86,6 +91,8 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&eventsAddr, "events-addr", "", "The address of the events receiver.")
 	flag.StringVar(&registryAddr, "registry-addr", "ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000", "The address of the registry.")
+	flag.StringVar(&rootCA, "rootCA", "", "root CA certificate required to establish https connection to the registry.")
+	flag.BoolVar(&registryInsecureSkipVerify, "registry-insecure-skip-verify", false, "Skip verification of the certificate that the registry is using.")
 
 	opts := zap.Options{
 		Development: true,
@@ -94,15 +101,6 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
-
-	registry, err := ociartifact.NewRegistry(registryAddr)
-	if err != nil {
-		setupLog.Error(err, "unable to initialize registry object")
-		os.Exit(1)
-	}
-
-	// TODO: Adjust when https can be used
-	registry.PlainHTTP = true
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -168,6 +166,24 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OCMRepository")
 		os.Exit(1)
+	}
+
+	registry, err := ociartifact.NewRegistry(registryAddr)
+	if err != nil {
+		setupLog.Error(err, "unable to initialize registry object")
+		os.Exit(1)
+	}
+	registry.PlainHTTP = registryInsecureSkipVerify
+
+	// If HTTPS is enabled, the root CA certificate must be configured.
+	if !registryInsecureSkipVerify {
+		httpClient, err := getHTTPClientWithTLS(rootCA)
+		if err != nil {
+			setupLog.Error(err, "unable to create http client with TLS configuration")
+			os.Exit(1)
+		}
+
+		registry.Client = httpClient
 	}
 
 	if err := registry.Ping(ctx); err != nil {
@@ -259,4 +275,30 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func getHTTPClientWithTLS(rootCAFile string) (*http.Client, error) {
+	if rootCAFile == "" {
+		return nil, errors.New("path to rootCA file is empty")
+	}
+
+	var c []byte
+	var err error
+	if c, err = os.ReadFile(rootCAFile); err != nil {
+		return nil, err
+	}
+
+	rootCAs := x509.NewCertPool()
+	if ok := rootCAs.AppendCertsFromPEM(c); !ok {
+		return nil, errors.New("failed to append root CA certificate to pool")
+	}
+
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				RootCAs:    rootCAs,
+			},
+		},
+	}, nil
 }

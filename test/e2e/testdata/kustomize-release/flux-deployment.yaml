@@ -3,7 +3,7 @@ apiVersion: source.toolkit.fluxcd.io/v1beta2
 kind: OCIRepository
 metadata:
   name: kustomize-podinfo
-  namespace: default
+  namespace: ocm-k8s-toolkit-system
 spec:
   interval: 1m0s
   layerSelector:
@@ -11,6 +11,8 @@ spec:
     operation: copy
   # URL points to the internal zot-registry that is (currently) deployed with the controllers
   url: oci://ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000/sha-17792573031511022715
+  certSecretRef:
+    name: ocm-k8s-toolkit-registry-tls-certs
   ref:
     tag: "1.0.0"
 ---
@@ -26,4 +28,4 @@ spec:
   sourceRef:
     kind: OCIRepository
     name: kustomize-podinfo
-    namespace: default
+    namespace: ocm-k8s-toolkit-system

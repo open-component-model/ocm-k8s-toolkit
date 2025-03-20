@@ -102,13 +102,13 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 		})
 
 		By("Deploying the controller-manager")
-		cmd = exec.Command("make", "deploy-dev")
+		cmd = exec.Command("make", "deploy")
 		cmd.Env = []string{"IMG=" + projectimage}
 		_, err = utils.Run(cmd)
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
 		DeferCleanup(func() error {
 			By("Un-deploying the controller-manager")
-			cmd = exec.Command("make", "undeploy-dev")
+			cmd = exec.Command("make", "undeploy")
 			cmd.Env = []string{"IMG=" + projectimage}
 			_, err = utils.Run(cmd)
 
