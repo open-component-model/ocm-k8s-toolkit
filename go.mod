@@ -22,7 +22,6 @@ require (
 	github.com/onsi/gomega v1.36.2
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.0
-	github.com/openfluxcd/artifact v0.1.1
 	github.com/stretchr/testify v1.10.0
 	github.com/ulikunitz/xz v0.5.12
 	k8s.io/api v0.32.3

@@ -26,9 +26,6 @@ import (
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive,stylecheck // ginkgo...
-
-	// TODO: Replacement required!
-	"github.com/openfluxcd/artifact/test/utils"
 )
 
 // Run executes the provided command within this context.
@@ -64,7 +61,7 @@ func DeployAndWaitForResource(manifestFilePath, waitingFor, timeout string) erro
 		"--for", waitingFor,
 		"--timeout", timeout,
 	)
-	_, err = utils.Run(cmd)
+	_, err = Run(cmd)
 
 	return err
 }
@@ -74,13 +71,13 @@ func DeployAndWaitForResource(manifestFilePath, waitingFor, timeout string) erro
 // In contrast to "DeployAndWaitForResource", this function does not wait for a certain condition to be fulfilled.
 func DeployResource(manifestFilePath string) error {
 	cmd := exec.Command("kubectl", "apply", "-f", manifestFilePath)
-	_, err := utils.Run(cmd)
+	_, err := Run(cmd)
 	if err != nil {
 		return err
 	}
 	DeferCleanup(func() error {
 		cmd = exec.Command("kubectl", "delete", "-f", manifestFilePath)
-		_, err := utils.Run(cmd)
+		_, err := Run(cmd)
 
 		return err
 	})
@@ -111,7 +108,7 @@ func PrepareOCMComponent(ccPath, imageRegistry string) error {
 	}
 
 	cmd := exec.Command("ocm", cmdArgs...)
-	_, err = utils.Run(cmd)
+	_, err = Run(cmd)
 	if err != nil {
 		return fmt.Errorf("could not create ocm component: %w", err)
 	}
@@ -119,7 +116,7 @@ func PrepareOCMComponent(ccPath, imageRegistry string) error {
 	// Note: The option '--overwrite' is necessary, when a digest of a resource is changed or unknown (which is the case
 	// in our default test)
 	cmd = exec.Command("ocm", "transfer", "ctf", "--overwrite", ctfDir, imageRegistry)
-	_, err = utils.Run(cmd)
+	_, err = Run(cmd)
 	if err != nil {
 		return fmt.Errorf("could not transfer ocm component: %w", err)
 	}
@@ -143,7 +140,7 @@ func CheckOCMComponent(componentReference, ocmConfigPath string, options ...stri
 	c = append(c, componentReference)
 
 	cmd := exec.Command(c[0], c[1:]...) //nolint:gosec // The argument list is constructed right above.
-	if _, err := utils.Run(cmd); err != nil {
+	if _, err := Run(cmd); err != nil {
 		return err
 	}
 
@@ -162,7 +159,7 @@ func GetOCMResourceImageRef(componentReference, resourceName, ocmConfigPath stri
 	c = append(c, "get", "resources", componentReference, resourceName, "-oJSON") // -oJSON is used to get the output in JSON format.
 
 	cmd := exec.Command(c[0], c[1:]...) //nolint:gosec // The argument list is constructed right above.
-	output, err := utils.Run(cmd)
+	output, err := Run(cmd)
 	if err != nil {
 		return "", err
 	}
@@ -196,7 +193,7 @@ func GetOCMResourceImageRef(componentReference, resourceName, ocmConfigPath stri
 func GetVerifyPodFieldFunc(labelSelector, fieldQuery, expect string) error {
 	return func() error {
 		cmd := exec.Command("kubectl", "get", "pod", "-l", labelSelector, "-o", fieldQuery)
-		output, err := utils.Run(cmd)
+		output, err := Run(cmd)
 		if err != nil {
 			return fmt.Errorf("failed to get podinfo: %w", err)
 		}
@@ -214,7 +211,7 @@ func GetVerifyPodFieldFunc(labelSelector, fieldQuery, expect string) error {
 // Create Kubernetes namespace.
 func CreateNamespace(ns string) error {
 	cmd := exec.Command("kubectl", "create", "ns", ns)
-	_, err := utils.Run(cmd)
+	_, err := Run(cmd)
 
 	return err
 }
@@ -222,7 +219,7 @@ func CreateNamespace(ns string) error {
 // Delete Kubernetes namespace.
 func DeleteNamespace(ns string) error {
 	cmd := exec.Command("kubectl", "delete", "ns", ns)
-	_, err := utils.Run(cmd)
+	_, err := Run(cmd)
 
 	return err
 }
