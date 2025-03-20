@@ -91,7 +91,7 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&eventsAddr, "events-addr", "", "The address of the events receiver.")
 	flag.StringVar(&registryAddr, "registry-addr", "ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000", "The address of the registry.")
-	flag.StringVar(&rootCA, "rootCA", "", "root CA certificate required to establish https connection to the registry.")
+	flag.StringVar(&rootCA, "rootCA", "", "path to the root CA certificate required to establish https connection to the registry.")
 	flag.BoolVar(&registryInsecureSkipVerify, "registry-insecure-skip-verify", false, "Skip verification of the certificate that the registry is using.")
 
 	opts := zap.Options{
@@ -101,6 +101,39 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	ctx := context.Background()
+
+	registry, err := ociartifact.NewRegistry(registryAddr)
+	if err != nil {
+		setupLog.Error(err, "unable to initialize registry object")
+		os.Exit(1)
+	}
+	registry.PlainHTTP = registryInsecureSkipVerify
+
+	// If HTTPS is enabled, the root CA certificate must be configured.
+	if !registryInsecureSkipVerify {
+		if rootCA == "" {
+			setupLog.Error(
+				errors.New("expected path to rootCA, but passed path was empty"),
+				"rootCA is required when registry-insecure-skip-verify is false",
+			)
+			os.Exit(1)
+		}
+
+		httpClient, err := getHTTPClientWithTLS(rootCA)
+		if err != nil {
+			setupLog.Error(err, "unable to create http client with TLS configuration")
+			os.Exit(1)
+		}
+
+		registry.Client = httpClient
+	}
+
+	if err := registry.Ping(ctx); err != nil {
+		setupLog.Error(err, "unable to ping OCI registry")
+		os.Exit(1)
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -155,7 +188,6 @@ func main() {
 		setupLog.Error(err, "unable to create event recorder")
 		os.Exit(1)
 	}
-	ctx := context.Background()
 
 	if err = (&ocmrepository.Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
@@ -165,29 +197,6 @@ func main() {
 		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "OCMRepository")
-		os.Exit(1)
-	}
-
-	registry, err := ociartifact.NewRegistry(registryAddr)
-	if err != nil {
-		setupLog.Error(err, "unable to initialize registry object")
-		os.Exit(1)
-	}
-	registry.PlainHTTP = registryInsecureSkipVerify
-
-	// If HTTPS is enabled, the root CA certificate must be configured.
-	if !registryInsecureSkipVerify {
-		httpClient, err := getHTTPClientWithTLS(rootCA)
-		if err != nil {
-			setupLog.Error(err, "unable to create http client with TLS configuration")
-			os.Exit(1)
-		}
-
-		registry.Client = httpClient
-	}
-
-	if err := registry.Ping(ctx); err != nil {
-		setupLog.Error(err, "unable to ping OCI registry")
 		os.Exit(1)
 	}
 
@@ -278,10 +287,6 @@ func main() {
 }
 
 func getHTTPClientWithTLS(rootCAFile string) (*http.Client, error) {
-	if rootCAFile == "" {
-		return nil, errors.New("path to rootCA file is empty")
-	}
-
 	var c []byte
 	var err error
 	if c, err = os.ReadFile(rootCAFile); err != nil {
