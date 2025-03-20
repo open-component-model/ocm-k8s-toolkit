@@ -30,7 +30,7 @@ import (
 var _ = Describe("controller", func() {
 	Context("Operator", func() {
 		It("should deploy a helm resource", func() {
-			// TODO: Adjust/Remove when https://github.com/open-component-model/ocm-k8s-toolkit/pull/72 is merged
+			// TODO: https://github.com/open-component-model/ocm-k8s-toolkit/issues/154
 			testdata := os.Getenv("TESTDATA_HELM")
 			if testdata == "" {
 				testdata = filepath.Join(os.Getenv("PROJECT_DIR"), "test/e2e/testdata/helm-release")
@@ -58,7 +58,7 @@ var _ = Describe("controller", func() {
 		})
 
 		It("should deploy a kustomize resource", func() {
-			// TODO: Adjust/Remove when https://github.com/open-component-model/ocm-k8s-toolkit/pull/72 is merged
+			// TODO: https://github.com/open-component-model/ocm-k8s-toolkit/issues/154
 			testdata := os.Getenv("TESTDATA_KUSTOMIZE")
 			if testdata == "" {
 				testdata = filepath.Join(os.Getenv("PROJECT_DIR"), "test/e2e/testdata/kustomize-release")
