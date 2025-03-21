@@ -10,9 +10,10 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/fluxcd/pkg/runtime/conditions"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
@@ -29,7 +30,7 @@ func SetupOCMRepositoryWithSpecData(ctx context.Context, k8sClient client.Client
 			RepositorySpec: &apiextensionsv1.JSON{
 				Raw: specData,
 			},
-			Interval: metav1.Duration{Duration: time.Minute * 10},
+			Interval: metav1.Duration{Duration: time.Minute},
 		},
 	}
 	Expect(k8sClient.Create(ctx, repository)).To(Succeed())
