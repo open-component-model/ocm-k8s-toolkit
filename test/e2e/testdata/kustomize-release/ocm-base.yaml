@@ -1,0 +1,37 @@
+# Contains base k8s-resources for component-version defined in component-constructor.yaml
+---
+apiVersion: delivery.ocm.software/v1alpha1
+kind: OCMRepository
+metadata:
+  name: kustomize-ocmrepository
+spec:
+  repositorySpec:
+    # URL points to registry that is part of the e2e tests (see test/e2e/config/image-registry)
+    baseUrl: http://registry-internal.default.svc.cluster.local:5001
+    type: OCIRegistry
+  interval: 10m
+---
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Component
+metadata:
+  name: kustomize-component
+spec:
+  component: test-registry.com/test-org/kustomize-component
+  repositoryRef:
+    name: kustomize-ocmrepository
+    namespace: default
+  semver: v1.0.0
+  interval: 10m
+---
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  name: kustomize-resource
+spec:
+  componentRef:
+    name: kustomize-component
+  resource:
+    byReference:
+      resource:
+        name: kustomize-resource
+  interval: 10m

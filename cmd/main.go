@@ -17,24 +17,25 @@ limitations under the License.
 package main
 
 import (
+	// +kubebuilder:scaffold:imports
 	"context"
 	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"flag"
+	"net/http"
 	"os"
-	"time"
 
 	// to ensure that exec-entrypoint and run can make use of them.
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"github.com/fluxcd/pkg/runtime/events"
-	"github.com/openfluxcd/controller-manager/server"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -49,10 +50,9 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/ocmrepository"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/replication"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/resource"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 )
-
-// +kubebuilder:scaffold:imports
 
 var (
 	scheme   = runtime.NewScheme()
@@ -63,24 +63,21 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
-	utilruntime.Must(artifactv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
 //nolint:funlen // this is the main function
 func main() {
 	var (
-		metricsAddr              string
-		enableLeaderElection     bool
-		probeAddr                string
-		secureMetrics            bool
-		enableHTTP2              bool
-		artifactRetentionTTL     = 60 * time.Second
-		artifactRetentionRecords = 2
-		storagePath              string
-		storageAddr              string
-		storageAdvAddr           string
-		eventsAddr               string
+		metricsAddr                string
+		enableLeaderElection       bool
+		probeAddr                  string
+		secureMetrics              bool
+		enableHTTP2                bool
+		eventsAddr                 string
+		registryAddr               string
+		rootCA                     string
+		registryInsecureSkipVerify bool
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metric endpoint binds to. "+
 		"Use the port :8080. If not set, it will be 0 in order to disable the metrics server")
@@ -92,10 +89,10 @@ func main() {
 		"If set the metrics endpoint is served securely")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&storageAddr, "storage-addr", ":9090", "The address the static file server binds to.")
-	flag.StringVar(&storageAdvAddr, "storage-adv-addr", "", "The advertised address of the static file server.")
-	flag.StringVar(&storagePath, "storage-path", "/data", "The local storage path.")
 	flag.StringVar(&eventsAddr, "events-addr", "", "The address of the events receiver.")
+	flag.StringVar(&registryAddr, "registry-addr", "ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000", "The address of the registry.")
+	flag.StringVar(&rootCA, "rootCA", "", "path to the root CA certificate required to establish https connection to the registry.")
+	flag.BoolVar(&registryInsecureSkipVerify, "registry-insecure-skip-verify", false, "Skip verification of the certificate that the registry is using.")
 
 	opts := zap.Options{
 		Development: true,
@@ -104,6 +101,39 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	ctx := context.Background()
+
+	registry, err := ociartifact.NewRegistry(registryAddr)
+	if err != nil {
+		setupLog.Error(err, "unable to initialize registry object")
+		os.Exit(1)
+	}
+	registry.PlainHTTP = registryInsecureSkipVerify
+
+	// If HTTPS is enabled, the root CA certificate must be configured.
+	if !registryInsecureSkipVerify {
+		if rootCA == "" {
+			setupLog.Error(
+				errors.New("expected path to rootCA, but passed path was empty"),
+				"rootCA is required when registry-insecure-skip-verify is false",
+			)
+			os.Exit(1)
+		}
+
+		httpClient, err := getHTTPClientWithTLS(rootCA)
+		if err != nil {
+			setupLog.Error(err, "unable to create http client with TLS configuration")
+			os.Exit(1)
+		}
+
+		registry.Client = httpClient
+	}
+
+	if err := registry.Ping(ctx); err != nil {
+		setupLog.Error(err, "unable to ping OCI registry")
+		os.Exit(1)
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -158,7 +188,6 @@ func main() {
 		setupLog.Error(err, "unable to create event recorder")
 		os.Exit(1)
 	}
-	ctx := context.Background()
 
 	if err = (&ocmrepository.Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
@@ -171,20 +200,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	storage, artifactServer, err := server.NewArtifactStore(mgr.GetClient(), mgr.GetScheme(),
-		storagePath, storageAddr, storageAdvAddr, artifactRetentionTTL, artifactRetentionRecords)
-	if err != nil {
-		setupLog.Error(err, "unable to initialize storage")
-		os.Exit(1)
-	}
-
 	if err = (&component.Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client:        mgr.GetClient(),
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
-		Storage: storage,
+		Registry: registry,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Component")
 		os.Exit(1)
@@ -196,7 +218,7 @@ func main() {
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
-		Storage: storage,
+		Registry: registry,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Resource")
 		os.Exit(1)
@@ -208,8 +230,8 @@ func main() {
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
-		Storage:            storage,
-		LocalizationClient: locclient.NewClientWithLocalStorage(mgr.GetClient(), storage, mgr.GetScheme()),
+		Registry:           registry,
+		LocalizationClient: locclient.NewClientWithRegistry(mgr.GetClient(), registry, mgr.GetScheme()),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LocalizedResource")
 		os.Exit(1)
@@ -221,8 +243,8 @@ func main() {
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
-		Storage:      storage,
-		ConfigClient: cfgclient.NewClientWithLocalStorage(mgr.GetClient(), storage, mgr.GetScheme()),
+		Registry:     registry,
+		ConfigClient: cfgclient.NewClientWithRegistry(mgr.GetClient(), registry, mgr.GetScheme()),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ConfiguredResource")
 		os.Exit(1)
@@ -238,6 +260,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Replication")
 		os.Exit(1)
 	}
+
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -254,10 +277,6 @@ func main() {
 		// entire process will terminate if we lose leadership, so we don't need
 		// to handle that.
 		<-mgr.Elected()
-
-		if err := artifactServer.Start(ctx); err != nil {
-			setupLog.Error(err, "unable to start artifact server")
-		}
 	}()
 
 	setupLog.Info("starting manager")
@@ -265,4 +284,26 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func getHTTPClientWithTLS(rootCAFile string) (*http.Client, error) {
+	var c []byte
+	var err error
+	if c, err = os.ReadFile(rootCAFile); err != nil {
+		return nil, err
+	}
+
+	rootCAs := x509.NewCertPool()
+	if ok := rootCAs.AppendCertsFromPEM(c); !ok {
+		return nil, errors.New("failed to append root CA certificate to pool")
+	}
+
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				RootCAs:    rootCAs,
+			},
+		},
+	}, nil
 }

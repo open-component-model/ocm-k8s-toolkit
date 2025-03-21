@@ -97,7 +97,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, replication *v1alpha1.
 	if replication.GetDeletionTimestamp() != nil {
 		logger.Info("replication is being deleted and cannot be used", "name", replication.Name)
 
-		return ctrl.Result{}, nil
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	if replication.Spec.Suspend {
