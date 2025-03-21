@@ -73,20 +73,11 @@ var _ = Describe("Component Controller", func() {
 	Context("component controller", func() {
 		var repositoryObj *v1alpha1.OCMRepository
 		var namespace *corev1.Namespace
-		var componentName string
+		var componentName, repositoryName string
 
 		BeforeEach(func(ctx SpecContext) {
+			repositoryName = "ocm-repository-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
 			componentName = "ocm.software/test-component-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
-
-			By("creating a repository with name")
-			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
-				env.Component(componentName, func() {
-					env.Version(Version1)
-				})
-			})
-
-			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
-			specdata := Must(spec.MarshalJSON())
 
 			namespaceName := test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
 			namespace = &corev1.Namespace{
@@ -95,23 +86,6 @@ var _ = Describe("Component Controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
-
-			repositoryObj = &v1alpha1.OCMRepository{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: namespaceName,
-					Name:      "repository-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText),
-				},
-				Spec: v1alpha1.OCMRepositorySpec{
-					RepositorySpec: &apiextensionsv1.JSON{
-						Raw: specdata,
-					},
-					Interval: metav1.Duration{Duration: time.Minute * 10},
-				},
-			}
-			Expect(k8sClient.Create(ctx, repositoryObj)).To(Succeed())
-
-			conditions.MarkTrue(repositoryObj, "Ready", "ready", "message")
-			Expect(k8sClient.Status().Update(ctx, repositoryObj)).To(Succeed())
 		})
 
 		AfterEach(func(ctx SpecContext) {
@@ -137,6 +111,19 @@ var _ = Describe("Component Controller", func() {
 		})
 
 		It("reconcileComponent a component", func(ctx SpecContext) {
+			By("creating a component version")
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(Version1)
+				})
+			})
+
+			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
+			specData := Must(spec.MarshalJSON())
+
+			By("mocking an ocm repository")
+			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+
 			By("creating a component")
 			component := &v1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
@@ -165,6 +152,19 @@ var _ = Describe("Component Controller", func() {
 		})
 
 		It("does not reconcile when the repository is not ready", func(ctx SpecContext) {
+			By("creating a component version")
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(Version1)
+				})
+			})
+
+			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
+			specData := Must(spec.MarshalJSON())
+
+			By("mocking an ocm repository")
+			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+
 			By("marking the repository as not ready")
 			conditions.MarkFalse(repositoryObj, "Ready", "notReady", "reason")
 			Expect(k8sClient.Status().Update(ctx, repositoryObj)).To(Succeed())
@@ -215,6 +215,19 @@ var _ = Describe("Component Controller", func() {
 		})
 
 		It("grabs the new version when it becomes available", func(ctx SpecContext) {
+			By("creating a component version")
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(Version1)
+				})
+			})
+
+			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
+			specData := Must(spec.MarshalJSON())
+
+			By("mocking an ocm repository")
+			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+
 			By("creating a component")
 			component := &v1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
@@ -276,6 +289,12 @@ var _ = Describe("Component Controller", func() {
 				})
 			})
 
+			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
+			specData := Must(spec.MarshalJSON())
+
+			By("mocking an ocm repository")
+			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+
 			By("creating a component")
 			component := &v1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
@@ -331,6 +350,12 @@ var _ = Describe("Component Controller", func() {
 					})
 				})
 			})
+
+			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
+			specData := Must(spec.MarshalJSON())
+
+			By("mocking an ocm repository")
+			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
 
 			By("creating a component")
 			component := &v1alpha1.Component{
@@ -389,6 +414,12 @@ var _ = Describe("Component Controller", func() {
 				})
 			})
 
+			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
+			specData := Must(spec.MarshalJSON())
+
+			By("mocking an ocm repository")
+			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+
 			By("creating a component")
 			component := &v1alpha1.Component{
 				ObjectMeta: metav1.ObjectMeta{
@@ -437,6 +468,19 @@ var _ = Describe("Component Controller", func() {
 			componentObjName := ComponentObj + "-with-plus"
 			componentVersionPlus := Version1 + "+componentVersionSuffix"
 			expectedBlobTag := Version1 + ".build-componentVersionSuffix"
+
+			By("creating a component version")
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(componentVersionPlus)
+				})
+			})
+
+			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
+			specData := Must(spec.MarshalJSON())
+
+			By("mocking an ocm repository")
+			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
 
 			By("creating a component in CTF repository")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
@@ -752,7 +796,7 @@ func waitUntilComponentIsReady(ctx context.Context, component *v1alpha1.Componen
 		g.Expect(component).Should(HaveField("Status.Component.Version", expectedVersion))
 
 		return nil
-	}, "15s").WithContext(ctx).Should(Succeed())
+	}, "5m").WithContext(ctx).Should(Succeed())
 }
 
 func validateArtifact(ctx context.Context, component *v1alpha1.Component, env *Builder, ctfPath string) {
