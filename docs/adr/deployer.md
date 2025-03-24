@@ -10,6 +10,10 @@ The purpose of the ocm-controllers is to provide a way to deploy resources from 
 in the [artifacts ADR](./artifacts.md#negative-consequences) this requires some kind of deployer that consumes the
 given resource and uses it to create some kind of deployment.
 
+TODO:
+- What should the deployer actually do?
+
+
 ## Decision Drivers
 
 * The simpler, the better 
