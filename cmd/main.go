@@ -293,7 +293,11 @@ func getHTTPClientWithTLS(rootCAFile string) (*http.Client, error) {
 		return nil, err
 	}
 
-	rootCAs := x509.NewCertPool()
+	rootCAs, err := x509.SystemCertPool()
+	if err != nil {
+		return nil, err
+	}
+
 	if ok := rootCAs.AppendCertsFromPEM(c); !ok {
 		return nil, errors.New("failed to append root CA certificate to pool")
 	}
