@@ -66,7 +66,7 @@ jobs:
     runs-on: large_runner
     steps:
       - name: Self Hosted Runner Post Job Cleanup Action
-        uses: TooMuch4U/actions-clean@v2.2
+        uses: TooMuch4U/actions-clean@9b358e33df99574ac0bdf2e92fa3db1ae1415563 # v2.2
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Go
@@ -94,7 +94,7 @@ jobs:
           cache_name: integration-test
 
       - name: Create k8s Kind Cluster
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@a1b0e391336a6ee6713a0583f8c6240d70863de3 # v1
         with:
           config: test/e2e/config/kind-config.yaml
 
