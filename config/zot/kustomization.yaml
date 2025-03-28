@@ -7,4 +7,4 @@ resources:
 images:
 - name: zot-minimal
   newName: ghcr.io/project-zot/zot-minimal
-  newTag: latest
+  newTag: v2.1.2

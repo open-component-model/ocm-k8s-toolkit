@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+spec:
+  template:
+    spec:
+      containers:
+      - name: manager
+        args:
+          - --health-probe-bind-address=:8081
+          - --zap-log-level=4
+          - --registry-insecure-skip-verify=false
+          - --rootCA=/reg/tls/tls.crt
+        volumeMounts:
+        - name: reg-tls
+          mountPath: /reg/tls
+          readOnly: true
+      volumes:
+      - name: reg-tls
+        secret:
+          secretName: ocm-k8s-toolkit-registry-tls-certs
+# Registry is accessible in-cluster under:
+# https://ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000/v2/_catalog

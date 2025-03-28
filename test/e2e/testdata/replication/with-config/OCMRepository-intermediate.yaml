@@ -10,6 +10,6 @@ spec:
       policy: Propagate
   interval: 2m0s
   repositorySpec:
-    baseUrl: http://protected-registry1-internal.default.svc.cluster.local:5001
+    baseUrl: http://protected-registry1-internal.default.svc.cluster.local:5002
     componentNameMapping: urlPath
     type: OCIRegistry

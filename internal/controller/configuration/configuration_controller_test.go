@@ -1,21 +1,25 @@
 package configuration
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
 	_ "embed"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
-
+	"github.com/fluxcd/pkg/runtime/conditions"
+	"github.com/fluxcd/pkg/tar"
+	. "github.com/mandelsoft/goutils/testutils"
 	"github.com/mandelsoft/vfs/pkg/osfs"
 	"github.com/mandelsoft/vfs/pkg/projectionfs"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -27,71 +31,125 @@ import (
 )
 
 const (
-	Namespace          = "test-namespace"
-	ResourceConfig     = "cfg-test-util"
-	TargetResourceObj  = "target-test-util"
+	ResourceConfig     = "cfg-configuration-util"
+	TargetResourceObj  = "target-configuration-util"
 	ConfiguredResource = "configured-resource"
 )
 
 var _ = Describe("ConfiguredResource Controller", func() {
 	var (
-		tmp string
-		env *ocmbuilder.Builder
+		tmp, namespaceName string
+		env                *ocmbuilder.Builder
+
+		componentObj   *v1alpha1.Component
+		targetResource *v1alpha1.Resource
 	)
 
 	BeforeEach(func() {
 		tmp = GinkgoT().TempDir()
-		testfs, err := projectionfs.New(osfs.New(), tmp)
+		testFs, err := projectionfs.New(osfs.New(), tmp)
 		Expect(err).ToNot(HaveOccurred())
-		env = ocmbuilder.NewBuilder(environment.FileSystem(testfs))
+		env = ocmbuilder.NewBuilder(environment.FileSystem(testFs))
 		DeferCleanup(env.Cleanup)
 	})
 
 	BeforeEach(func(ctx SpecContext) {
-		By("creating namespace object")
+		namespaceName = test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
 		namespace := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: Namespace,
+				Name: namespaceName,
 			},
 		}
 		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 	})
 
-	It("should configure an artifact from a resource based on a ResourceConfig", func(ctx SpecContext) {
-		component := NoOpComponent(ctx, tmp)
+	AfterEach(func(ctx SpecContext) {
+		By("deleting the component")
+		Expect(k8sClient.Delete(ctx, componentObj)).To(Succeed())
+		Eventually(func(ctx context.Context) error {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(componentObj), componentObj)
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
 
+			return fmt.Errorf("expected not-found error, but got none")
+		}, "15s").WithContext(ctx).Should(Succeed())
+
+		By("deleting the target resource")
+		Expect(k8sClient.Delete(ctx, targetResource)).To(Succeed())
+		Eventually(func(ctx context.Context) error {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(targetResource), targetResource)
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+			return fmt.Errorf("expected not-found error, but got none")
+		}, "15s").WithContext(ctx).Should(Succeed())
+
+		confResources := &v1alpha1.ConfiguredResourceList{}
+		Expect(k8sClient.List(ctx, confResources, client.InNamespace(namespaceName))).To(Succeed())
+		Expect(confResources.Items).To(HaveLen(0))
+
+		resConfig := &v1alpha1.ResourceConfigList{}
+		Expect(k8sClient.List(ctx, resConfig, client.InNamespace(namespaceName))).To(Succeed())
+		Expect(resConfig.Items).To(HaveLen(0))
+	})
+
+	It("should configure an artifact from a resource based on a ResourceConfig", func(ctx SpecContext) {
+		By("creating a mock component")
+		componentObj = NoOpComponent(ctx, namespaceName)
+
+		By("creating a mock target resource")
 		fileToConfigure := "test.yaml"
 		fileContentBeforeConfiguration := []byte(`mykey: "value"`)
 		fileContentAfterConfiguration := []byte(`mykey: "substituted"`)
 
 		dir := filepath.Join(tmp, "test")
-		test.CreateTGZ(dir, map[string][]byte{
-			fileToConfigure: fileContentBeforeConfiguration,
-		})
+		Expect(os.Mkdir(dir, os.ModePerm|os.ModeDir)).To(Succeed())
 
-		targetResource := test.SetupMockResourceWithData(ctx,
+		path := filepath.Join(dir, fileToConfigure)
+
+		writer := Must(os.OpenFile(path, os.O_CREATE|os.O_RDWR, os.ModePerm))
+		defer func() {
+			Expect(writer.Close()).To(Succeed())
+		}()
+
+		Must(writer.Write(fileContentBeforeConfiguration))
+
+		targetResource = test.SetupMockResourceWithData(ctx,
 			TargetResourceObj,
-			Namespace,
+			namespaceName,
 			&test.MockResourceOptions{
-				BasePath: tmp,
 				DataPath: dir,
 				ComponentRef: v1alpha1.ObjectKey{
-					Namespace: Namespace,
-					Name:      component.GetName(),
+					Namespace: namespaceName,
+					Name:      componentObj.GetName(),
 				},
-				Strg:     strg,
+				Registry: registry,
 				Clnt:     k8sClient,
 				Recorder: recorder,
 			},
 		)
-		DeferCleanup(func(ctx SpecContext) {
-			Expect(k8sClient.Delete(ctx, targetResource, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
-		})
 
+		Eventually(func(ctx context.Context) bool {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(targetResource), targetResource)
+			if err != nil {
+				return false
+			}
+			return conditions.IsReady(targetResource)
+		}, "15s").WithContext(ctx).Should(BeTrue())
+
+		By("creating a resource config")
 		cfg := v1alpha1.ResourceConfig{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      ResourceConfig,
-				Namespace: Namespace,
+				Namespace: namespaceName,
 			},
 			Spec: v1alpha1.ResourceConfigSpec{
 				Rules: []v1alpha1.ConfigurationRule{
@@ -114,14 +172,12 @@ var _ = Describe("ConfiguredResource Controller", func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, &cfg)).To(Succeed())
-		DeferCleanup(func(ctx SpecContext) {
-			Expect(k8sClient.Delete(ctx, &cfg, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
-		})
 
+		By("creating a configured resource")
 		configuredResource := &v1alpha1.ConfiguredResource{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      ConfiguredResource,
-				Namespace: Namespace,
+				Namespace: namespaceName,
 			},
 			Spec: v1alpha1.ConfiguredResourceSpec{
 				Target:   v1alpha1.ResourceToConfigurationReference(targetResource),
@@ -130,34 +186,69 @@ var _ = Describe("ConfiguredResource Controller", func() {
 			},
 		}
 		Expect(k8sClient.Create(ctx, configuredResource)).To(Succeed())
-		DeferCleanup(func(ctx SpecContext) {
-			Expect(k8sClient.Delete(ctx, configuredResource, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
-		})
 
-		Eventually(Object(configuredResource), "15s").Should(
-			HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+		Eventually(func(ctx context.Context) error {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(configuredResource), configuredResource)
+			if err != nil {
+				return err
+			}
+			if !conditions.IsReady(configuredResource) {
+				return fmt.Errorf("resource not ready")
+			}
+			if configuredResource.GetOCIArtifact() == nil {
+				return fmt.Errorf("OCI artifact not present")
+			}
+			return nil
+		}, "15s").WithContext(ctx).Should(Succeed())
 
-		art := &artifactv1.Artifact{}
-		art.Name = configuredResource.Status.ArtifactRef.Name
-		art.Namespace = configuredResource.Namespace
+		ociRepository, err := registry.NewRepository(ctx, configuredResource.GetOCIRepository())
+		Expect(err).NotTo(HaveOccurred())
+		resourceContentTGZ, err := ociRepository.FetchArtifact(ctx, configuredResource.GetManifestDigest())
+		Expect(err).NotTo(HaveOccurred())
+		tmpArtifact := filepath.Join(tmp, "artifact")
+		Expect(os.Mkdir(tmpArtifact, os.ModePerm|os.ModeDir)).To(Succeed())
+		Expect(tar.Untar(bytes.NewReader(resourceContentTGZ), tmpArtifact)).To(Succeed())
+		content, err := os.ReadFile(filepath.Join(tmpArtifact, fileToConfigure))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(content).To(MatchYAML(fileContentAfterConfiguration))
 
-		test.VerifyArtifact(strg, art, map[string]func(data []byte){
-			fileToConfigure: func(data []byte) {
-				Expect(data).To(MatchYAML(fileContentAfterConfiguration))
-			},
-		})
+		By("delete resources manually")
+		Expect(k8sClient.Delete(ctx, configuredResource)).To(Succeed())
+		Eventually(func(ctx context.Context) error {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(configuredResource), configuredResource)
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+			return fmt.Errorf("expected not-found error, but got none")
+		}, "15s").WithContext(ctx).Should(Succeed())
+		test.ExpectArtifactToNotExist(ctx, registry, configuredResource.GetOCIArtifact())
+
+		Expect(k8sClient.Delete(ctx, &cfg)).To(Succeed())
+		Eventually(func(ctx context.Context) error {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(&cfg), &cfg)
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+			return fmt.Errorf("expected not-found error, but got none")
+		}, "15s").WithContext(ctx).Should(Succeed())
 	})
-
 })
 
-func NoOpComponent(ctx context.Context, basePath string) *v1alpha1.Component {
+func NoOpComponent(ctx context.Context, namespaceName string) *v1alpha1.Component {
 	component := test.SetupComponentWithDescriptorList(ctx,
 		"any-component-that-should-not-be-introspected",
-		Namespace,
-		nil,
+		namespaceName,
+		[]byte("noop"),
 		&test.MockComponentOptions{
-			BasePath: basePath,
-			Strg:     strg,
+			Registry: registry,
 			Client:   k8sClient,
 			Recorder: recorder,
 			Info: v1alpha1.ComponentInfo{
@@ -168,8 +259,6 @@ func NoOpComponent(ctx context.Context, basePath string) *v1alpha1.Component {
 			Repository: "repo-that-should-not-be-introspected",
 		},
 	)
-	DeferCleanup(func(ctx SpecContext) {
-		Expect(k8sClient.Delete(ctx, component, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
-	})
+
 	return component
 }

@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -100,12 +99,6 @@ type ComponentStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// ArtifactRef references the generated artifact containing a list of
-	// component descriptors. This list can be used by other controllers to
-	// avoid re-downloading (and potentially also re-verifying) the components.
-	// +optional
-	ArtifactRef corev1.LocalObjectReference `json:"artifactRef,omitempty"`
-
 	// Component specifies the concrete version of the component that was
 	// fetched after based on the semver constraints during the last successful
 	// reconciliation.
@@ -117,6 +110,12 @@ type ComponentStatus struct {
 	// in the order the configuration data was applied.
 	// +optional
 	EffectiveOCMConfig []OCMConfiguration `json:"effectiveOCMConfig,omitempty"`
+
+	// OCIArtifact references the generated OCI artifact containing a list of
+	// component descriptors. This list can be used by other controllers to
+	// avoid re-downloading (and potentially also re-verifying) the components.
+	// +optional
+	OCIArtifact *OCIArtifactInfo `json:"ociArtifact,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -178,6 +177,28 @@ func (in *Component) GetEffectiveOCMConfig() []OCMConfiguration {
 
 func (in *Component) GetVerifications() []Verification {
 	return in.Spec.Verify
+}
+
+func (in *Component) GetOCIArtifact() *OCIArtifactInfo {
+	return in.Status.OCIArtifact
+}
+
+// GetOCIRepository returns the name of the OCI repository of the OCI artifact in which the component
+// descriptors are stored.
+func (in *Component) GetOCIRepository() string {
+	return in.Status.OCIArtifact.Repository
+}
+
+// GetManifestDigest returns the manifest digest of the OCI artifact, in which the component descriptors
+// are stored.
+func (in *Component) GetManifestDigest() string {
+	return in.Status.OCIArtifact.Digest
+}
+
+// GetBlobDigest returns the blob digest of the OCI artifact, in which the component descriptors
+// are stored.
+func (in *Component) GetBlobDigest() string {
+	return in.Status.OCIArtifact.Blob.Digest
 }
 
 // +kubebuilder:object:root=true
