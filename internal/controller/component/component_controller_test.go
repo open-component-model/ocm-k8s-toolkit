@@ -19,7 +19,6 @@ package component
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/fluxcd/pkg/apis/meta"
@@ -50,7 +49,6 @@ import (
 )
 
 const (
-	CTFPath      = "ocm-k8s-ctfstore--*"
 	ComponentObj = "test-component"
 	Version1     = "1.0.0"
 	Version2     = "1.0.1"
@@ -62,11 +60,10 @@ var _ = Describe("Component Controller", func() {
 		ctfpath string
 	)
 	BeforeEach(func() {
-		ctfpath = Must(os.MkdirTemp("", CTFPath))
+		ctfpath = GinkgoT().TempDir()
 		env = NewBuilder(environment.FileSystem(osfs.OsFs))
 	})
 	AfterEach(func() {
-		Expect(os.RemoveAll(ctfpath)).To(Succeed())
 		Expect(env.Cleanup()).To(Succeed())
 	})
 

@@ -16,13 +16,11 @@ package configuration
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
 
-	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -115,10 +113,7 @@ var _ = BeforeSuite(func() {
 	}
 
 	// Setup zot registry and start it up
-	zotRootDir = Must(os.MkdirTemp("", ""))
-	DeferCleanup(func() {
-		Expect(os.RemoveAll(zotRootDir)).To(Succeed())
-	})
+	zotRootDir = GinkgoT().TempDir()
 
 	zotCmd, registry = test.SetupRegistry(filepath.Join("..", "..", "..", "bin", "zot-registry"), zotRootDir, "0.0.0.0", "8083")
 

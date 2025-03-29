@@ -16,7 +16,6 @@ package resource
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -106,11 +105,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	// Setup zot registry and start it up
-	zotRootDir, err = os.MkdirTemp("", "")
-	Expect(err).NotTo(HaveOccurred())
-	DeferCleanup(func() {
-		Expect(os.RemoveAll(zotRootDir)).To(Succeed())
-	})
+	zotRootDir = GinkgoT().TempDir()
 
 	zotCmd, registry = test.SetupRegistry(filepath.Join("..", "..", "..", "bin", "zot-registry"), zotRootDir, "0.0.0.0", "8081")
 

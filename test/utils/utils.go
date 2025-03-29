@@ -90,13 +90,7 @@ func DeployResource(manifestFilePath string) error {
 // After creating the OCM component, the component is transferred to imageRegistry.
 func PrepareOCMComponent(ccPath, imageRegistry string) error {
 	By("creating ocm component")
-	tmpDir, err := os.MkdirTemp("", "")
-	if err != nil {
-		return fmt.Errorf("could not create temporary directory: %w", err)
-	}
-	DeferCleanup(func() error {
-		return os.RemoveAll(tmpDir)
-	})
+	tmpDir := GinkgoT().TempDir()
 
 	ctfDir := filepath.Join(tmpDir, "ctf")
 	cmdArgs := []string{
@@ -108,7 +102,7 @@ func PrepareOCMComponent(ccPath, imageRegistry string) error {
 	}
 
 	cmd := exec.Command("ocm", cmdArgs...)
-	_, err = Run(cmd)
+	_, err := Run(cmd)
 	if err != nil {
 		return fmt.Errorf("could not create ocm component: %w", err)
 	}

@@ -23,7 +23,6 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/fluxcd/pkg/runtime/conditions"
 	. "github.com/mandelsoft/goutils/testutils"
@@ -62,7 +61,6 @@ import (
 )
 
 const (
-	CTFPath          = "ocm-k8s-ctfstore--*"
 	RepositoryObj    = "test-repository"
 	ComponentObj     = "test-component"
 	ResourceObj      = "test-resource"
@@ -94,10 +92,7 @@ var _ = Describe("Resource Controller", func() {
 			componentName = "ocm.software/component-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
 			resourceName = "resource-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
 
-			resourceLocalPath = Must(os.MkdirTemp("", CTFPath))
-			DeferCleanup(func() error {
-				return os.RemoveAll(resourceLocalPath)
-			})
+			resourceLocalPath = GinkgoT().TempDir()
 
 			env = NewBuilder(environment.FileSystem(osfs.OsFs))
 			DeferCleanup(env.Cleanup)

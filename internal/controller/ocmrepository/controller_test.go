@@ -2,7 +2,6 @@ package ocmrepository
 
 import (
 	"context"
-	"os"
 	"time"
 
 	. "github.com/mandelsoft/goutils/testutils"
@@ -29,7 +28,6 @@ import (
 )
 
 const (
-	CTFPath              = "ocm-k8s-ctfstore--*"
 	TestNamespaceOCMRepo = "test-namespace-ocmrepository"
 	TestOCMRepositoryObj = "test-ocmrepository"
 )
@@ -280,7 +278,7 @@ var _ = Describe("OCMRepository Controller", func() {
 		Context("repository controller", func() {
 			It("reconciles a repository", func() {
 				By("creating a repository object")
-				ctfpath := Must(os.MkdirTemp("", CTFPath))
+				ctfpath := GinkgoT().TempDir()
 				componentName := "ocm.software/test-component"
 				componentVersion := "v1.0.0"
 				env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
