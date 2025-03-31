@@ -25,6 +25,7 @@ import (
 	"flag"
 	"net/http"
 	"os"
+	"time"
 
 	// to ensure that exec-entrypoint and run can make use of them.
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -59,6 +60,14 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 )
 
+type RegistryParams struct {
+	RegistryAddr               string
+	RegistryInsecureSkipVerify bool
+	RootCA                     string
+	RegistryPingTimeout        time.Duration
+	RegistryPingInterval       time.Duration
+}
+
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
@@ -78,7 +87,14 @@ func main() {
 		registryAddr               string
 		rootCA                     string
 		registryInsecureSkipVerify bool
+		registryPingTimeout        time.Duration
 	)
+
+	const (
+		registryPingInterval       = 5 * time.Second
+		registryPingTimeoutDefault = 2 * time.Minute
+	)
+
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metric endpoint binds to. "+
 		"Use the port :8080. If not set, it will be 0 in order to disable the metrics server")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -93,6 +109,7 @@ func main() {
 	flag.StringVar(&registryAddr, "registry-addr", "ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000", "The address of the registry.")
 	flag.StringVar(&rootCA, "rootCA", "", "path to the root CA certificate required to establish https connection to the registry.")
 	flag.BoolVar(&registryInsecureSkipVerify, "registry-insecure-skip-verify", false, "Skip verification of the certificate that the registry is using.")
+	flag.DurationVar(&registryPingTimeout, "registry-ping-timeout", registryPingTimeoutDefault, "Timeout to wait for the registry to become available.")
 
 	opts := zap.Options{
 		Development: true,
@@ -104,34 +121,15 @@ func main() {
 
 	ctx := context.Background()
 
-	registry, err := ociartifact.NewRegistry(registryAddr)
+	registry, err := configureRegistryAccess(ctx, &RegistryParams{
+		RegistryAddr:               registryAddr,
+		RegistryInsecureSkipVerify: registryInsecureSkipVerify,
+		RootCA:                     rootCA,
+		RegistryPingTimeout:        registryPingTimeout,
+		RegistryPingInterval:       registryPingInterval,
+	})
 	if err != nil {
-		setupLog.Error(err, "unable to initialize registry object")
-		os.Exit(1)
-	}
-	registry.PlainHTTP = registryInsecureSkipVerify
-
-	// If HTTPS is enabled, the root CA certificate must be configured.
-	if !registryInsecureSkipVerify {
-		if rootCA == "" {
-			setupLog.Error(
-				errors.New("expected path to rootCA, but passed path was empty"),
-				"rootCA is required when registry-insecure-skip-verify is false",
-			)
-			os.Exit(1)
-		}
-
-		httpClient, err := getHTTPClientWithTLS(rootCA)
-		if err != nil {
-			setupLog.Error(err, "unable to create http client with TLS configuration")
-			os.Exit(1)
-		}
-
-		registry.Client = httpClient
-	}
-
-	if err := registry.Ping(ctx); err != nil {
-		setupLog.Error(err, "unable to ping OCI registry")
+		setupLog.Error(err, "unable to connect to registry", "registry-addr", registryAddr)
 		os.Exit(1)
 	}
 
@@ -310,4 +308,53 @@ func getHTTPClientWithTLS(rootCAFile string) (*http.Client, error) {
 			},
 		},
 	}, nil
+}
+
+func configureRegistryAccess(ctx context.Context, params *RegistryParams) (*ociartifact.Registry, error) {
+	registry, err := ociartifact.NewRegistry(params.RegistryAddr)
+	if err != nil {
+		return nil, err
+	}
+	registry.PlainHTTP = params.RegistryInsecureSkipVerify
+
+	// If HTTPS is enabled, the root CA certificate must be configured.
+	if !params.RegistryInsecureSkipVerify {
+		if params.RootCA == "" {
+			return nil, errors.New("rootCA is required when registry-insecure-skip-verify is false")
+		}
+
+		httpClient, err := getHTTPClientWithTLS(params.RootCA)
+		if err != nil {
+			return nil, err
+		}
+
+		registry.Client = httpClient
+	}
+
+	// Check if the registry is accessible.
+	if err := checkIfRegistryAvailable(ctx, registry, params); err != nil {
+		return nil, err
+	}
+
+	return registry, nil
+}
+
+func checkIfRegistryAvailable(ctx context.Context, registry *ociartifact.Registry, params *RegistryParams) error {
+	timeoutChan := time.After(params.RegistryPingTimeout)
+	for {
+		err := registry.Ping(ctx)
+		if err == nil {
+			// Registry is there. Continue.
+			return nil
+		}
+
+		select {
+		case <-timeoutChan:
+			// Timeout expired, registry not available.
+			return err
+		default:
+			// Retry the ping after a brief delay.
+			time.Sleep(params.RegistryPingInterval)
+		}
+	}
 }
