@@ -473,12 +473,8 @@ github.com/fluxcd/pkg/apis/event v0.16.0 h1:ffKc/3erowPnh72lFszz7sPQhLZ7bhqNrq+p
 github.com/fluxcd/pkg/apis/event v0.16.0/go.mod h1:D/QQi5lHT9/Ur3OMFLJO71D4KDQHbJ5s8dQV3h1ZAT0=
 github.com/fluxcd/pkg/apis/meta v1.10.0 h1:rqbAuyl5ug7A5jjRf/rNwBXmNl6tJ9wG2iIsriwnQUk=
 github.com/fluxcd/pkg/apis/meta v1.10.0/go.mod h1:n7NstXHDaleAUMajcXTVkhz0MYkvEXy1C/eLI/t1xoI=
-github.com/fluxcd/pkg/lockedfile v0.5.0 h1:rzFe+eudc1BWoLnuyaWprFZr6ZaiByixjSeLNf2hrB8=
-github.com/fluxcd/pkg/lockedfile v0.5.0/go.mod h1:l/d/gk60oIy48rNWoPGSnjVWjjkSDLAtaMXYEdRfaQo=
 github.com/fluxcd/pkg/runtime v0.58.0 h1:aic88k/PUqEOzq62nxav9XEyUicAbT+fiDcJ7dzWhqc=
 github.com/fluxcd/pkg/runtime v0.58.0/go.mod h1:ZRlEHAHhlP3gPl7/+kZ8i8nimZ+/mSnpURlexBJULnI=
-github.com/fluxcd/pkg/sourceignore v0.11.0 h1:xzpYmc5/t/Ck+/DkJSX3r+VbahDRIAn5kbv04fynWUo=
-github.com/fluxcd/pkg/sourceignore v0.11.0/go.mod h1:ri2FvlzX8ep2iszOK5gF/riYq2TNgpVvsfJ2QY0dLWI=
 github.com/fluxcd/pkg/ssa v0.45.1 h1:ISl84TJwRP/GuZXrKiR9Tf8JOnG5XFgtjcYoR4XQYf4=
 github.com/fluxcd/pkg/ssa v0.45.1/go.mod h1:8Anf7XVZ0zxOve7HXbDaW1s0gfmP95ksJBlKfDYinhQ=
 github.com/fluxcd/pkg/tar v0.11.0 h1:pjf/rzr6HNAPiuxT59mtba9tfBtdNiSQ/UqduG8vZ2I=
