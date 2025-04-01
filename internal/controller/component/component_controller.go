@@ -304,7 +304,6 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 	}
 
 	// Store descriptors and create OCI artifact
-	logger.Info("pushing descriptors to storage")
 	ociRepositoryName, err := ociartifact.CreateRepositoryName(cv.GetName())
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CreateOCIRepositoryNameFailedReason, err.Error())
