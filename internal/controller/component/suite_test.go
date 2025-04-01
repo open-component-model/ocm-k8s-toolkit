@@ -104,18 +104,18 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
+	ctx, cancel := context.WithCancel(context.Background())
+	DeferCleanup(cancel)
+
 	// Setup zot registry and start it up
 	zotRootDir = GinkgoT().TempDir()
-
-	zotCmd, registry = test.SetupRegistry(filepath.Join("..", "..", "..", "bin", "zot-registry"), zotRootDir, "0.0.0.0", "8080")
+	zotCmd, registry = test.SetupRegistry(ctx, filepath.Join("..", "..", "..", "bin", "zot-registry"), zotRootDir, "0.0.0.0", "8080")
 
 	events := make(chan string)
 	recorder = &record.FakeRecorder{
 		Events:        events,
 		IncludeObject: true,
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	DeferCleanup(cancel)
 
 	go func() {
 		for {

@@ -20,7 +20,7 @@ const (
 	timeout = 30 * time.Second
 )
 
-func SetupRegistry(binPath, rootDir, address, port string) (*exec.Cmd, *ociartifact.Registry) {
+func SetupRegistry(ctx context.Context, binPath, rootDir, address, port string) (*exec.Cmd, *ociartifact.Registry) {
 	config := []byte(fmt.Sprintf(`{"storage":{"rootDirectory":"%s"},"http":{"address":"%s","port": "%s"}}`, rootDir, address, port))
 	configFile := filepath.Join(rootDir, "config.json")
 	err := os.WriteFile(configFile, config, 0o600)
@@ -32,7 +32,6 @@ func SetupRegistry(binPath, rootDir, address, port string) (*exec.Cmd, *ociartif
 	Expect(err).NotTo(HaveOccurred(), "Failed to start Zot")
 
 	// Wait for Zot to be ready
-	ctx := context.Background()
 	Eventually(func(ctx context.Context) error {
 		url := fmt.Sprintf("http://%s/v2/", net.JoinHostPort(address, port))
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

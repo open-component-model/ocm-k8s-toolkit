@@ -113,13 +113,12 @@ var _ = BeforeSuite(func() {
 		IncludeObject: true,
 	}
 
-	// Setup zot registry and start it up
-	zotRootDir = GinkgoT().TempDir()
-
-	zotCmd, registry = test.SetupRegistry(filepath.Join("..", "..", "..", "bin", "zot-registry"), zotRootDir, "0.0.0.0", "8082")
-
 	ctx, cancel = context.WithCancel(context.Background())
 	DeferCleanup(cancel)
+
+	// Setup zot registry and start it up
+	zotRootDir = GinkgoT().TempDir()
+	zotCmd, registry = test.SetupRegistry(ctx, filepath.Join("..", "..", "..", "bin", "zot-registry"), zotRootDir, "0.0.0.0", "8082")
 
 	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
@@ -141,8 +140,6 @@ var _ = BeforeSuite(func() {
 		Registry:     registry,
 	}).SetupWithManager(k8sManager)).To(Succeed())
 
-	ctx, cancel := context.WithCancel(context.Background())
-	DeferCleanup(cancel)
 	go func() {
 		defer GinkgoRecover()
 		Expect(k8sManager.Start(ctx)).To(Succeed())
