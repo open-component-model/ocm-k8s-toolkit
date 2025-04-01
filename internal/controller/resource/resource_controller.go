@@ -367,6 +367,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		// TODO: How to get the blob size, without downloading the resource?
 		//  Do we need the blob-size, when we copy the resource either way?
 		//  We could use the size stored in the manifest.
+		//  OCM does not necessarily provide the size. It is possible if the metadata contains it.
 		blobSize = 0
 	} else {
 		// Get resource content
