@@ -59,7 +59,7 @@ func SetupComponentWithDescriptorList(
 	component.Status.OCIArtifact = &v1alpha1.OCIArtifactInfo{
 		Repository: repositoryName,
 		Digest:     manifestDigest.String(),
-		Blob: &v1alpha1.BlobInfo{
+		Blob: v1alpha1.BlobInfo{
 			Digest: digest.FromBytes(descriptorListData).String(),
 			Tag:    options.Info.Version,
 			Size:   int64(len(descriptorListData)),

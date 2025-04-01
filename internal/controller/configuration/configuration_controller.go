@@ -269,7 +269,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		configuration.Status.OCIArtifact = &v1alpha1.OCIArtifactInfo{
 			Repository: repositoryName,
 			Digest:     manifestDigest.String(),
-			Blob: &v1alpha1.BlobInfo{
+			Blob: v1alpha1.BlobInfo{
 				Digest: combinedDigest,
 				Tag:    tag,
 				Size:   int64(len(dataTGZ)),

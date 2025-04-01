@@ -419,7 +419,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	if err = setResourceStatus(ctx, configs, resource, resourceAccess, &v1alpha1.OCIArtifactInfo{
 		Repository: ociRepositoryName,
 		Digest:     manifestDigest.String(),
-		Blob: &v1alpha1.BlobInfo{
+		Blob: v1alpha1.BlobInfo{
 			Digest: resourceAccess.Meta().Digest.Value,
 			Tag:    tag,
 			Size:   blobSize,

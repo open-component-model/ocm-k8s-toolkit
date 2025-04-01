@@ -140,7 +140,7 @@ type OCIArtifactInfo struct {
 
 	// Blob
 	// +required
-	Blob *BlobInfo `json:"blob"`
+	Blob BlobInfo `json:"blob"`
 }
 
 // +k8s:deepcopy-gen=false

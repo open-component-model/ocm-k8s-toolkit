@@ -555,7 +555,7 @@ var _ = Describe("Resource Controller", func() {
 				componentObj.Status.OCIArtifact = &v1alpha1.OCIArtifactInfo{
 					Repository: repositoryName,
 					Digest:     manifestDigest.String(),
-					Blob: &v1alpha1.BlobInfo{
+					Blob: v1alpha1.BlobInfo{
 						Digest: digest.FromBytes(dataCds).String(),
 						Tag:    ComponentVersionNew,
 						Size:   int64(len(dataCds)),
