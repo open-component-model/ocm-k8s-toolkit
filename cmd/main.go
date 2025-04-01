@@ -121,6 +121,8 @@ func main() {
 
 	ctx := context.Background()
 
+	// Configure the registry access and make sure the registry is available as it is required as storage for
+	// ocm component descriptors and resources.
 	registry, err := configureRegistryAccess(ctx, &RegistryParams{
 		RegistryAddr:               registryAddr,
 		RegistryInsecureSkipVerify: registryInsecureSkipVerify,
