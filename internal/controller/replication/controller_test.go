@@ -18,7 +18,6 @@ package replication
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -89,8 +88,6 @@ var _ = Describe("Replication Controller", func() {
 			optResourceName        string
 			sourceRepoResourceName string
 			targetRepoResourceName string
-			sourcePattern          string
-			targetPattern          string
 		)
 
 		var replNamespacedName types.NamespacedName
@@ -121,8 +118,6 @@ var _ = Describe("Replication Controller", func() {
 			optResourceName = "test-transfer-options" + i
 			sourceRepoResourceName = "test-source-repository" + i
 			targetRepoResourceName = "test-target-repository" + i
-			sourcePattern = "ocm-k8s-replication-source" + i + "--*"
-			targetPattern = "ocm-k8s-replication-target" + i + "--*"
 
 			replNamespacedName = types.NamespacedName{
 				Name:      replResourceName,
@@ -135,10 +130,7 @@ var _ = Describe("Replication Controller", func() {
 
 		It("should be properly reflected in the history", func() {
 			By("Create source CTF")
-			sourcePath := mandelsoft.Must(os.MkdirTemp("", sourcePattern))
-			DeferCleanup(func() error {
-				return os.RemoveAll(sourcePath)
-			})
+			sourcePath := GinkgoT().TempDir()
 
 			newTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compVersion, testImage)
 
@@ -160,10 +152,7 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
 			By("Create target CTF")
-			targetPath := mandelsoft.Must(os.MkdirTemp("", targetPattern))
-			DeferCleanup(func() error {
-				return os.RemoveAll(targetPath)
-			})
+			targetPath := GinkgoT().TempDir()
 
 			By("Create target repository resource")
 			targetRepo, targetSpecData := newTestCFTRepository(testNamespace, targetRepoResourceName, targetPath)
@@ -226,10 +215,7 @@ var _ = Describe("Replication Controller", func() {
 		It("should be possible to configure transfer options", func() {
 
 			By("Create source CTF")
-			sourcePath := mandelsoft.Must(os.MkdirTemp("", sourcePattern))
-			DeferCleanup(func() error {
-				return os.RemoveAll(sourcePath)
-			})
+			sourcePath := GinkgoT().TempDir()
 
 			newTestComponentVersionInCTFDir(env, sourcePath, compOCMName, compVersion, testImage)
 
@@ -251,10 +237,7 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
 			By("Create target CTF")
-			targetPath := mandelsoft.Must(os.MkdirTemp("", targetPattern))
-			DeferCleanup(func() error {
-				return os.RemoveAll(targetPath)
-			})
+			targetPath := GinkgoT().TempDir()
 
 			By("Create target repository resource")
 			targetRepo, targetSpecData := newTestCFTRepository(testNamespace, targetRepoResourceName, targetPath)
@@ -306,10 +289,7 @@ var _ = Describe("Replication Controller", func() {
 
 		It("transfer errors should be properly reflected in the history", func() {
 			By("Create source CTF")
-			sourcePath := mandelsoft.Must(os.MkdirTemp("", sourcePattern))
-			DeferCleanup(func() error {
-				return os.RemoveAll(sourcePath)
-			})
+			sourcePath := GinkgoT().TempDir()
 
 			// The created directory is empty, i.e. the test will try to transfer a non-existing component version.
 			// This should result in an error, logged in the status of the replication object.
@@ -332,10 +312,7 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
 			By("Create target CTF")
-			targetPath := mandelsoft.Must(os.MkdirTemp("", targetPattern))
-			DeferCleanup(func() error {
-				return os.RemoveAll(targetPath)
-			})
+			targetPath := GinkgoT().TempDir()
 
 			By("Create target repository resource")
 			targetRepo, targetSpecData := newTestCFTRepository(testNamespace, targetRepoResourceName, targetPath)

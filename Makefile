@@ -10,6 +10,10 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+OS ?= $(shell go env GOOS)
+ARCH ?= $(shell go env GOARCH)
+
+
 # CONTAINER_TOOL defines the container tool to be used for building images.
 # Be aware that the target commands are only tested with Docker which is
 # scaffolded by default. However, you might want to replace it to use other
@@ -64,7 +68,7 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate envtest ## Run tests.
+test: manifests generate envtest zot-registry ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 # Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
@@ -152,7 +156,7 @@ deploy: deploy-cert-manager manifests kustomize ## Deploy controller to the K8s 
 	$(call set-images)
 	$(KUSTOMIZE) build config/default-zot-https | $(KUBECTL) apply -f -
 
-# Undeploy target undeploys the controller, its zot regostry and related certificates. 
+# Undeploy target undeploys the controller, its zot registry and related certificates.
 # However, it does not undeploy the cert-manager, which might still be needed by other applications in the cluster.
 # If you wish to undeploy cert manager as well, execute 'make undeploy-cert-manager' in addition.
 .PHONY: undeploy
@@ -171,6 +175,7 @@ KUBECTL ?= kubectl
 KUSTOMIZE ?= $(LOCALBIN)/kustomize-$(KUSTOMIZE_VERSION)
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
+ZOT_BINARY ?= $(LOCALBIN)/zot-registry
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.1
@@ -210,6 +215,14 @@ deploy-cert-manager: ## Deploy cert-manager to the K8s cluster specified in ~/.k
 .PHONY: undeploy-cert-manager
 undeploy-cert-manager: ## Undeploy cert-manager from the K8s cluster specified in ~/.kube/config.
 	$(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f $(CERT-MANAGER_YAML)
+
+.PHONY: zot-registry
+zot-registry: $(LOCALBIN) ## Download zot registry binary locally if necessary.
+ifeq (, $(shell which $(ZOT_BINARY)))
+	wget "https://github.com/project-zot/zot/releases/download/$(ZOT_VERSION)/zot-$(OS)-$(ARCH)-minimal" \
+		-O $(ZOT_BINARY) \
+		&& chmod u+x $(ZOT_BINARY)
+endif
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary (ideally with version)

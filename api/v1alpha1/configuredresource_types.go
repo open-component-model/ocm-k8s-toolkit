@@ -85,20 +85,35 @@ func (in *ConfiguredResource) SetTarget(v *ConfigurationReference) {
 	v.DeepCopyInto(&in.Spec.Target)
 }
 
+func (in *ConfiguredResource) GetOCIArtifact() *OCIArtifactInfo {
+	return in.Status.OCIArtifact
+}
+
+// GetOCIRepository returns the name of the OCI repository of the OCI artifact in which the configured resource is
+// stored.
+func (in *ConfiguredResource) GetOCIRepository() string {
+	return in.Status.OCIArtifact.Repository
+}
+
+// GetManifestDigest returns the manifest digest of the OCI artifact, in which the configured resource is stored.
+func (in *ConfiguredResource) GetManifestDigest() string {
+	return in.Status.OCIArtifact.Digest
+}
+
+// GetBlobDigest returns the blob digest of the OCI artifact, in which the configured resource is stored.
+func (in *ConfiguredResource) GetBlobDigest() string {
+	return in.Status.OCIArtifact.Blob.Digest
+}
+
 // ConfiguredResourceStatus defines the observed state of ConfiguredResource.
 type ConfiguredResourceStatus struct {
 	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
 	Conditions         []metav1.Condition `json:"conditions,omitempty"`
 
-	// The configuration reconcile loop generates an artifact, which contains the
+	// The configuration reconcile loop generates an OCI artifact, which contains the
 	// ConfiguredResourceSpec.Target ConfigurationReference after configuration.
-	// It is filled once the Artifact is created and the configuration completed.
-	ArtifactRef *ObjectKey `json:"artifactRef,omitempty"`
-
-	// Digest contains a technical identifier for the artifact. This technical identifier
-	// can be used to track changes on the ArtifactRef as it is a combination of the origin
-	// ConfiguredResourceSpec.Config applied to the ConfiguredResourceSpec.Target.
-	Digest string `json:"digest,omitempty"`
+	// It is filled once the OCI artifact is created and the configuration completed.
+	OCIArtifact *OCIArtifactInfo `json:"ociArtifact,omitempty"`
 }
 
 // +kubebuilder:object:root=true

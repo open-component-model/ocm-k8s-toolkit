@@ -89,7 +89,7 @@ Again, an optional `subPath` can be used to further refine value substitution.
 This one can be used for values provided through another resource. This option
 is convenient if values are bundled with another component and are shipped together
 with the target component. Or are the end result of a Localization step. Anything
-that can provide a Snapshot can provide values.
+that can provide an Artifact (formerly known as Snapshot) can provide values.
 
 ```yaml
   sourceRef:
