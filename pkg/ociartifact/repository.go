@@ -257,20 +257,18 @@ func DeleteForObject(ctx context.Context, registry *Registry, obj v1alpha1.OCIAr
 		return nil
 	}
 
-	if info.Repository != "" {
-		ociRepository, err := registry.NewRepository(ctx, info.Repository)
-		if err != nil {
-			return err
-		}
+	ociRepository, err := registry.NewRepository(ctx, info.Repository)
+	if err != nil {
+		return err
+	}
 
-		exists, err := ociRepository.ExistsArtifact(ctx, info.Digest)
-		if err != nil {
-			return err
-		}
+	exists, err := ociRepository.ExistsArtifact(ctx, info.Digest)
+	if err != nil {
+		return err
+	}
 
-		if exists {
-			return ociRepository.DeleteArtifact(ctx, info.Digest)
-		}
+	if exists {
+		return ociRepository.DeleteArtifact(ctx, info.Digest)
 	}
 
 	return nil
