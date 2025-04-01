@@ -186,20 +186,14 @@ func (r *Repository) CopyOCIArtifactForResourceAccess(ctx context.Context, acces
 		return "", fmt.Errorf("expected type ociartifact.AccessSpec, but got %T", gloAccess)
 	}
 
-	var http bool
-	var refSanitized string
 	refURL, err := url.Parse(accessSpec.ImageReference)
 	if err != nil {
 		return "", fmt.Errorf("error parsing image reference: %w", err)
 	}
 
+	refSanitized := accessSpec.ImageReference
 	if refURL.Scheme != "" {
-		if refURL.Scheme == "http" {
-			http = true
-		}
 		refSanitized = strings.TrimPrefix(accessSpec.ImageReference, refURL.Scheme+"://")
-	} else {
-		refSanitized = accessSpec.ImageReference
 	}
 
 	ref, err := name.ParseReference(refSanitized)
@@ -212,9 +206,7 @@ func (r *Repository) CopyOCIArtifactForResourceAccess(ctx context.Context, acces
 		return "", fmt.Errorf("error creating source registry: %w", err)
 	}
 
-	if http {
-		sourceRegistry.PlainHTTP = true
-	}
+	sourceRegistry.PlainHTTP = refURL.Scheme == "http"
 
 	sourceRepository, err := sourceRegistry.Repository(ctx, ref.Context().RepositoryStr())
 	if err != nil {
