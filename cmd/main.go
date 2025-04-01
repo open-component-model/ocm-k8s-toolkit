@@ -106,7 +106,12 @@ func main() {
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&eventsAddr, "events-addr", "", "The address of the events receiver.")
-	flag.StringVar(&registryAddr, "registry-addr", "ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000", "The address of the registry.")
+	flag.StringVar(
+		&registryAddr,
+		"registry-addr",
+		"ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000",
+		"The address of the registry (The default points to the internal registry that is deployed per default along the controllers).",
+	)
 	flag.StringVar(&rootCA, "rootCA", "", "path to the root CA certificate required to establish https connection to the registry.")
 	flag.BoolVar(&registryInsecureSkipVerify, "registry-insecure-skip-verify", false, "Skip verification of the certificate that the registry is using.")
 	flag.DurationVar(&registryPingTimeout, "registry-ping-timeout", registryPingTimeoutDefault, "Timeout to wait for the registry to become available.")
