@@ -34,12 +34,12 @@ for deployment as we store the resources internally in an OCI registry.
 
 ## Considered Options
 
+* [Kro](#kro): Use Kro's `ResourceGraphDefinition` to orchestrate all required resources (from OCM Kubernetes-resources to
+  the deployment resources).
 * [FluxDeployer](#fluxdeployer): Create a CRD `FluxDeployer` that points to the consumable resource and its reconciler 
 creates FluxCDs `OCIRepository` and `HelmRelease`/`Kustomization` to create the deployment based on the resource.
 (This option would be closest to the `ocm-controllers` v1 implementation.)
 * [Deployer](#deployer): Create a CRD `Deployment` that is a wrapper for all resources that are required for the deployment.
-* [Kro](#kro): Use Kro's `ResourceGraphDefinition` to orchestrate all required resources (from OCM Kubernetes-resources to
-the deployment resources).
 
 ## Decision Outcome
 
@@ -56,6 +56,48 @@ Chosen option: "[???]", because
 * …
 
 ## Pros and Cons of the Options
+
+### Kro
+
+Kube Resource Orchestrator ([kro][kro-github]) is an open-source Kubernetes operator designed to simplify the creation
+and management of complex resource configurations within Kubernetes clusters. At the heart of kro is the
+`ResourceGraphDefinition`, a custom resource that specifies a collection of Kubernetes resources and their
+interdependencies. This definition allows for the encapsulation of complex resource groupings into reusable components,
+streamlining deployment processes.
+
+When a `ResourceGraphDefinition` is applied to a Kubernetes cluster, the kro controller validates its specifications.
+Upon validation, kro dynamically generates a new Custom Resource Definition (CRD) and registers it with the Kubernetes
+API server, effectively extending the Kubernetes API to include the new resource type.
+Kro then deploys a dedicated controller tailored to manage instances of the newly created CRD. This microcontroller is
+responsible for overseeing the lifecycle of the resources defined within the `ResourceGraphDefinition`.
+When an `instance` of the custom resource is created, the microcontroller interprets the instance parameters,
+orchestrates the creation and configuration of the underlying resources, and manages their states to ensure alignment
+with the desired specifications.
+
+kro integrates the Common Expression Language (CEL) to enable dynamic resource configuration. In its
+`ResourceGraphDefinition`, CEL expressions are used to establish dependencies and reference values between resources.
+For instance, a CEL expression can extract an output from one resource and use it as an input for another, ensuring that
+interdependent resources are correctly configured and deployed in the appropriate sequence.
+
+Accordingly, the `ResourceGraphDefinition` provides a high-level abstraction for defining complex resources and is
+flexible enough to accommodate a wide range of deployment scenarios. It gives the possibility to configure resources
+dynamically, which is a key requirement for the deployment of resources from an OCM component version. In addition with
+FluxCDs `HelmRelease` [capability][fluxcd-helmrelease-values] to replace values using `spec.values` or FluxCDs 
+`Kustomzation` [capability][fluxcd-kustomization-patches] to replace values using `spec.patches` the localisation
+functionality is also provided.
+
+
+TODO notes:
+- Omit localisation and configuration
+  - If this is omitted, we can omit the internal registry as well
+
+#### Pros
+
+* ...
+
+#### Cons
+
+* ...
 
 ### FluxDeployer
 
@@ -81,19 +123,11 @@ _Description_
 
 * ...
 
-### Kro 
-
-_Description_
-
-#### Pros
-
-* ...
-
-#### Cons
-
-* ...
-
 
 # Links
 - Epic [#404](https://github.com/open-component-model/ocm-k8s-toolkit/issues/147)
 - Issue [#90](https://github.com/open-component-model/ocm-k8s-toolkit/issues/136)
+
+[kro-github]: https://github.com/kro-run/kro
+[fluxcd-helmrelease-values]: https://fluxcd.io/flux/components/helm/helmreleases/#values
+[fluxcd-kustomization-patches]: https://fluxcd.io/flux/components/kustomize/kustomizations/#patches
