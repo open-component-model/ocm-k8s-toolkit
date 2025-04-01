@@ -41,6 +41,4 @@ const (
 // OCI related constants.
 const (
 	OCISchemaVersion = 2
-	// Based on https://github.com/opencontainers/distribution-spec/blob/7872490e9d4943b20f11e21475bc13fd2e02b7d8/spec.md?plain=1#L157.
-	OCIRepositoryNameConstraints = "[a-z0-9]+((\\.|_|__|-+)[a-z0-9]+)*(\\/[a-z0-9]+((\\.|_|__|-+)[a-z0-9]+)*)*"
 )

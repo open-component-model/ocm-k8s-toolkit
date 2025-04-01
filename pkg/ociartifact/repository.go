@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"regexp"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
@@ -247,18 +246,7 @@ func CreateRepositoryName(args ...string) (string, error) {
 		return "", fmt.Errorf("failed to hash identity: %w", err)
 	}
 
-	repositoryName := fmt.Sprintf("sha-%d", hash)
-
-	match, err := regexp.MatchString(v1alpha1.OCIRepositoryNameConstraints, repositoryName)
-	if err != nil {
-		return "", fmt.Errorf("failed to check OCI repository repositoryName constraints: %w", err)
-	}
-
-	if !match {
-		return "", fmt.Errorf("repositoryName '%s' failed to match OCI repository repositoryName constraints: %w", repositoryName, err)
-	}
-
-	return repositoryName, nil
+	return fmt.Sprintf("sha-%d", hash), nil
 }
 
 // DeleteForObject checks if the object holds a name for an OCI repository, checks if the OCI repository exists, and if
