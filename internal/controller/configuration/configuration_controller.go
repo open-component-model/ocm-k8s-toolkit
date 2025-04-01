@@ -247,7 +247,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		//   - HelmRelease (FluxCD) requires the OCI artifact to have the same tag as the helm chart itself
 		//     - But how to get the helm chart version? (User input, parse from content)
 		// See https://github.com/open-component-model/ocm-k8s-toolkit/issues/151
-		tag := "dummy"
+		tag := "latest"
 		manifestDigest, err := repository.PushArtifact(ctx, tag, dataTGZ)
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.ConfigurationFailedReason, err.Error())
