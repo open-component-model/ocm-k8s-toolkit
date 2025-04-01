@@ -97,6 +97,9 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
+	ctx, cancel := context.WithCancel(context.Background())
+	DeferCleanup(cancel)
+
 	repositoryKey = "metadata.name"
 	// Register reconcilers
 	Expect((&Reconciler{
@@ -108,10 +111,8 @@ var _ = BeforeSuite(func() {
 				IncludeObject: true,
 			},
 		},
-	}).SetupWithManager(k8sManager)).To(Succeed())
+	}).SetupWithManager(ctx, k8sManager)).To(Succeed())
 
-	ctx, cancel := context.WithCancel(context.Background())
-	DeferCleanup(cancel)
 	go func() {
 		defer GinkgoRecover()
 		Expect(k8sManager.Start(ctx)).To(Succeed())

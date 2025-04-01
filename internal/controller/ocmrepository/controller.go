@@ -183,8 +183,8 @@ func (r *Reconciler) fillRepoStatusFromSpec(ocmRepo *v1alpha1.OCMRepository,
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if err := mgr.GetFieldIndexer().IndexField(context.TODO(), &v1alpha1.Component{}, repositoryKey, func(rawObj client.Object) []string {
+func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Component{}, repositoryKey, func(rawObj client.Object) []string {
 		comp, ok := rawObj.(*v1alpha1.Component)
 		if !ok {
 			return nil

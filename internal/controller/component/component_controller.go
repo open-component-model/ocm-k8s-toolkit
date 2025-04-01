@@ -56,11 +56,11 @@ type Reconciler struct {
 var _ ocm.Reconciler = (*Reconciler)(nil)
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Create index for ocmrepository reference name from components to make sure to reconcile, when the base ocm-
 	// repository changes.
 	const fieldName = "spec.repositoryRef.name"
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Component{}, fieldName, func(obj client.Object) []string {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Component{}, fieldName, func(obj client.Object) []string {
 		component, ok := obj.(*v1alpha1.Component)
 		if !ok {
 			return nil

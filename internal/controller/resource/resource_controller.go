@@ -61,10 +61,10 @@ type Reconciler struct {
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
 
-func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Create index for component reference name from resources
 	const fieldName = "spec.componentRef.name"
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Resource{}, fieldName, func(obj client.Object) []string {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Resource{}, fieldName, func(obj client.Object) []string {
 		resource, ok := obj.(*v1alpha1.Resource)
 		if !ok {
 			return nil

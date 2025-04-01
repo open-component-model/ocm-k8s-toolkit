@@ -135,7 +135,7 @@ var _ = BeforeSuite(func() {
 			EventRecorder: recorder,
 		},
 		Registry: registry,
-	}).SetupWithManager(k8sManager)).To(Succeed())
+	}).SetupWithManager(ctx, k8sManager)).To(Succeed())
 
 	go func() {
 		defer GinkgoRecover()

@@ -135,10 +135,7 @@ var _ = BeforeSuite(func() {
 			EventRecorder: recorder,
 		},
 		Registry: registry,
-	}).SetupWithManager(k8sManager)).To(Succeed())
-
-	ctx, cancel = context.WithCancel(context.Background())
-	DeferCleanup(cancel)
+	}).SetupWithManager(ctx, k8sManager)).To(Succeed())
 
 	go func() {
 		defer GinkgoRecover()

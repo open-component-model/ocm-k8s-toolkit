@@ -296,14 +296,14 @@ func (r *Reconciler) setReplicationStatus(configs []v1alpha1.OCMConfiguration, r
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Create index for component name
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Replication{}, componentIndexField, componentNameExtractor); err != nil {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Replication{}, componentIndexField, componentNameExtractor); err != nil {
 		return err
 	}
 
 	// Create index for target repository name
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Replication{}, targetRepoIndexField, targetRepoNameExtractor); err != nil {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Replication{}, targetRepoIndexField, targetRepoNameExtractor); err != nil {
 		return err
 	}
 
