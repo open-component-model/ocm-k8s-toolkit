@@ -142,10 +142,3 @@ type OCIArtifactInfo struct {
 	// +required
 	Blob BlobInfo `json:"blob"`
 }
-
-// +k8s:deepcopy-gen=false
-type OCIArtifactCreator interface {
-	GetOCIArtifact() *OCIArtifactInfo
-	GetOCIRepository() string
-	GetManifestDigest() string
-}

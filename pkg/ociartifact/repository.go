@@ -251,7 +251,7 @@ func CreateRepositoryName(args ...string) (string, error) {
 
 // DeleteForObject checks if the object holds a name for an OCI repository, checks if the OCI repository exists, and if
 // so, deletes the OCI artifact from the OCI repository.
-func DeleteForObject(ctx context.Context, registry *Registry, obj v1alpha1.OCIArtifactCreator) error {
+func DeleteForObject(ctx context.Context, registry *Registry, obj Provider) error {
 	info := obj.GetOCIArtifact()
 	if info == nil {
 		return nil
@@ -275,7 +275,7 @@ func DeleteForObject(ctx context.Context, registry *Registry, obj v1alpha1.OCIAr
 }
 
 // DeleteIfDigestMismatch removes the OCI artifact of an object, if its digest does not match the reference digest.
-func DeleteIfDigestMismatch(ctx context.Context, registry *Registry, obj v1alpha1.OCIArtifactCreator, reference digest.Digest) error {
+func DeleteIfDigestMismatch(ctx context.Context, registry *Registry, obj Provider, reference digest.Digest) error {
 	if obj.GetOCIArtifact() != nil && obj.GetManifestDigest() != reference.String() {
 		if err := DeleteForObject(ctx, registry, obj); err != nil {
 			return err
