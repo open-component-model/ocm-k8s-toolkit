@@ -359,6 +359,8 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	tag := resourceAccess.Meta().GetVersion()
 
 	if resourceAccessSpec.GetType() == "ociArtifact" {
+		// TODO: Missing authentication for source registry (and target registry if necessary)
+		// see https://github.com/open-component-model/ocm-k8s-toolkit/issues/171
 		manifestDigest, err = ociRepository.CopyOCIArtifactForResourceAccess(ctx, resourceAccess)
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.CopyOCIArtifactFailedReason, err.Error())
