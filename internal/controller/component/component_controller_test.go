@@ -211,6 +211,76 @@ var _ = Describe("Component Controller", func() {
 			deleteComponent(ctx, component)
 		})
 
+		It("does reconcile when an unready ocm repository gets ready", func(ctx SpecContext) {
+			By("creating a component version")
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(Version1)
+				})
+			})
+
+			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
+			specData := Must(spec.MarshalJSON())
+
+			By("mocking an ocm repository")
+			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+
+			By("marking the repository as not ready")
+			conditions.MarkFalse(repositoryObj, "Ready", "notReady", "reason")
+			Expect(k8sClient.Status().Update(ctx, repositoryObj)).To(Succeed())
+
+			By("creating a component object")
+			component := &v1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace.GetName(),
+					Name:      ComponentObj,
+				},
+				Spec: v1alpha1.ComponentSpec{
+					RepositoryRef: v1alpha1.ObjectKey{
+						Namespace: namespace.GetName(),
+						Name:      repositoryObj.GetName(),
+					},
+					Component: componentName,
+					Semver:    "1.0.0",
+					Interval:  metav1.Duration{Duration: time.Minute * 10},
+				},
+				Status: v1alpha1.ComponentStatus{},
+			}
+			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+
+			By("checking that the component has not been reconciled successfully")
+			Eventually(func(ctx context.Context) error {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+				if err != nil {
+					return err
+				}
+
+				if conditions.IsReady(component) {
+					return fmt.Errorf("expected component %s to not be ready, but it was ready", component.GetName())
+				}
+
+				reason := conditions.GetReason(component, "Ready")
+				if reason != v1alpha1.RepositoryIsNotReadyReason {
+					return fmt.Errorf("expected component ready-condition reason to be %s, but it was %s", v1alpha1.RepositoryIsNotReadyReason, reason)
+				}
+
+				return nil
+			}, "15s").WithContext(ctx).Should(Succeed())
+
+			By("checking that reference to OCI artifact has not been created")
+			Expect(component).To(HaveField("Status.OCIArtifact", BeNil()))
+
+			By("marking the repository as ready")
+			conditions.MarkTrue(repositoryObj, "Ready", "ready", "message")
+			Expect(k8sClient.Status().Update(ctx, repositoryObj)).To(Succeed())
+
+			By("checking that the component has been reconciled successfully")
+			waitUntilComponentIsReady(ctx, component, Version1)
+			validateArtifact(ctx, component, env, ctfpath)
+
+			By("deleting the resources manually")
+			deleteComponent(ctx, component)
+		})
 		It("grabs the new version when it becomes available", func(ctx SpecContext) {
 			By("creating a component version")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
@@ -793,7 +863,7 @@ func waitUntilComponentIsReady(ctx context.Context, component *v1alpha1.Componen
 		g.Expect(component).Should(HaveField("Status.Component.Version", expectedVersion))
 
 		return nil
-	}, "5m").WithContext(ctx).Should(Succeed())
+	}, "15s").WithContext(ctx).Should(Succeed())
 }
 
 func validateArtifact(ctx context.Context, component *v1alpha1.Component, env *Builder, ctfPath string) {

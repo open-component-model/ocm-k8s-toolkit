@@ -60,7 +60,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Create index for ocmrepository reference name from components to make sure to reconcile, when the base ocm-
 	// repository changes.
 	const fieldName = "spec.repositoryRef.name"
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Resource{}, fieldName, func(obj client.Object) []string {
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Component{}, fieldName, func(obj client.Object) []string {
 		component, ok := obj.(*v1alpha1.Component)
 		if !ok {
 			return nil
@@ -201,7 +201,7 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 		logger.Info("repository is not ready", "name", component.Spec.RepositoryRef.Name)
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositoryIsNotReadyReason, "repository is not ready yet")
 
-		return ctrl.Result{}, errors.New("ocmRepository is not ready")
+		return ctrl.Result{}, nil
 	}
 
 	return r.reconcileOCM(ctx, component, repo)

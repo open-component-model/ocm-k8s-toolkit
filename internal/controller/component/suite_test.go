@@ -130,7 +130,7 @@ var _ = BeforeSuite(func() {
 
 	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
-			Client:        k8sClient,
+			Client:        k8sManager.GetClient(),
 			Scheme:        testEnv.Scheme,
 			EventRecorder: recorder,
 		},
