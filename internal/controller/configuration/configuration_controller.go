@@ -102,9 +102,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 			if err := r.Update(ctx, configuration); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 			}
+
+			return ctrl.Result{}, nil
 		}
 
-		logger.Info("configuration is being deleted and cannot be used", "name", configuration.Name)
+		logger.Info("configuration is being deleted and still has existing finalizers", "name", configuration.GetName())
 
 		return ctrl.Result{Requeue: true}, nil
 	}

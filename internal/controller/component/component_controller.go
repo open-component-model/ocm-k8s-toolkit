@@ -149,9 +149,11 @@ func (r *Reconciler) reconcileExists(ctx context.Context, component *v1alpha1.Co
 			if err := r.Update(ctx, component); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 			}
+
+			return ctrl.Result{}, nil
 		}
 
-		logger.Info("component is being deleted and cannot be used", "name", component.Name)
+		logger.Info("component is being deleted and still has existing finalizers", "name", component.GetName())
 
 		return ctrl.Result{Requeue: true}, nil
 	}

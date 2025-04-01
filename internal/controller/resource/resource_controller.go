@@ -150,9 +150,11 @@ func (r *Reconciler) reconcileExists(ctx context.Context, resource *v1alpha1.Res
 			if err := r.Update(ctx, resource); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 			}
+
+			return ctrl.Result{}, nil
 		}
 
-		logger.Info("resource is being deleted and cannot be used", "name", resource.Name)
+		logger.Info("resource is being deleted and still has existing finalizers", "name", resource.GetName())
 
 		return ctrl.Result{Requeue: true}, nil
 	}

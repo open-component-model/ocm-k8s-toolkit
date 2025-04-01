@@ -77,7 +77,8 @@ func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, ocmRepo *v1a
 
 func (r *Reconciler) reconcileExists(ctx context.Context, ocmRepo *v1alpha1.OCMRepository) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	if ocmRepo.GetDeletionTimestamp() != nil {
+
+	if !ocmRepo.GetDeletionTimestamp().IsZero() {
 		if !controllerutil.ContainsFinalizer(ocmRepo, repositoryFinalizer) {
 			return ctrl.Result{}, nil
 		}
@@ -219,7 +220,15 @@ func (r *Reconciler) reconcileDeleteRepository(ctx context.Context, obj *v1alpha
 		return ctrl.Result{}, fmt.Errorf("failed to remove repository referencing components: %s", strings.Join(names, ","))
 	}
 
-	controllerutil.RemoveFinalizer(obj, repositoryFinalizer)
+	if updated := controllerutil.RemoveFinalizer(obj, repositoryFinalizer); updated {
+		if err := r.Update(ctx, obj); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
+		}
 
-	return ctrl.Result{}, nil
+		return ctrl.Result{}, nil
+	}
+
+	logger.Info("ocm repository is being deleted and still has existing finalizers", "name", obj.GetName())
+
+	return ctrl.Result{Requeue: true}, nil
 }
