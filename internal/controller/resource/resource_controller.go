@@ -189,7 +189,7 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource)
 	if !conditions.IsReady(component) {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ComponentIsNotReadyReason, "Component is not ready")
 
-		return ctrl.Result{}, errors.New("component is not ready")
+		return ctrl.Result{}, nil
 	}
 
 	return r.reconcileOCM(ctx, resource, component)

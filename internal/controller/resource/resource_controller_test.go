@@ -876,6 +876,109 @@ var _ = Describe("Resource Controller", func() {
 				By("delete resource manually")
 				deleteResource(ctx, resource)
 			})
+
+			It("does reconcile if an unready component gets ready", func() {
+				resourceType := artifacttypes.PLAIN_TEXT
+
+				By("creating an ocm resource from a plain text")
+				env.OCMCommonTransport(resourceLocalPath, accessio.FormatDirectory, func() {
+					env.Component(componentName, func() {
+						env.Version(ComponentVersion, func() {
+							env.Resource(resourceName, ResourceVersion, resourceType, v1.LocalRelation, func() {
+								env.BlobData(mime.MIME_TEXT, []byte(ResourceContent))
+							})
+						})
+					})
+				})
+
+				repo, err := ctf.Open(env, accessobj.ACC_WRITABLE, resourceLocalPath, vfs.FileMode(vfs.O_RDWR), env)
+				Expect(err).NotTo(HaveOccurred())
+				cv, err := repo.LookupComponentVersion(componentName, ComponentVersion)
+				Expect(err).NotTo(HaveOccurred())
+				cd, err := ocmPkg.ListComponentDescriptors(ctx, cv, repo)
+				Expect(err).NotTo(HaveOccurred())
+				dataCds, err := yaml.Marshal(cd)
+				Expect(err).NotTo(HaveOccurred())
+
+				spec, err := ctf.NewRepositorySpec(ctf.ACC_READONLY, resourceLocalPath)
+				specData, err := spec.MarshalJSON()
+
+				componentObj = test.SetupComponentWithDescriptorList(ctx, ComponentObj, namespace.GetName(), dataCds, &test.MockComponentOptions{
+					Registry: registry,
+					Client:   k8sClient,
+					Recorder: recorder,
+					Info: v1alpha1.ComponentInfo{
+						Component:      componentName,
+						Version:        ComponentVersion,
+						RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
+					},
+					Repository: RepositoryObj,
+				})
+
+				By("marking the component as not ready")
+				Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(componentObj), componentObj)).To(Succeed())
+				conditions.MarkFalse(componentObj, "Ready", "notReady", "reason")
+				Expect(k8sClient.Status().Update(ctx, componentObj)).To(Succeed())
+
+				By("creating a resource object")
+				resource := &v1alpha1.Resource{
+					ObjectMeta: k8smetav1.ObjectMeta{
+						Namespace: namespace.GetName(),
+						Name:      ResourceObj,
+					},
+					Spec: v1alpha1.ResourceSpec{
+						ComponentRef: corev1.LocalObjectReference{
+							Name: ComponentObj,
+						},
+						Resource: v1alpha1.ResourceID{
+							ByReference: v1alpha1.ResourceReference{
+								Resource: v1.NewIdentity(resourceName),
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+
+				By("resource reconciliation is not successful, if component is not ready")
+				Eventually(func(g Gomega, ctx context.Context) error {
+					err := k8sClient.Get(ctx, client.ObjectKeyFromObject(componentObj), componentObj)
+					if err != nil {
+						return err
+					}
+					err = k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)
+					if err != nil {
+						return err
+					}
+
+					g.Expect(conditions.IsReady(componentObj)).Should(BeFalse())
+
+					g.Expect(resource).Should(HaveField("Status.Conditions", Not(BeNil())))
+					g.Expect(conditions.IsReady(resource)).Should(BeFalse())
+
+					reason := conditions.GetReason(resource, "Ready")
+					if reason != v1alpha1.ComponentIsNotReadyReason {
+						return fmt.Errorf("expected resource ready-condition reason to be %s, but it was %s", v1alpha1.ComponentIsNotReadyReason, reason)
+					}
+
+					return nil
+				}, "15s").WithContext(ctx).Should(Succeed())
+
+				Expect(resource).To(HaveField("Status.Resource", BeNil()))
+				Expect(resource).To(HaveField("Status.OCIArtifact", BeNil()))
+
+				By("marking the component as ready")
+				conditions.MarkTrue(componentObj, "Ready", "ready", "message")
+				Expect(k8sClient.Status().Update(ctx, componentObj)).To(Succeed())
+
+				By("checking that the resource has been reconciled successfully")
+				waitUntilResourceIsReady(ctx, resource)
+				resourceAcc, err := cv.GetResource(v1.NewIdentity(resourceName))
+				Expect(err).NotTo(HaveOccurred())
+				validateArtifact(ctx, resource, resourceAcc, ResourceVersion, ResourceContent)
+
+				By("delete resource manually")
+				deleteResource(ctx, resource)
+			})
 		})
 	})
 })
