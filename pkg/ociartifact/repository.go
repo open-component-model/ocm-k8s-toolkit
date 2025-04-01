@@ -221,12 +221,12 @@ func (r *Repository) CopyOCIArtifactForResourceAccess(ctx context.Context, acces
 				return nil
 			},
 			PostCopy: func(_ context.Context, desc ociV1.Descriptor) error {
-				logger.Info("uploading", "digest", desc.Digest.String(), "mediaType", desc.MediaType)
+				logger.Info("uploaded", "digest", desc.Digest.String(), "mediaType", desc.MediaType)
 
 				return nil
 			},
 			OnCopySkipped: func(_ context.Context, desc ociV1.Descriptor) error {
-				logger.Info("uploading", "digest", desc.Digest.String(), "mediaType", desc.MediaType)
+				logger.Info("skipped", "digest", desc.Digest.String(), "mediaType", desc.MediaType)
 
 				return nil
 			},
