@@ -17,26 +17,28 @@ limitations under the License.
 package resource
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 
+	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
-	"github.com/opencontainers/go-digest"
+	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/mandelsoft/goutils/sliceutils"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/yaml"
 	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/compdesc"
+	"ocm.software/ocm/api/ocm/extensions/accessmethods/git"
+	"ocm.software/ocm/api/ocm/extensions/accessmethods/helm"
+	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
 	"ocm.software/ocm/api/ocm/resolvers"
 	"ocm.software/ocm/api/ocm/selectors"
 	"ocm.software/ocm/api/ocm/tools/signing"
 	"ocm.software/ocm/api/utils/blobaccess"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -48,15 +50,12 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
 type Reconciler struct {
 	*ocm.BaseReconciler
-	Registry *ociartifact.Registry
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -141,30 +140,8 @@ func (r *Reconciler) reconcileExists(ctx context.Context, resource *v1alpha1.Res
 		return ctrl.Result{}, nil
 	}
 
-	if resource.GetDeletionTimestamp() != nil {
-		if err := ociartifact.DeleteForObject(ctx, r.Registry, resource); err != nil {
-			return ctrl.Result{}, err
-		}
-
-		if updated := controllerutil.RemoveFinalizer(resource, v1alpha1.ArtifactFinalizer); updated {
-			if err := r.Update(ctx, resource); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
-			}
-
-			return ctrl.Result{}, nil
-		}
-
-		logger.Info("resource is being deleted and still has existing finalizers", "name", resource.GetName())
-
-		return ctrl.Result{Requeue: true}, nil
-	}
-
-	if updated := controllerutil.AddFinalizer(resource, v1alpha1.ArtifactFinalizer); updated {
-		if err := r.Update(ctx, resource); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
-		}
-
-		return ctrl.Result{Requeue: true}, nil
+	if !resource.GetDeletionTimestamp().IsZero() {
+		return ctrl.Result{}, errors.New("resource is being deleted")
 	}
 
 	return r.reconcile(ctx, resource)
@@ -182,7 +159,7 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource)
 	}
 
 	// Check if component is applicable or is getting deleted/not ready
-	if component.GetDeletionTimestamp() != nil {
+	if !component.GetDeletionTimestamp().IsZero() {
 		logger.Error(errors.New("component is being deleted"), "component is being deleted and therefore, cannot be used")
 
 		return ctrl.Result{}, nil
@@ -237,27 +214,36 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		return ctrl.Result{}, err
 	}
 
-	// Create repository to download the component descriptors
-	repositoryCD, err := r.Registry.NewRepository(ctx, component.GetOCIRepository())
+	// TODO: Get descriptor lists
+	spec, err := octx.RepositorySpecForConfig(component.Status.Component.RepositorySpec.Raw, nil)
 	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.CreateOCIRepositoryFailedReason, err.Error())
+		logger.Error(err, "failed to parse repository spec")
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositorySpecInvalidReason, "RepositorySpec is invalid")
 
 		return ctrl.Result{}, err
 	}
 
-	// Get component descriptor set from artifact
-	data, err := repositoryCD.FetchArtifact(ctx, component.GetManifestDigest())
+	repo, err := session.LookupRepository(octx, spec)
 	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.FetchOCIArtifactFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositorySpecInvalidReason, "RepositorySpec is invalid")
 
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("invalid repository spec: %w", err)
 	}
 
-	cds := &ocm.Descriptors{}
-	if err := yaml.NewYAMLToJSONDecoder(bytes.NewReader(data)).Decode(cds); err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.YamlToJSONDecodeFailedReason, err.Error())
+	cv, err := session.LookupComponentVersion(repo, component.Status.Component.Component, component.Status.Component.Version)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetComponentVersionFailedReason, err.Error())
 
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get component version: %w", err)
+	}
+
+	// Assuming the component descriptors are cached by the verification in the component controller, the verification
+	// is the only thing we do twice. Or is this omitted when the component is pulled from the ocm cache?
+	cds, err := ocm.VerifyComponentVersion(ctx, cv, sliceutils.Transform(component.Spec.Verify, func(verify v1alpha1.Verification) string {
+		return verify.Signature
+	}))
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to list verified descriptors: %w", err)
 	}
 
 	cdSet := compdesc.NewComponentVersionSet(cds.List...)
@@ -284,13 +270,6 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		return ctrl.Result{}, fmt.Errorf("failed to resolve resource reference: %w", err)
 	}
 
-	cv, err := getComponentVersion(ctx, octx, session, component.Status.Component.RepositorySpec.Raw, resourceCompDesc)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentVersionFailedReason, err.Error())
-
-		return ctrl.Result{}, err
-	}
-
 	resourceAccess, err := getResourceAccess(ctx, cv, resourceDesc, resourceCompDesc)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceAccessFailedReason, err.Error())
@@ -298,142 +277,60 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		return ctrl.Result{}, err
 	}
 
+	// Consider option to omit verification (= resource download) if the resource is large
 	if err := verifyResource(ctx, resourceAccess, cv, cd); err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.VerifyResourceFailedReason, err.Error())
 
 		return ctrl.Result{}, err
 	}
 
-	// TODO:
-	//   Problem: The current implementation would download the resource every reconcile-loop. This could be
-	//   expensive depending on the resource.
-	//   Additionally, there could be two different components that contain the same resource. Also in this case
-	//   we would re-download the resource, even though it is already in the OCI registry.
-	//   To circumvent this problem, we could use the digest provided by the resource-access (prior to the resource
-	//   download) as the repository-name. Then, we could check if such a repository for the resource already
-	//   exists.
-	//   If so, we cannot not return immediately because we need to create a manifest-file to point to the already
-	//   present resource-layer. Otherwise the GC would delete the resource-layer if the previously present manifest
-	//   would be deleted.
-	// See also https://github.com/open-component-model/ocm-k8s-toolkit/issues/138
-
-	ociRepositoryName, err := ociartifact.CreateRepositoryName(
-		cv.GetName(),
-		resourceAccess.Meta().GetName(),
-		resourceAccess.Meta().GetVersion(),
-	)
+	accSpec, err := resourceAccess.Access()
 	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.CreateOCIRepositoryNameFailedReason, err.Error())
-
 		return ctrl.Result{}, err
 	}
 
-	ociRepository, err := r.Registry.NewRepository(ctx, ociRepositoryName)
-	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.CreateOCIRepositoryFailedReason, err.Error())
+	sourceRef := &v1alpha1.SourceReference{}
 
-		return ctrl.Result{}, err
-	}
-
-	var (
-		manifestDigest digest.Digest
-		blobSize       int64
-	)
-
-	// If the resource is of type 'ociArtifact' or its access type is 'ociArtifact', the resource will be copied to the
-	// internal OCI registry
-	logger.Info("create OCI artifact for resource", "name", resource.GetName(), "type", resourceAccess.Meta().GetType())
-	resourceAccessSpec, err := resourceAccess.Access()
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceAccessFailedReason, err.Error())
-
-		return ctrl.Result{}, err
-	}
-
-	if resourceAccessSpec == nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceAccessFailedReason, "access spec is nil")
-
-		return ctrl.Result{}, err
-	}
-
-	tag := resourceAccess.Meta().GetVersion()
-
-	if resourceAccessSpec.GetType() == "ociArtifact" {
-		// TODO: Missing authentication for source registry (and target registry if necessary)
-		// see https://github.com/open-component-model/ocm-k8s-toolkit/issues/171
-		manifestDigest, err = ociRepository.CopyOCIArtifactForResourceAccess(ctx, resourceAccess)
+	switch access := accSpec.(type) {
+	case *ociartifact.AccessSpec:
+		ociRef, err := access.GetOCIReference(cv)
 		if err != nil {
-			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.CopyOCIArtifactFailedReason, err.Error())
-
 			return ctrl.Result{}, err
 		}
 
-		// TODO: How to get the blob size, without downloading the resource?
-		//  Do we need the blob-size, when we copy the resource either way?
-		//  We could use the size stored in the manifest.
-		//  OCM does not necessarily provide the size. It is possible if the metadata contains it.
-		blobSize = 0
-	} else {
-		// Get resource content
-		// No need to close the blob access as it will be closed automatically
-		blobAccess, err := getBlobAccess(ctx, resourceAccess)
+		reference, err := name.ParseReference(ociRef)
 		if err != nil {
-			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetBlobAccessFailedReason, err.Error())
-
-			return ctrl.Result{}, fmt.Errorf("failed to get blob access: %w", err)
+			return ctrl.Result{}, err
 		}
 
-		resourceContent, err := blobAccess.Get()
+		sourceRef.Registry = reference.Context().RegistryStr()
+		sourceRef.Repository = reference.Context().RepositoryStr()
+		sourceRef.Reference = reference.Identifier()
+	case *helm.AccessSpec:
+		sourceRef.Registry = access.HelmRepository
+		sourceRef.Repository = access.HelmChart
+		sourceRef.Reference = access.GetVersion()
+	case *git.AccessSpec:
+		url, err := giturls.Parse(access.Repository)
 		if err != nil {
-			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceFailedReason, err.Error())
-
-			return ctrl.Result{}, fmt.Errorf("failed to get blob: %w", err)
+			return ctrl.Result{}, err
 		}
 
-		// Compress content to gzip if it is not already compressed to avoid to large blobs
-		resourceContentCompressed, err := compression.AutoCompressAsGzip(ctx, resourceContent)
-		if err != nil {
-			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.CompressGzipFailedReason, err.Error())
-
-			return ctrl.Result{}, fmt.Errorf("failed to auto compress data: %w", err)
-		}
-
-		tag = ocm.NormalizeVersion(tag)
-		manifestDigest, err = ociRepository.PushArtifact(ctx, tag, resourceContentCompressed)
-		if err != nil {
-			status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.PushOCIArtifactFailedReason, err.Error())
-
-			return ctrl.Result{}, fmt.Errorf("failed to push OCI artifact: %w", err)
-		}
-
-		blobSize = int64(len(resourceContentCompressed))
-	}
-
-	// Delete previous artifact version, if any. Note that resource's status isn't updated yet.
-	err = ociartifact.DeleteIfDigestMismatch(ctx, r.Registry, resource, manifestDigest)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.DeleteOCIArtifactFailedReason, err.Error())
-
-		return ctrl.Result{}, err
+		sourceRef.Registry = fmt.Sprintf("%s://%s", url.Scheme, url.Host)
+		sourceRef.Repository = url.Path
+		sourceRef.Reference = access.Ref
+	default:
+		return ctrl.Result{}, fmt.Errorf("unsupported access spec type: %T", access)
 	}
 
 	// Update status
-	if err = setResourceStatus(ctx, configs, resource, resourceAccess, &v1alpha1.OCIArtifactInfo{
-		Repository: ociRepositoryName,
-		Digest:     manifestDigest.String(),
-		Blob: v1alpha1.BlobInfo{
-			Digest: resourceAccess.Meta().Digest.Value,
-			Tag:    tag,
-			Size:   blobSize,
-		},
-	}); err != nil {
+	if err = setResourceStatus(ctx, configs, resource, resourceAccess, sourceRef); err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.StatusSetFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to set resource status: %w", err)
 	}
 
-	status.MarkReady(r.EventRecorder, resource, "Applied version %s", tag)
-	logger.Info("resource is ready", "name", resource.GetName())
+	status.MarkReady(r.EventRecorder, resource, "Applied version %s", resourceAccess.Meta().GetVersion())
 
 	return ctrl.Result{RequeueAfter: resource.GetRequeueAfter()}, nil
 }
@@ -543,7 +440,7 @@ func verifyResource(ctx context.Context, access ocmctx.ResourceAccess, cv ocmctx
 }
 
 // setResourceStatus updates the resource status with the all required information.
-func setResourceStatus(ctx context.Context, configs []v1alpha1.OCMConfiguration, resource *v1alpha1.Resource, resourceAccess ocmctx.ResourceAccess, ociArtifact *v1alpha1.OCIArtifactInfo) error {
+func setResourceStatus(ctx context.Context, configs []v1alpha1.OCMConfiguration, resource *v1alpha1.Resource, resourceAccess ocmctx.ResourceAccess, reference *v1alpha1.SourceReference) error {
 	log.FromContext(ctx).V(1).Info("updating resource status")
 
 	// Get the access spec from the resource access
@@ -568,7 +465,7 @@ func setResourceStatus(ctx context.Context, configs []v1alpha1.OCMConfiguration,
 
 	resource.Status.EffectiveOCMConfig = configs
 
-	resource.Status.OCIArtifact = ociArtifact
+	resource.Status.Reference = reference
 
 	return nil
 }

@@ -8,19 +8,16 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/fluxcd/pkg/runtime/patch"
-	"github.com/opencontainers/go-digest"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
 type MockComponentOptions struct {
-	Registry   *ociartifact.Registry
 	Client     client.Client
 	Recorder   record.EventRecorder
 	Info       v1alpha1.ComponentInfo
@@ -46,25 +43,6 @@ func SetupComponentWithDescriptorList(
 	Expect(options.Client.Create(ctx, component)).To(Succeed())
 
 	patchHelper := patch.NewSerialPatcher(component, options.Client)
-
-	repositoryName, err := ociartifact.CreateRepositoryName(component.Spec.Component)
-	Expect(err).ToNot(HaveOccurred())
-
-	repository, err := options.Registry.NewRepository(ctx, repositoryName)
-	Expect(err).ToNot(HaveOccurred())
-
-	manifestDigest, err := repository.PushArtifact(ctx, options.Info.Version, descriptorListData)
-	Expect(err).ToNot(HaveOccurred())
-
-	component.Status.OCIArtifact = &v1alpha1.OCIArtifactInfo{
-		Repository: repositoryName,
-		Digest:     manifestDigest.String(),
-		Blob: v1alpha1.BlobInfo{
-			Digest: digest.FromBytes(descriptorListData).String(),
-			Tag:    options.Info.Version,
-			Size:   int64(len(descriptorListData)),
-		},
-	}
 
 	component.Status.Component = options.Info
 

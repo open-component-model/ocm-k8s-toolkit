@@ -9,7 +9,6 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/fluxcd/pkg/runtime/patch"
-	"github.com/opencontainers/go-digest"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -18,8 +17,6 @@ import (
 	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
@@ -31,7 +28,6 @@ type MockResourceOptions struct {
 
 	ComponentRef v1alpha1.ObjectKey
 
-	Registry *ociartifact.Registry
 	Clnt     client.Client
 	Recorder record.EventRecorder
 }
@@ -60,40 +56,6 @@ func SetupMockResourceWithData(
 	Expect(options.Clnt.Create(ctx, resource)).To(Succeed())
 
 	patchHelper := patch.NewSerialPatcher(resource, options.Clnt)
-
-	var data []byte
-	var err error
-
-	if options.Data != nil {
-		data, err = io.ReadAll(options.Data)
-		Expect(err).ToNot(HaveOccurred())
-	}
-
-	if options.DataPath != "" {
-		data, err = compression.CreateTGZFromPath(options.DataPath)
-		Expect(err).ToNot(HaveOccurred())
-	}
-
-	// The resource controller takes the version/tag that is specified in the resource access metadata. Since we do not
-	// have a version/tag in the mock resource, we use a dummy version/tag.
-	version := "dummy"
-	repositoryName, err := ociartifact.CreateRepositoryName(options.ComponentRef.Name, name)
-	Expect(err).ToNot(HaveOccurred())
-	repository, err := options.Registry.NewRepository(ctx, repositoryName)
-	Expect(err).ToNot(HaveOccurred())
-
-	manifestDigest, err := repository.PushArtifact(ctx, version, data)
-	Expect(err).ToNot(HaveOccurred())
-
-	resource.Status.OCIArtifact = &v1alpha1.OCIArtifactInfo{
-		Repository: repositoryName,
-		Digest:     manifestDigest.String(),
-		Blob: v1alpha1.BlobInfo{
-			Digest: digest.FromBytes(data).String(),
-			Tag:    version,
-			Size:   int64(len(data)),
-		},
-	}
 
 	Eventually(func(ctx context.Context) error {
 		status.MarkReady(options.Recorder, resource, "applied mock resource")

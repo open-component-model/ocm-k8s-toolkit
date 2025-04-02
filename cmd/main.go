@@ -20,13 +20,8 @@ import (
 	// +kubebuilder:scaffold:imports
 	"context"
 	"crypto/tls"
-	"crypto/x509"
-	"errors"
 	"flag"
-	"net/http"
 	"os"
-	"time"
-
 	// to ensure that exec-entrypoint and run can make use of them.
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -47,7 +42,6 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/ocmrepository"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/replication"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/resource"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 )
 
@@ -55,14 +49,6 @@ var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
 )
-
-type RegistryParams struct {
-	RegistryAddr               string
-	RegistryInsecureSkipVerify bool
-	RootCA                     string
-	RegistryPingTimeout        time.Duration
-	RegistryPingInterval       time.Duration
-}
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
@@ -74,21 +60,12 @@ func init() {
 //nolint:funlen // this is the main function
 func main() {
 	var (
-		metricsAddr                string
-		enableLeaderElection       bool
-		probeAddr                  string
-		secureMetrics              bool
-		enableHTTP2                bool
-		eventsAddr                 string
-		registryAddr               string
-		rootCA                     string
-		registryInsecureSkipVerify bool
-		registryPingTimeout        time.Duration
-	)
-
-	const (
-		registryPingInterval       = 5 * time.Second
-		registryPingTimeoutDefault = 2 * time.Minute
+		metricsAddr          string
+		enableLeaderElection bool
+		probeAddr            string
+		secureMetrics        bool
+		enableHTTP2          bool
+		eventsAddr           string
 	)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metric endpoint binds to. "+
@@ -102,15 +79,6 @@ func main() {
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&eventsAddr, "events-addr", "", "The address of the events receiver.")
-	flag.StringVar(
-		&registryAddr,
-		"registry-addr",
-		"ocm-k8s-toolkit-zot-registry.ocm-k8s-toolkit-system.svc.cluster.local:5000",
-		"The address of the registry (The default points to the internal registry that is deployed per default along the controllers).",
-	)
-	flag.StringVar(&rootCA, "rootCA", "", "path to the root CA certificate required to establish https connection to the registry.")
-	flag.BoolVar(&registryInsecureSkipVerify, "registry-insecure-skip-verify", false, "Skip verification of the certificate that the registry is using.")
-	flag.DurationVar(&registryPingTimeout, "registry-ping-timeout", registryPingTimeoutDefault, "Timeout to wait for the registry to become available.")
 
 	opts := zap.Options{
 		Development: true,
@@ -121,20 +89,6 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	ctx := context.Background()
-
-	// Configure the registry access and make sure the registry is available as it is required as storage for
-	// ocm component descriptors and resources.
-	registry, err := configureRegistryAccess(ctx, &RegistryParams{
-		RegistryAddr:               registryAddr,
-		RegistryInsecureSkipVerify: registryInsecureSkipVerify,
-		RootCA:                     rootCA,
-		RegistryPingTimeout:        registryPingTimeout,
-		RegistryPingInterval:       registryPingInterval,
-	})
-	if err != nil {
-		setupLog.Error(err, "unable to connect to registry", "registry-addr", registryAddr)
-		os.Exit(1)
-	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -207,7 +161,6 @@ func main() {
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
-		Registry: registry,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Component")
 		os.Exit(1)
@@ -219,7 +172,6 @@ func main() {
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
-		Registry: registry,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Resource")
 		os.Exit(1)
@@ -258,80 +210,5 @@ func main() {
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
-	}
-}
-
-func getHTTPClientWithTLS(rootCAFile string) (*http.Client, error) {
-	var c []byte
-	var err error
-	if c, err = os.ReadFile(rootCAFile); err != nil {
-		return nil, err
-	}
-
-	rootCAs, err := x509.SystemCertPool()
-	if err != nil {
-		return nil, err
-	}
-
-	if ok := rootCAs.AppendCertsFromPEM(c); !ok {
-		return nil, errors.New("failed to append root CA certificate to pool")
-	}
-
-	return &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				MinVersion: tls.VersionTLS12,
-				RootCAs:    rootCAs,
-			},
-		},
-	}, nil
-}
-
-func configureRegistryAccess(ctx context.Context, params *RegistryParams) (*ociartifact.Registry, error) {
-	registry, err := ociartifact.NewRegistry(params.RegistryAddr)
-	if err != nil {
-		return nil, err
-	}
-	registry.PlainHTTP = params.RegistryInsecureSkipVerify
-
-	// If HTTPS is enabled, the root CA certificate must be configured.
-	if !params.RegistryInsecureSkipVerify {
-		if params.RootCA == "" {
-			return nil, errors.New("rootCA is required when registry-insecure-skip-verify is false")
-		}
-
-		httpClient, err := getHTTPClientWithTLS(params.RootCA)
-		if err != nil {
-			return nil, err
-		}
-
-		registry.Client = httpClient
-	}
-
-	// Check if the registry is accessible.
-	if err := checkIfRegistryAvailable(ctx, registry, params); err != nil {
-		return nil, err
-	}
-
-	return registry, nil
-}
-
-func checkIfRegistryAvailable(ctx context.Context, registry *ociartifact.Registry, params *RegistryParams) error {
-	timeoutChan := time.After(params.RegistryPingTimeout)
-	for {
-		err := registry.Ping(ctx)
-		if err == nil {
-			// Registry is there. Continue.
-			return nil
-		}
-
-		select {
-		case <-timeoutChan:
-			// Timeout expired, registry not available.
-			return err
-		default:
-			// Retry the ping after a brief delay.
-			time.Sleep(params.RegistryPingInterval)
-		}
 	}
 }

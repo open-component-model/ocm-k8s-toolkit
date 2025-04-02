@@ -310,47 +310,6 @@ spec:
                   object.
                 format: int64
                 type: integer
-              ociArtifact:
-                description: |-
-                  OCIArtifact references the generated OCI artifact containing a list of
-                  component descriptors. This list can be used by other controllers to
-                  avoid re-downloading (and potentially also re-verifying) the components.
-                properties:
-                  blob:
-                    description: Blob
-                    properties:
-                      digest:
-                        description: Digest is the digest of the blob.
-                        type: string
-                      size:
-                        description: |-
-                          Size is the number of bytes of the blob.
-                          Can be used to determine how to file should be handled when downloaded (memory/disk).
-                        format: int64
-                        type: integer
-                      tag:
-                        description: |-
-                          Tag/Version of the blob.
-                          Corresponds to the tag the blob is available in the OCI registry.
-                        type: string
-                    required:
-                    - digest
-                    - size
-                    - tag
-                    type: object
-                  digest:
-                    description: |-
-                      Manifest digest
-                      Used to fetch single layer OCI artifact and remove manifests
-                    type: string
-                  repository:
-                    description: OCI repository name
-                    type: string
-                required:
-                - blob
-                - digest
-                - repository
-                type: object
             type: object
         required:
         - spec
