@@ -29,9 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
-	ocmctx "ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/resolvers"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -39,6 +37,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	ocmctx "ocm.software/ocm/api/ocm"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
@@ -254,7 +255,6 @@ func (r *Reconciler) reconcileOCM(ctx context.Context, component *v1alpha1.Compo
 	return result, nil
 }
 
-//nolint:funlen // we do not want to cut function at an arbitrary point
 func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context, component *v1alpha1.Component, repository *v1alpha1.OCMRepository) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
@@ -327,16 +327,6 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 
 		return ctrl.Result{}, err
 	}
-
-	//// TODO: Store descriptors somewhere?
-	//_, err = yaml.Marshal(descriptors)
-	//if err != nil {
-	//	status.MarkNotReady(r.EventRecorder, component, v1alpha1.MarshalFailedReason, err.Error())
-
-	//	return ctrl.Result{}, err
-	//}
-
-	//_ = ocm.NormalizeVersion(version)
 
 	logger.Info("updating status")
 	component.Status.Component = v1alpha1.ComponentInfo{

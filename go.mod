@@ -16,6 +16,7 @@ require (
 	github.com/fluxcd/pkg/apis/meta v1.10.0
 	github.com/fluxcd/pkg/runtime v0.58.0
 	github.com/google/go-containerregistry v0.20.3
+	github.com/kro-run/kro v0.2.2
 	github.com/mandelsoft/goutils v0.0.0-20241227142622-83a787399095
 	github.com/mandelsoft/vfs v0.4.4
 	github.com/onsi/ginkgo/v2 v2.23.3
@@ -29,6 +30,7 @@ require (
 	k8s.io/client-go v0.32.3
 	ocm.software/ocm v0.22.0
 	sigs.k8s.io/controller-runtime v0.20.4
+	sigs.k8s.io/yaml v1.4.0
 )
 
 require (
@@ -504,7 +506,6 @@ require (
 	sigs.k8s.io/kustomize/kyaml v0.19.0 // indirect
 	sigs.k8s.io/release-utils v0.11.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.5.0 // indirect
-	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
 tool github.com/golangci/golangci-lint/cmd/golangci-lint

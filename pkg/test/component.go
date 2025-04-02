@@ -27,7 +27,6 @@ type MockComponentOptions struct {
 func SetupComponentWithDescriptorList(
 	ctx context.Context,
 	name, namespace string,
-	descriptorListData []byte,
 	options *MockComponentOptions,
 ) *v1alpha1.Component {
 	component := &v1alpha1.Component{

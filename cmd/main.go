@@ -17,11 +17,11 @@ limitations under the License.
 package main
 
 import (
-	// +kubebuilder:scaffold:imports
 	"context"
 	"crypto/tls"
 	"flag"
 	"os"
+
 	// to ensure that exec-entrypoint and run can make use of them.
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	krov1alpha1 "github.com/kro-run/kro/api/v1alpha1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -39,6 +40,7 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/component"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/ocmdeployer"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/ocmrepository"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/replication"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/resource"
@@ -54,10 +56,10 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
+	utilruntime.Must(krov1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
-//nolint:funlen // this is the main function
 func main() {
 	var (
 		metricsAddr          string
@@ -188,6 +190,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&ocmdeployer.Reconciler{
+		BaseReconciler: &ocm.BaseReconciler{
+			Client:        mgr.GetClient(),
+			Scheme:        mgr.GetScheme(),
+			EventRecorder: eventsRecorder,
+		},
+	}).SetupWithManager(ctx, mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "OCMDeployer")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

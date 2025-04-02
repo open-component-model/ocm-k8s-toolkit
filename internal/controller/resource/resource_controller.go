@@ -22,21 +22,15 @@ import (
 	"errors"
 	"fmt"
 
-	giturls "github.com/chainguard-dev/git-urls"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/mandelsoft/goutils/sliceutils"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
-	"ocm.software/ocm/api/ocm/compdesc"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/git"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/helm"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
-	"ocm.software/ocm/api/ocm/resolvers"
-	"ocm.software/ocm/api/ocm/selectors"
-	"ocm.software/ocm/api/ocm/tools/signing"
-	"ocm.software/ocm/api/utils/blobaccess"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -44,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	giturls "github.com/chainguard-dev/git-urls"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	ocmctx "ocm.software/ocm/api/ocm"
 	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
@@ -191,7 +186,7 @@ func (r *Reconciler) reconcileOCM(ctx context.Context, resource *v1alpha1.Resour
 	return result, nil
 }
 
-//nolint:funlen,cyclop,maintidx // we do not want to cut function at an arbitrary point
+//nolint:funlen // we do not want to cut function at an arbitrary point
 func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context, resource *v1alpha1.Resource, component *v1alpha1.Component) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("reconciling resource")
@@ -214,23 +209,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		return ctrl.Result{}, err
 	}
 
-	// TODO: Get descriptor lists
-	spec, err := octx.RepositorySpecForConfig(component.Status.Component.RepositorySpec.Raw, nil)
-	if err != nil {
-		logger.Error(err, "failed to parse repository spec")
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositorySpecInvalidReason, "RepositorySpec is invalid")
-
-		return ctrl.Result{}, err
-	}
-
-	repo, err := session.LookupRepository(octx, spec)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositorySpecInvalidReason, "RepositorySpec is invalid")
-
-		return ctrl.Result{}, fmt.Errorf("invalid repository spec: %w", err)
-	}
-
-	cv, err := session.LookupComponentVersion(repo, component.Status.Component.Component, component.Status.Component.Version)
+	cv, err := ocm.GetComponentVersion(octx, session, component.Status.Component.RepositorySpec.Raw, component.Status.Component.Component, component.Status.Component.Version)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetComponentVersionFailedReason, err.Error())
 
@@ -246,40 +225,14 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		return ctrl.Result{}, fmt.Errorf("failed to list verified descriptors: %w", err)
 	}
 
-	cdSet := compdesc.NewComponentVersionSet(cds.List...)
-
-	// Get referenced component descriptor from component descriptor set
-	cd, err := cdSet.LookupComponentVersion(component.Status.Component.Component, component.Status.Component.Version)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentDescriptorsFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to lookup component descriptor: %w", err)
-	}
-
-	// Get resource, respective component descriptor and component version
 	resourceReference := v1.ResourceReference{
 		Resource:      resource.Spec.Resource.ByReference.Resource,
 		ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
 	}
 
-	// Resolve resource resourceReference to get resource and its component descriptor
-	resourceDesc, resourceCompDesc, err := compdesc.ResolveResourceReference(cd, resourceReference, cdSet)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ResolveResourceFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to resolve resource reference: %w", err)
-	}
-
-	resourceAccess, err := getResourceAccess(ctx, cv, resourceDesc, resourceCompDesc)
+	resourceAccess, resourceCompDesc, err := ocm.GetResourceAccessForComponentVersion(cv, resourceReference, cds)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceAccessFailedReason, err.Error())
-
-		return ctrl.Result{}, err
-	}
-
-	// Consider option to omit verification (= resource download) if the resource is large
-	if err := verifyResource(ctx, resourceAccess, cv, cd); err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.VerifyResourceFailedReason, err.Error())
 
 		return ctrl.Result{}, err
 	}
@@ -323,8 +276,24 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		return ctrl.Result{}, fmt.Errorf("unsupported access spec type: %T", access)
 	}
 
+	// Get repository spec of actual component descriptor of the referenced resource
+	resourceCV, err := octx.GetResolver().LookupComponentVersion(resourceCompDesc.GetName(), resourceCompDesc.GetVersion())
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	resourceSpec := resourceCV.Repository().GetSpecification()
+
+	resourceSpecData, err := json.Marshal(resourceSpec)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	// Update status
-	if err = setResourceStatus(ctx, configs, resource, resourceAccess, sourceRef); err != nil {
+	if err = setResourceStatus(ctx, configs, resource, resourceAccess, sourceRef, &v1alpha1.ComponentInfo{
+		RepositorySpec: &apiextensionsv1.JSON{Raw: resourceSpecData},
+		Component:      resourceCompDesc.GetName(),
+		Version:        resourceCompDesc.GetVersion(),
+	}); err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.StatusSetFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to set resource status: %w", err)
@@ -335,112 +304,15 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	return ctrl.Result{RequeueAfter: resource.GetRequeueAfter()}, nil
 }
 
-// getComponentVersion returns the component version for the given component descriptor.
-func getComponentVersion(ctx context.Context, octx ocmctx.Context, session ocmctx.Session, spec []byte, compDesc *compdesc.ComponentDescriptor) (
-	ocmctx.ComponentVersionAccess, error,
-) {
-	log.FromContext(ctx).V(1).Info("getting component version")
-
-	// Get repository and resolver to get the respective component version of the resource
-	repoSpec, err := octx.RepositorySpecForConfig(spec, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get repository spec: %w", err)
-	}
-	repo, err := session.LookupRepository(octx, repoSpec)
-	if err != nil {
-		return nil, fmt.Errorf("failed to lookup repository: %w", err)
-	}
-
-	resolver := resolvers.NewCompoundResolver(repo, octx.GetResolver())
-
-	// Get component version for resource access
-	cv, err := session.LookupComponentVersion(resolver, compDesc.Name, compDesc.Version)
-	if err != nil {
-		return nil, fmt.Errorf("failed to lookup component version: %w", err)
-	}
-
-	return cv, nil
-}
-
-// getResourceAccess returns the resource access for the given resource and component descriptor from the component version access.
-func getResourceAccess(ctx context.Context, cv ocmctx.ComponentVersionAccess, resourceDesc *compdesc.Resource, compDesc *compdesc.ComponentDescriptor) (ocmctx.ResourceAccess, error) {
-	log.FromContext(ctx).V(1).Info("get resource access")
-
-	resAccesses, err := cv.SelectResources(selectors.Identity(resourceDesc.GetIdentity(compDesc.GetResources())))
-	if err != nil {
-		return nil, fmt.Errorf("failed to select resources: %w", err)
-	}
-
-	var resourceAccess ocmctx.ResourceAccess
-	switch len(resAccesses) {
-	case 0:
-		return nil, errors.New("no resources selected")
-	case 1:
-		resourceAccess = resAccesses[0]
-	default:
-		return nil, errors.New("cannot determine the resource access unambiguously")
-	}
-
-	return resourceAccess, nil
-}
-
-// getBlobAccess returns the blob access for the given resource access.
-func getBlobAccess(ctx context.Context, access ocmctx.ResourceAccess) (blobaccess.BlobAccess, error) {
-	log.FromContext(ctx).V(1).Info("get resource blob access")
-
-	// Create data access
-	accessMethod, err := access.AccessMethod()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create access method: %w", err)
-	}
-
-	return accessMethod.AsBlobAccess(), nil
-}
-
-// verifyResource verifies the resource digest with the digest from the component version access and component descriptor.
-func verifyResource(ctx context.Context, access ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAccess, cd *compdesc.ComponentDescriptor) error {
-	logger := log.FromContext(ctx)
-	logger.V(1).Info("verify resource")
-
-	// TODO: https://github.com/open-component-model/ocm-k8s-toolkit/issues/71
-	index := cd.GetResourceIndex(access.Meta())
-	if index < 0 {
-		return errors.New("resource not found in access spec")
-	}
-	raw := &cd.Resources[index]
-	if raw.Digest == nil {
-		logger.V(1).Info("no resource-digest in descriptor found. Skipping verification")
-
-		return nil
-	}
-
-	blobAccess, err := getBlobAccess(ctx, access)
-	if err != nil {
-		return err
-	}
-
-	// Add the component descriptor to the local verified store, so its digest will be compared with the digest from the
-	// component version access
-	store := signing.NewLocalVerifiedStore()
-	store.Add(cd)
-
-	ok, err := signing.VerifyResourceDigestByResourceAccess(cv, access, blobAccess, store)
-	if !ok {
-		if err != nil {
-			return fmt.Errorf("verification failed: %w", err)
-		}
-
-		return errors.New("expected signature verification to be relevant, but it was not")
-	}
-	if err != nil {
-		return fmt.Errorf("failed to verify resource digest: %w", err)
-	}
-
-	return nil
-}
-
 // setResourceStatus updates the resource status with the all required information.
-func setResourceStatus(ctx context.Context, configs []v1alpha1.OCMConfiguration, resource *v1alpha1.Resource, resourceAccess ocmctx.ResourceAccess, reference *v1alpha1.SourceReference) error {
+func setResourceStatus(
+	ctx context.Context,
+	configs []v1alpha1.OCMConfiguration,
+	resource *v1alpha1.Resource,
+	resourceAccess ocmctx.ResourceAccess,
+	reference *v1alpha1.SourceReference,
+	component *v1alpha1.ComponentInfo,
+) error {
 	log.FromContext(ctx).V(1).Info("updating resource status")
 
 	// Get the access spec from the resource access
@@ -466,6 +338,7 @@ func setResourceStatus(ctx context.Context, configs []v1alpha1.OCMConfiguration,
 	resource.Status.EffectiveOCMConfig = configs
 
 	resource.Status.Reference = reference
+	resource.Status.Component = component
 
 	return nil
 }

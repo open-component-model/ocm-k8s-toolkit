@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -30,7 +29,7 @@ const KindResource = "Resource"
 type ResourceSpec struct {
 	// ComponentRef is a reference to a Component.
 	// +required
-	ComponentRef corev1.LocalObjectReference `json:"componentRef"`
+	ComponentRef ObjectKey `json:"componentRef"`
 
 	// Resource identifies the ocm resource to be fetched.
 	// +required
@@ -68,6 +67,9 @@ type ResourceStatus struct {
 
 	// +optional
 	Resource *ResourceInfo `json:"resource,omitempty"`
+
+	// +optional
+	Component *ComponentInfo `json:"component,omitempty"`
 
 	// EffectiveOCMConfig specifies the entirety of config maps and secrets
 	// whose configuration data was applied to the Resource reconciliation,

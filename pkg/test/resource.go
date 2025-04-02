@@ -12,7 +12,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 
@@ -48,7 +47,7 @@ func SetupMockResourceWithData(
 					Resource: v1.NewIdentity(name),
 				},
 			},
-			ComponentRef: corev1.LocalObjectReference{
+			ComponentRef: v1alpha1.ObjectKey{
 				Name: options.ComponentRef.Name,
 			},
 		},
