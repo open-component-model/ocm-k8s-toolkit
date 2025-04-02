@@ -31,8 +31,6 @@ rules:
   - delivery.ocm.software
   resources:
   - components
-  - configuredresources
-  - localizedresources
   - ocmrepositories
   - replications
   - resources
@@ -48,8 +46,6 @@ rules:
   - delivery.ocm.software
   resources:
   - components/finalizers
-  - configuredresources/finalizers
-  - localizedresources/finalizers
   - ocmrepositories/finalizers
   - replications/finalizers
   verbs:
@@ -58,8 +54,6 @@ rules:
   - delivery.ocm.software
   resources:
   - components/status
-  - configuredresources/status
-  - localizedresources/status
   - ocmrepositories/status
   - replications/status
   - resources/status
@@ -67,22 +61,3 @@ rules:
   - get
   - patch
   - update
-- apiGroups:
-  - delivery.ocm.software
-  resources:
-  - localizationconfigs
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - delivery.ocm.software
-  resources:
-  - resourceconfigs
-  verbs:
-  - create
-  - get
-  - list
-  - patch
-  - update
-  - watch
