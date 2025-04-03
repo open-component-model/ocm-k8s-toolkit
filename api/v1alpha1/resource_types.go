@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -30,7 +29,7 @@ const KindResource = "Resource"
 type ResourceSpec struct {
 	// ComponentRef is a reference to a Component.
 	// +required
-	ComponentRef corev1.LocalObjectReference `json:"componentRef"`
+	ComponentRef ObjectKey `json:"componentRef"`
 
 	// Resource identifies the ocm resource to be fetched.
 	// +required
@@ -62,13 +61,15 @@ type ResourceStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// OCIArtifact points to the OCI artifact which represents the output of the
-	// last successful Resource sync.
+	// SourceReference references the source of the resource.
 	// +optional
-	OCIArtifact *OCIArtifactInfo `json:"ociArtifact,omitempty"`
+	Reference *SourceReference `json:"reference,omitempty"`
 
 	// +optional
 	Resource *ResourceInfo `json:"resource,omitempty"`
+
+	// +optional
+	Component *ComponentInfo `json:"component,omitempty"`
 
 	// EffectiveOCMConfig specifies the entirety of config maps and secrets
 	// whose configuration data was applied to the Resource reconciliation,
@@ -129,25 +130,6 @@ func (in *Resource) GetSpecifiedOCMConfig() []OCMConfiguration {
 
 func (in *Resource) GetEffectiveOCMConfig() []OCMConfiguration {
 	return in.Status.EffectiveOCMConfig
-}
-
-func (in *Resource) GetOCIArtifact() *OCIArtifactInfo {
-	return in.Status.OCIArtifact
-}
-
-// GetOCIRepository returns the name of the OCI repository of the OCI artifact in which the resource is stored.
-func (in *Resource) GetOCIRepository() string {
-	return in.Status.OCIArtifact.Repository
-}
-
-// GetManifestDigest returns the manifest digest of the OCI artifact, in which the resource is stored.
-func (in *Resource) GetManifestDigest() string {
-	return in.Status.OCIArtifact.Digest
-}
-
-// GetBlobDigest returns the blob digest of the OCI artifact, in which the resource is stored.
-func (in *Resource) GetBlobDigest() string {
-	return in.Status.OCIArtifact.Blob.Digest
 }
 
 // +kubebuilder:object:root=true

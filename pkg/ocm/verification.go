@@ -75,9 +75,10 @@ func VerifyComponentVersion(ctx context.Context, cv ocm.ComponentVersionAccess, 
 	resolver := resolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver())
 	opts := signing.NewOptions(
 		signing.Resolver(resolver),
+		// TODO: Consider configurable options for digest verification
 		// do we really want to verify the digests here? isn't it sufficient to verify the signatures since
 		// the digest verification can and has to be done anyways by the resource controller?
-		signing.VerifyDigests(),
+		// signing.VerifyDigests(),
 		signing.VerifySignature(sigs...),
 		signing.Recursive(),
 	)
@@ -90,4 +91,26 @@ func VerifyComponentVersion(ctx context.Context, cv ocm.ComponentVersionAccess, 
 	logger.Info("successfully verified component signature")
 
 	return &Descriptors{List: signing.ListComponentDescriptors(cv, ws)}, nil
+}
+
+func VerifyComponentVersionAndListDescriptors(
+	ctx context.Context,
+	octx ocm.Context,
+	cv ocm.ComponentVersionAccess,
+	sigs []string,
+) (*Descriptors, error) {
+	descriptors, err := VerifyComponentVersion(ctx, cv, sigs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify component: %w", err)
+	}
+
+	// if the component descriptors were not collected during signature validation, collect them now
+	if descriptors == nil || len(descriptors.List) == 0 {
+		descriptors, err = ListComponentDescriptors(ctx, cv, resolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver()))
+		if err != nil {
+			return nil, fmt.Errorf("failed to list component descriptors: %w", err)
+		}
+	}
+
+	return descriptors, nil
 }

@@ -110,12 +110,6 @@ type ComponentStatus struct {
 	// in the order the configuration data was applied.
 	// +optional
 	EffectiveOCMConfig []OCMConfiguration `json:"effectiveOCMConfig,omitempty"`
-
-	// OCIArtifact references the generated OCI artifact containing a list of
-	// component descriptors. This list can be used by other controllers to
-	// avoid re-downloading (and potentially also re-verifying) the components.
-	// +optional
-	OCIArtifact *OCIArtifactInfo `json:"ociArtifact,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -177,28 +171,6 @@ func (in *Component) GetEffectiveOCMConfig() []OCMConfiguration {
 
 func (in *Component) GetVerifications() []Verification {
 	return in.Spec.Verify
-}
-
-func (in *Component) GetOCIArtifact() *OCIArtifactInfo {
-	return in.Status.OCIArtifact
-}
-
-// GetOCIRepository returns the name of the OCI repository of the OCI artifact in which the component
-// descriptors are stored.
-func (in *Component) GetOCIRepository() string {
-	return in.Status.OCIArtifact.Repository
-}
-
-// GetManifestDigest returns the manifest digest of the OCI artifact, in which the component descriptors
-// are stored.
-func (in *Component) GetManifestDigest() string {
-	return in.Status.OCIArtifact.Digest
-}
-
-// GetBlobDigest returns the blob digest of the OCI artifact, in which the component descriptors
-// are stored.
-func (in *Component) GetBlobDigest() string {
-	return in.Status.OCIArtifact.Blob.Digest
 }
 
 // +kubebuilder:object:root=true

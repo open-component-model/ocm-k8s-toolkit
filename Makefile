@@ -10,10 +10,6 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-OS ?= $(shell go env GOOS)
-ARCH ?= $(shell go env GOARCH)
-
-
 # CONTAINER_TOOL defines the container tool to be used for building images.
 # Be aware that the target commands are only tested with Docker which is
 # scaffolded by default. However, you might want to replace it to use other
@@ -68,7 +64,7 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate envtest zot-registry ## Run tests.
+test: manifests generate envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 # Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
@@ -126,7 +122,7 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
 	$(call set-images)
-	$(KUSTOMIZE) build config/default-zot-https > dist/install.yaml
+	$(KUSTOMIZE) build config/default > dist/install.yaml
 
 ##@ Deployment
 
@@ -142,26 +138,14 @@ install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~
 uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f -
 
-.PHONY: deploy-dev
-deploy-dev: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config. In-cluster zot registry is accessible via http. If you need https, use deploy target.
+.PHONY: deploy
+deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	$(call set-images)
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 
-.PHONY: undeploy-dev
-undeploy-dev: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f -
-
-.PHONY: deploy
-deploy: deploy-cert-manager manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config. In-cluster zot registry is accessible via https. If you need http, use deploy-dev target.
-	$(call set-images)
-	$(KUSTOMIZE) build config/default-zot-https | $(KUBECTL) apply -f -
-
-# Undeploy target undeploys the controller, its zot registry and related certificates.
-# However, it does not undeploy the cert-manager, which might still be needed by other applications in the cluster.
-# If you wish to undeploy cert manager as well, execute 'make undeploy-cert-manager' in addition.
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/default-zot-https | $(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f -
+	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f -
 
 ##@ Dependencies
 
@@ -175,20 +159,11 @@ KUBECTL ?= kubectl
 KUSTOMIZE ?= $(LOCALBIN)/kustomize-$(KUSTOMIZE_VERSION)
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
-ZOT_BINARY ?= $(LOCALBIN)/zot-registry
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.1
 CONTROLLER_TOOLS_VERSION ?= v0.16.0
 ENVTEST_VERSION ?= release-0.18
-
-## ZOT OCI Registry
-ZOT_VERSION ?= v2.1.2
-ZOT_IMG ?= ghcr.io/project-zot/zot-minimal:$(ZOT_VERSION)
-
-## cert-manager
-CERT-MANAGER_VERSION ?= v1.16.3
-CERT-MANAGER_YAML ?= https://github.com/cert-manager/cert-manager/releases/download/$(CERT-MANAGER_VERSION)/cert-manager.yaml
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -205,24 +180,6 @@ envtest: $(ENVTEST) ## Download setup-envtest locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
 
-.PHONY: deploy-cert-manager
-deploy-cert-manager: ## Deploy cert-manager to the K8s cluster specified in ~/.kube/config.
-	$(KUBECTL) apply -f $(CERT-MANAGER_YAML)
-	$(KUBECTL) wait --for=condition=Available=True Deployment/cert-manager -n cert-manager --timeout=60s
-	$(KUBECTL) wait --for=condition=Available=True Deployment/cert-manager-webhook -n cert-manager --timeout=60s
-	$(KUBECTL) wait --for=condition=Available=True Deployment/cert-manager-cainjector -n cert-manager --timeout=60s
-
-.PHONY: undeploy-cert-manager
-undeploy-cert-manager: ## Undeploy cert-manager from the K8s cluster specified in ~/.kube/config.
-	$(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f $(CERT-MANAGER_YAML)
-
-.PHONY: zot-registry
-zot-registry: $(LOCALBIN) ## Download zot registry binary locally if necessary.
-ifeq (, $(shell which $(ZOT_BINARY)))
-	wget "https://github.com/project-zot/zot/releases/download/$(ZOT_VERSION)/zot-$(OS)-$(ARCH)-minimal" \
-		-O $(ZOT_BINARY) \
-		&& chmod u+x $(ZOT_BINARY)
-endif
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary (ideally with version)
@@ -238,9 +195,8 @@ mv "$$(echo "$(1)" | sed "s/-$(3)$$//")" $(1) ;\
 }
 endef
 
-# set-images will set use kustomize to set the specified images for the controller and zot registry
+# set-images will set use kustomize to set the specified images for the controller
 define set-images
 set -e
 cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-cd config/zot && $(KUSTOMIZE) edit set image zot-minimal=${ZOT_IMG}
 endef

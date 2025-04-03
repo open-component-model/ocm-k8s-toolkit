@@ -114,31 +114,8 @@ type ResourceInfo struct {
 	Digest string `json:"digest,omitempty"`
 }
 
-type BlobInfo struct {
-	// Digest is the digest of the blob.
-	Digest string `json:"digest"`
-
-	// Tag/Version of the blob.
-	// Corresponds to the tag the blob is available in the OCI registry.
-	Tag string `json:"tag"`
-
-	// Size is the number of bytes of the blob.
-	// Can be used to determine how to file should be handled when downloaded (memory/disk).
-	Size int64 `json:"size"`
-}
-
-// OCIArtifactInfo contains information on how to locate an OCI Artifact.
-type OCIArtifactInfo struct {
-	// OCI repository name
-	// +required
+type SourceReference struct {
+	Registry   string `json:"registry"`
 	Repository string `json:"repository"`
-
-	// Manifest digest
-	// Used to fetch single layer OCI artifact and remove manifests
-	// +required
-	Digest string `json:"digest"`
-
-	// Blob
-	// +required
-	Blob BlobInfo `json:"blob"`
+	Reference  string `json:"reference"`
 }

@@ -1,2 +1,0 @@
-deploy:
-  image: unexistingregistry.io/stefanprodan/podinfo:1.0.0

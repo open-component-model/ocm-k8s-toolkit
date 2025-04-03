@@ -43,16 +43,12 @@ spec:
                 description: ComponentRef is a reference to a Component.
                 properties:
                   name:
-                    default: ""
-                    description: |-
-                      Name of the referent.
-                      This field is effectively required, but due to backwards compatibility is
-                      allowed to be empty. Instances of this type with an empty value here are
-                      almost certainly wrong.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                     type: string
+                  namespace:
+                    type: string
+                required:
+                - name
                 type: object
-                x-kubernetes-map-type: atomic
               interval:
                 description: Interval at which the resource is checked for updates.
                 type: string
@@ -149,6 +145,19 @@ spec:
           status:
             description: ResourceStatus defines the observed state of Resource.
             properties:
+              component:
+                properties:
+                  component:
+                    type: string
+                  repositorySpec:
+                    x-kubernetes-preserve-unknown-fields: true
+                  version:
+                    type: string
+                required:
+                - component
+                - repositorySpec
+                - version
+                type: object
               conditions:
                 description: Conditions holds the conditions for the Resource.
                 items:
@@ -262,44 +271,18 @@ spec:
                   object.
                 format: int64
                 type: integer
-              ociArtifact:
-                description: |-
-                  OCIArtifact points to the OCI artifact which represents the output of the
-                  last successful Resource sync.
+              reference:
+                description: SourceReference references the source of the resource.
                 properties:
-                  blob:
-                    description: Blob
-                    properties:
-                      digest:
-                        description: Digest is the digest of the blob.
-                        type: string
-                      size:
-                        description: |-
-                          Size is the number of bytes of the blob.
-                          Can be used to determine how to file should be handled when downloaded (memory/disk).
-                        format: int64
-                        type: integer
-                      tag:
-                        description: |-
-                          Tag/Version of the blob.
-                          Corresponds to the tag the blob is available in the OCI registry.
-                        type: string
-                    required:
-                    - digest
-                    - size
-                    - tag
-                    type: object
-                  digest:
-                    description: |-
-                      Manifest digest
-                      Used to fetch single layer OCI artifact and remove manifests
+                  reference:
+                    type: string
+                  registry:
                     type: string
                   repository:
-                    description: OCI repository name
                     type: string
                 required:
-                - blob
-                - digest
+                - reference
+                - registry
                 - repository
                 type: object
               resource:

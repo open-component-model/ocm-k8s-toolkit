@@ -20,15 +20,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/goutils/sliceutils"
-	"github.com/opencontainers/go-digest"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
-	"ocm.software/ocm/api/ocm/resolvers"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -36,13 +36,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/yaml"
 
 	ocmctx "ocm.software/ocm/api/ocm"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
@@ -50,10 +48,11 @@ import (
 // Reconciler reconciles a Component object.
 type Reconciler struct {
 	*ocm.BaseReconciler
-	Registry *ociartifact.Registry
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
+
+var resourceKey = ".spec.componentRef"
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
@@ -69,6 +68,18 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 		return []string{component.Spec.RepositoryRef.Name}
 	}); err != nil {
 		return err
+	}
+
+	// Create index for resources to check if any resource references the component before deleting the component.
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Resource{}, resourceKey, func(rawObj client.Object) []string {
+		res, ok := rawObj.(*v1alpha1.Resource)
+		if !ok {
+			return nil
+		}
+
+		return []string{fmt.Sprintf("%s/%s", res.GetNamespace(), res.Spec.ComponentRef.Name)}
+	}); err != nil {
+		return fmt.Errorf("failed setting index fields: %w", err)
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
@@ -141,8 +152,22 @@ func (r *Reconciler) reconcileExists(ctx context.Context, component *v1alpha1.Co
 	logger := log.FromContext(ctx)
 
 	if !component.GetDeletionTimestamp().IsZero() {
-		if err := ociartifact.DeleteForObject(ctx, r.Registry, component); err != nil {
-			return ctrl.Result{}, err
+		resourceList := &v1alpha1.ResourceList{}
+		if err := r.List(ctx, resourceList, &client.ListOptions{
+			FieldSelector: fields.OneTermEqualSelector(resourceKey, client.ObjectKeyFromObject(component).String()),
+		}); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to list resource: %w", err)
+		}
+
+		if len(resourceList.Items) > 0 {
+			var names []string
+			for _, res := range resourceList.Items {
+				names = append(names, fmt.Sprintf("%s/%s", res.Namespace, res.Name))
+			}
+
+			logger.Info("component is being deleted, please remove the following resource referencing it", "names", names)
+
+			return ctrl.Result{}, fmt.Errorf("failed to remove component referencing resource: %s", strings.Join(names, ","))
 		}
 
 		if updated := controllerutil.RemoveFinalizer(component, v1alpha1.ArtifactFinalizer); updated {
@@ -155,7 +180,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, component *v1alpha1.Co
 
 		logger.Info("component is being deleted and still has existing finalizers", "name", component.GetName())
 
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{}, nil
 	}
 
 	if updated := controllerutil.AddFinalizer(component, v1alpha1.ArtifactFinalizer); updated {
@@ -179,8 +204,13 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 	logger := log.FromContext(ctx)
 
 	repo := &v1alpha1.OCMRepository{}
+	repoNamespace := component.Spec.RepositoryRef.Namespace
+	if repoNamespace == "" {
+		repoNamespace = component.GetNamespace()
+	}
+
 	if err := r.Get(ctx, types.NamespacedName{
-		Namespace: component.Spec.RepositoryRef.Namespace,
+		Namespace: repoNamespace,
 		Name:      component.Spec.RepositoryRef.Name,
 	}, repo); err != nil {
 		logger.Info("failed to get repository")
@@ -229,7 +259,6 @@ func (r *Reconciler) reconcileOCM(ctx context.Context, component *v1alpha1.Compo
 	return result, nil
 }
 
-//nolint:funlen // we do not want to cut function at an arbitrary point
 func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context, component *v1alpha1.Component, repository *v1alpha1.OCMRepository) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
@@ -268,9 +297,9 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 
 	repo, err := session.LookupRepository(octx, spec)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositorySpecInvalidReason, "RepositorySpec is invalid")
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositorySpecInvalidReason, "Failed looking up repository")
 
-		return ctrl.Result{}, fmt.Errorf("invalid repository spec: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed looking up repository: %w", err)
 	}
 
 	c, err := session.LookupComponent(repo, component.Spec.Component)
@@ -280,7 +309,7 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 		return ctrl.Result{}, fmt.Errorf("failed looking up component: %w", err)
 	}
 
-	version, err := r.determineEffectiveVersion(ctx, component, session, repo, c)
+	version, err := r.DetermineEffectiveVersion(ctx, component, session, repo, c)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason, err.Error())
 
@@ -296,64 +325,16 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 		return ctrl.Result{}, fmt.Errorf("failed to get component version: %w", err)
 	}
 
-	descriptors, err := r.verifyComponentVersionAndListDescriptors(ctx, octx, component, cv)
+	_, err = ocm.VerifyComponentVersion(ctx, cv, sliceutils.Transform(component.Spec.Verify, func(verify v1alpha1.Verification) string {
+		return verify.Signature
+	}))
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.VerificationFailedReason, err.Error())
 
 		return ctrl.Result{}, err
 	}
 
-	// Store descriptors and create OCI artifact
-	ociRepositoryName, err := ociartifact.CreateRepositoryName(cv.GetName())
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CreateOCIRepositoryNameFailedReason, err.Error())
-
-		return ctrl.Result{}, err
-	}
-
-	ociRepository, err := r.Registry.NewRepository(ctx, ociRepositoryName)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CreateOCIRepositoryFailedReason, err.Error())
-
-		return ctrl.Result{}, err
-	}
-
-	descriptorsBytes, err := yaml.Marshal(descriptors)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.MarshalFailedReason, err.Error())
-
-		return ctrl.Result{}, err
-	}
-
-	tag := ocm.NormalizeVersion(version)
-	manifestDigest, err := ociRepository.PushArtifact(ctx, tag, descriptorsBytes)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.PushOCIArtifactFailedReason, err.Error())
-
-		return ctrl.Result{}, err
-	}
-
-	// Delete previous artifact version, if any. Note that component's status isn't updated yet.
-	err = ociartifact.DeleteIfDigestMismatch(ctx, r.Registry, component, manifestDigest)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.DeleteOCIArtifactFailedReason, err.Error())
-
-		return ctrl.Result{}, err
-	}
-
-	ociArtifact := v1alpha1.OCIArtifactInfo{
-		Repository: ociRepositoryName,
-		Digest:     manifestDigest.String(),
-		Blob: v1alpha1.BlobInfo{
-			Digest: digest.FromBytes(descriptorsBytes).String(),
-			Tag:    tag,
-			Size:   int64(len(descriptorsBytes)),
-		},
-	}
-
 	logger.Info("updating status")
-	component.Status.OCIArtifact = &ociArtifact
-
 	component.Status.Component = v1alpha1.ComponentInfo{
 		RepositorySpec: repository.Spec.RepositorySpec,
 		Component:      component.Spec.Component,
@@ -367,7 +348,7 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 	return ctrl.Result{RequeueAfter: component.GetRequeueAfter()}, nil
 }
 
-func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v1alpha1.Component,
+func (r *Reconciler) DetermineEffectiveVersion(ctx context.Context, component *v1alpha1.Component,
 	session ocmctx.Session, repo ocmctx.Repository, c ocmctx.ComponentAccess,
 ) (string, error) {
 	versions, err := c.ListVersions()
@@ -435,27 +416,4 @@ func (r *Reconciler) determineEffectiveVersion(ctx context.Context, component *v
 	default:
 		return "", reconcile.TerminalError(errors.New("unknown downgrade policy: " + string(component.Spec.DowngradePolicy)))
 	}
-}
-
-func (r *Reconciler) verifyComponentVersionAndListDescriptors(ctx context.Context, octx ocmctx.Context,
-	component *v1alpha1.Component, cv ocmctx.ComponentVersionAccess,
-) (*ocm.Descriptors, error) {
-	logger := log.FromContext(ctx)
-	descriptors, err := ocm.VerifyComponentVersion(ctx, cv, sliceutils.Transform(component.Spec.Verify, func(verify v1alpha1.Verification) string {
-		return verify.Signature
-	}))
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify component: %w", err)
-	}
-	logger.Info("component successfully verified", "version", cv.GetVersion(), "component", cv.GetName())
-
-	// if the component descriptors were not collected during signature validation, collect them now
-	if descriptors == nil || len(descriptors.List) == 0 {
-		descriptors, err = ocm.ListComponentDescriptors(ctx, cv, resolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver()))
-		if err != nil {
-			return nil, fmt.Errorf("failed to list component descriptors: %w", err)
-		}
-	}
-
-	return descriptors, nil
 }

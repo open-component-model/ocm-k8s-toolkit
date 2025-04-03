@@ -16,7 +16,6 @@ package component
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -35,9 +34,7 @@ import (
 	metricserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
 )
 
 // +kubebuilder:scaffold:imports
@@ -49,9 +46,6 @@ var cfg *rest.Config
 var k8sClient client.Client
 var k8sManager ctrl.Manager
 var testEnv *envtest.Environment
-var zotCmd *exec.Cmd
-var registry *ociartifact.Registry
-var zotRootDir string
 var recorder record.EventRecorder
 
 func TestControllers(t *testing.T) {
@@ -107,10 +101,6 @@ var _ = BeforeSuite(func() {
 	ctx, cancel := context.WithCancel(context.Background())
 	DeferCleanup(cancel)
 
-	// Setup zot registry and start it up
-	zotRootDir = GinkgoT().TempDir()
-	zotCmd, registry = test.SetupRegistry(ctx, filepath.Join("..", "..", "..", "bin", "zot-registry"), zotRootDir, "0.0.0.0", "8080")
-
 	events := make(chan string)
 	recorder = &record.FakeRecorder{
 		Events:        events,
@@ -134,16 +124,10 @@ var _ = BeforeSuite(func() {
 			Scheme:        testEnv.Scheme,
 			EventRecorder: recorder,
 		},
-		Registry: registry,
 	}).SetupWithManager(ctx, k8sManager)).To(Succeed())
 
 	go func() {
 		defer GinkgoRecover()
 		Expect(k8sManager.Start(ctx)).To(Succeed())
 	}()
-})
-
-var _ = AfterSuite(func(ctx context.Context) {
-	err := zotCmd.Process.Kill()
-	Expect(err).NotTo(HaveOccurred(), "Failed to stop Zot registry")
 })
