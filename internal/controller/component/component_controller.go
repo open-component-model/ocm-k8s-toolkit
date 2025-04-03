@@ -29,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
-	"ocm.software/ocm/api/ocm/resolvers"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -205,8 +204,13 @@ func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Componen
 	logger := log.FromContext(ctx)
 
 	repo := &v1alpha1.OCMRepository{}
+	repoNamespace := component.Spec.RepositoryRef.Namespace
+	if repoNamespace == "" {
+		repoNamespace = component.GetNamespace()
+	}
+
 	if err := r.Get(ctx, types.NamespacedName{
-		Namespace: component.Spec.RepositoryRef.Namespace,
+		Namespace: repoNamespace,
 		Name:      component.Spec.RepositoryRef.Name,
 	}, repo); err != nil {
 		logger.Info("failed to get repository")
@@ -293,9 +297,9 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 
 	repo, err := session.LookupRepository(octx, spec)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositorySpecInvalidReason, "RepositorySpec is invalid")
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositorySpecInvalidReason, "Failed looking up repository")
 
-		return ctrl.Result{}, fmt.Errorf("invalid repository spec: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed looking up repository: %w", err)
 	}
 
 	c, err := session.LookupComponent(repo, component.Spec.Component)
@@ -321,7 +325,9 @@ func (r *Reconciler) reconcileComponent(ctx context.Context, octx ocmctx.Context
 		return ctrl.Result{}, fmt.Errorf("failed to get component version: %w", err)
 	}
 
-	_, err = r.verifyComponentVersionAndListDescriptors(ctx, octx, component, cv)
+	_, err = ocm.VerifyComponentVersion(ctx, cv, sliceutils.Transform(component.Spec.Verify, func(verify v1alpha1.Verification) string {
+		return verify.Signature
+	}))
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.VerificationFailedReason, err.Error())
 
@@ -410,27 +416,4 @@ func (r *Reconciler) DetermineEffectiveVersion(ctx context.Context, component *v
 	default:
 		return "", reconcile.TerminalError(errors.New("unknown downgrade policy: " + string(component.Spec.DowngradePolicy)))
 	}
-}
-
-func (r *Reconciler) verifyComponentVersionAndListDescriptors(ctx context.Context, octx ocmctx.Context,
-	component *v1alpha1.Component, cv ocmctx.ComponentVersionAccess,
-) (*ocm.Descriptors, error) {
-	logger := log.FromContext(ctx)
-	descriptors, err := ocm.VerifyComponentVersion(ctx, cv, sliceutils.Transform(component.Spec.Verify, func(verify v1alpha1.Verification) string {
-		return verify.Signature
-	}))
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify component: %w", err)
-	}
-	logger.Info("component successfully verified", "version", cv.GetVersion(), "component", cv.GetName())
-
-	// if the component descriptors were not collected during signature validation, collect them now
-	if descriptors == nil || len(descriptors.List) == 0 {
-		descriptors, err = ocm.ListComponentDescriptors(ctx, cv, resolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver()))
-		if err != nil {
-			return nil, fmt.Errorf("failed to list component descriptors: %w", err)
-		}
-	}
-
-	return descriptors, nil
 }

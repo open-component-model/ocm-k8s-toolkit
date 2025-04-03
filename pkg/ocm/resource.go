@@ -64,7 +64,6 @@ func verifyResource(access ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAcce
 	if err != nil {
 		return fmt.Errorf("failed to create access method: %w", err)
 	}
-	defer accessMethod.Close()
 
 	// Add the component descriptor to the local verified store, so its digest will be compared with the digest from the
 	// component version access
@@ -109,18 +108,12 @@ func GetResource(
 	if err != nil {
 		return nil, "", fmt.Errorf("failed getting access method: %w", err)
 	}
-	defer func() {
-		retErr = meth.Close()
-	}()
 
 	// What is the difference to acc.AccessMethod(cv)?
 	accessMethod, err := resourceAccess.AccessMethod()
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to create access method: %w", err)
 	}
-	defer func() {
-		retErr = accessMethod.Close()
-	}()
 
 	bAcc := accessMethod.AsBlobAccess()
 

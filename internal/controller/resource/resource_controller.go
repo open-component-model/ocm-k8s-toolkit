@@ -21,6 +21,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
@@ -31,6 +33,7 @@ import (
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/git"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/helm"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
+	"ocm.software/ocm/api/ocm/resolvers"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -187,7 +190,7 @@ func (r *Reconciler) reconcileOCM(ctx context.Context, resource *v1alpha1.Resour
 }
 
 //nolint:funlen // we do not want to cut function at an arbitrary point
-func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context, resource *v1alpha1.Resource, component *v1alpha1.Component) (ctrl.Result, error) {
+func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context, resource *v1alpha1.Resource, component *v1alpha1.Component) (_ ctrl.Result, retErr error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("reconciling resource")
 
@@ -209,7 +212,17 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		return ctrl.Result{}, err
 	}
 
-	cv, err := ocm.GetComponentVersion(octx, session, component.Status.Component.RepositorySpec.Raw, component.Status.Component.Component, component.Status.Component.Version)
+	spec, err := octx.RepositorySpecForConfig(component.Status.Component.RepositorySpec.Raw, nil)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	repo, err := session.LookupRepository(octx, spec)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("invalid repository spec: %w", err)
+	}
+
+	cv, err := session.LookupComponentVersion(repo, component.Status.Component.Component, component.Status.Component.Version)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetComponentVersionFailedReason, err.Error())
 
@@ -218,7 +231,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 
 	// Assuming the component descriptors are cached by the verification in the component controller, the verification
 	// is the only thing we do twice. Or is this omitted when the component is pulled from the ocm cache?
-	cds, err := ocm.VerifyComponentVersion(ctx, cv, sliceutils.Transform(component.Spec.Verify, func(verify v1alpha1.Verification) string {
+	cds, err := ocm.VerifyComponentVersionAndListDescriptors(ctx, octx, cv, sliceutils.Transform(component.Spec.Verify, func(verify v1alpha1.Verification) string {
 		return verify.Signature
 	}))
 	if err != nil {
@@ -246,12 +259,24 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 
 	switch access := accSpec.(type) {
 	case *ociartifact.AccessSpec:
-		ociRef, err := access.GetOCIReference(cv)
+		ociURLDigest, err := access.GetOCIReference(cv)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 
-		reference, err := name.ParseReference(ociRef)
+		ociURL, err := url.Parse(strings.Split(ociURLDigest, "@")[0])
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		// url.Parse will not acknowledge a hostname if a scheme is missing. But we cannot make sure that the reference
+		// has a scheme.
+		if ociURL.Host == "" {
+			ociURL.Host = strings.Split(ociURL.Path, "/")[0]
+			ociURL.Path = strings.TrimLeft(ociURL.Path, ociURL.Host+"/")
+		}
+
+		reference, err := name.ParseReference(fmt.Sprintf("%s/%s", ociURL.Host, ociURL.Path))
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -273,13 +298,14 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		sourceRef.Repository = url.Path
 		sourceRef.Reference = access.Ref
 	default:
-		return ctrl.Result{}, fmt.Errorf("unsupported access spec type: %T", access)
+		logger.V(2).Info("skip setting reference for resource as no source reference is available for this access type", "access type", access)
 	}
 
 	// Get repository spec of actual component descriptor of the referenced resource
-	resourceCV, err := octx.GetResolver().LookupComponentVersion(resourceCompDesc.GetName(), resourceCompDesc.GetVersion())
+	resolver := resolvers.NewCompoundResolver(repo, octx.GetResolver())
+	resourceCV, err := session.LookupComponentVersion(resolver, resourceCompDesc.GetName(), resourceCompDesc.GetVersion())
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get component version of resource: %w", err)
 	}
 	resourceSpec := resourceCV.Repository().GetSpecification()
 

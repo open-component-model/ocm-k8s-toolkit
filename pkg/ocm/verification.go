@@ -92,3 +92,25 @@ func VerifyComponentVersion(ctx context.Context, cv ocm.ComponentVersionAccess, 
 
 	return &Descriptors{List: signing.ListComponentDescriptors(cv, ws)}, nil
 }
+
+func VerifyComponentVersionAndListDescriptors(
+	ctx context.Context,
+	octx ocm.Context,
+	cv ocm.ComponentVersionAccess,
+	sigs []string,
+) (*Descriptors, error) {
+	descriptors, err := VerifyComponentVersion(ctx, cv, sigs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify component: %w", err)
+	}
+
+	// if the component descriptors were not collected during signature validation, collect them now
+	if descriptors == nil || len(descriptors.List) == 0 {
+		descriptors, err = ListComponentDescriptors(ctx, cv, resolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver()))
+		if err != nil {
+			return nil, fmt.Errorf("failed to list component descriptors: %w", err)
+		}
+	}
+
+	return descriptors, nil
+}
