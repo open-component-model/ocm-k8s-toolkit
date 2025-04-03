@@ -1,0 +1,43 @@
+apiVersion: delivery.ocm.software/v1alpha1
+kind: OCMRepository
+metadata:
+  name: static-repository-name
+spec:
+  repositorySpec:
+    # TODO: Adjust for our test environment
+    baseUrl: ghcr.io/frewilhelm
+    type: OCIRegistry
+  interval: 10m
+---
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Component
+metadata:
+  name: static-component-name
+spec:
+  component: ocm.software/ocm-k8s-toolkit/test/e2e/testdata/helm-configuration-localisation
+  repositoryRef:
+    name: static-repository-name
+  semver: 1.0.0
+  interval: 10m
+---
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  name: static-resource-rgd-name
+spec:
+  componentRef:
+    name: static-component-name
+  resource:
+    byReference:
+      resource:
+        name: kro-rgd
+  interval: 10m
+---
+apiVersion: delivery.ocm.software/v1alpha1
+kind: OCMDeployer
+metadata:
+  name: static-ocmdeployer-name
+spec:
+  resourceRef:
+    name: static-resource-rgd-name
+  interval: 10m

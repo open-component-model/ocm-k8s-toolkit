@@ -189,7 +189,7 @@ func (r *Reconciler) reconcileOCM(ctx context.Context, resource *v1alpha1.Resour
 	return result, nil
 }
 
-//nolint:funlen // we do not want to cut function at an arbitrary point
+//nolint:funlen,cyclop // we do not want to cut function at an arbitrary point
 func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context, resource *v1alpha1.Resource, component *v1alpha1.Component) (_ ctrl.Result, retErr error) {
 	logger := log.FromContext(ctx)
 	logger.V(1).Info("reconciling resource")
@@ -298,7 +298,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		sourceRef.Repository = url.Path
 		sourceRef.Reference = access.Ref
 	default:
-		logger.V(2).Info("skip setting reference for resource as no source reference is available for this access type", "access type", access)
+		logger.V(1).Info("skip setting reference for resource as no source reference is available for this access type", "access type", access)
 	}
 
 	// Get repository spec of actual component descriptor of the referenced resource
