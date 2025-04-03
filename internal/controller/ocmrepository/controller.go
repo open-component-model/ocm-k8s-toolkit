@@ -25,15 +25,13 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	"k8s.io/apimachinery/pkg/fields"
 	"ocm.software/ocm/api/datacontext"
+	ocmctx "ocm.software/ocm/api/ocm"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	ocmctx "ocm.software/ocm/api/ocm"
-	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
@@ -142,6 +140,8 @@ func (r *Reconciler) reconcileRepository(ctx context.Context, octx ocmctx.Contex
 
 	err = r.validate(octx, session, ocmRepo)
 	if err != nil {
+		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, err.Error())
+
 		return ctrl.Result{}, err
 	}
 
@@ -155,21 +155,15 @@ func (r *Reconciler) reconcileRepository(ctx context.Context, octx ocmctx.Contex
 func (r *Reconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRepo *v1alpha1.OCMRepository) error {
 	spec, err := octx.RepositorySpecForConfig(ocmRepo.Spec.RepositorySpec.Raw, nil)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, err.Error())
-
-		return reconcile.TerminalError(fmt.Errorf("cannot create RepositorySpec from raw data: %w", err))
+		return fmt.Errorf("cannot create RepositorySpec from raw data: %w", err)
 	}
 
 	if err = spec.Validate(octx, nil); err != nil {
-		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, err.Error())
-
 		return fmt.Errorf("invalid RepositorySpec: %w", err)
 	}
 
 	_, err = session.LookupRepository(octx, spec)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.RepositorySpecInvalidReason, err.Error())
-
 		return fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
 	}
 
