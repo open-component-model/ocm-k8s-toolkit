@@ -9,11 +9,11 @@ import (
 
 	"github.com/containers/image/v5/pkg/compression"
 	"github.com/fluxcd/pkg/runtime/conditions"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -54,7 +54,7 @@ func GetNamespaced[T any, P ObjectPointerType[T]](ctx context.Context, client ct
 
 func Get[T any, P ObjectPointerType[T]](ctx context.Context, client ctrl.Reader, key ctrl.ObjectKey) (P, error) {
 	obj := P(new(T))
-	if err := client.Get(ctx, ctrl.ObjectKey(key), obj); err != nil {
+	if err := client.Get(ctx, key, obj); err != nil {
 		return nil, fmt.Errorf("failed to locate object: %w", err)
 	}
 
@@ -72,7 +72,7 @@ func GetReadyObject[T any, P ObjectPointerType[T]](ctx context.Context, client c
 	}
 
 	if !conditions.IsReady(obj) {
-		return nil, NotReadyError{objectName: key.String()}
+		return nil, NotReadyError{key.String()}
 	}
 
 	return obj, nil

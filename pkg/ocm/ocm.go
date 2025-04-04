@@ -11,7 +11,6 @@ import (
 	"ocm.software/ocm/api/credentials/extensions/repositories/dockerconfig"
 	"ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/compdesc"
-	"ocm.software/ocm/api/ocm/cpi"
 	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
 	"ocm.software/ocm/api/utils/runtime"
 	"ocm.software/ocm/api/utils/semverutils"
@@ -298,13 +297,4 @@ func IsDowngradable(_ context.Context, currentcv ocm.ComponentVersionAccess, lat
 	downgradable := constaint.Check(semvers)
 
 	return downgradable, nil
-}
-
-type redirectedResourceAccess struct {
-	cpi.ResourceAccess
-	RedirectedAccessMethod cpi.AccessMethod
-}
-
-func (r *redirectedResourceAccess) AccessMethod() (cpi.AccessMethod, error) {
-	return r.RedirectedAccessMethod, nil
 }
