@@ -33,7 +33,7 @@ func GetVerifications(ctx context.Context, client ctrl.Client,
 	var err error
 	var secret corev1.Secret
 	v := make([]Verification, 0, len(verifications))
-	for index, verification := range verifications {
+	for _, verification := range verifications {
 		internal := Verification{
 			Signature: verification.Signature,
 		}
@@ -58,7 +58,8 @@ func GetVerifications(ctx context.Context, client ctrl.Client,
 				internal.PublicKey = certBytes
 			}
 		}
-		v[index] = internal
+
+		v = append(v, internal)
 	}
 
 	return v, nil
