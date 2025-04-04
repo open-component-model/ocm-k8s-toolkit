@@ -1,0 +1,98 @@
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: helm-all-in-one-rgd
+spec:
+  schema:
+    apiVersion: v1alpha1
+    kind: HelmAllInOne
+    spec:
+      prefix: string | default="helm-all-in-one"
+      podinfo:
+        releaseName: string | default="podinfo"
+        message: string | default="Hello World"
+  resources:
+    - id: secretDockerconfigjson
+      template:
+        apiVersion: v1
+        kind: Secret
+        type: kubernetes.io/dockerconfigjson
+        metadata:
+          name: static-dockerconfigjson-name
+        data:
+    - id: resourceChart
+      template:
+        apiVersion: delivery.ocm.software/v1alpha1
+        kind: Resource
+        metadata:
+          name: "${schema.spec.prefix}-resource-chart-name"
+        spec:
+          ocmConfig:
+            - name: static-ocmconfig-secret-name
+              kind: Secret
+          componentRef:
+            name: static-component-name
+          resource:
+            byReference:
+              resource:
+                name: helm-resource
+          interval: 10m
+    - id: resourceImage
+      template:
+        apiVersion: delivery.ocm.software/v1alpha1
+        kind: Resource
+        metadata:
+          name: "${schema.spec.prefix}-resource-image-name"
+        spec:
+          componentRef:
+            name: static-component-name
+          ocmConfig:
+            - name: static-ocmconfig-secret-name
+              kind: Secret
+          resource:
+            byReference:
+              resource:
+                name: image-resource
+          interval: 10m
+    - id: ocirepository
+      template:
+        apiVersion: source.toolkit.fluxcd.io/v1beta2
+        kind: OCIRepository
+        metadata:
+          name: "${schema.spec.prefix}-oci-repository-name"
+        spec:
+          interval: 1m0s
+          layerSelector:
+            mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+            operation: copy
+          secretRef:
+            name: ${secretDockerconfigjson.metadata.name}
+          url: oci://${resourceChart.status.reference.registry}/${resourceChart.status.reference.repository}
+          ref:
+            tag: ${resourceChart.status.reference.reference}
+    - id: helmrelease
+      template:
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata:
+          name: ${schema.spec.podinfo.releaseName}
+        spec:
+          releaseName: ${schema.spec.podinfo.releaseName}
+          interval: 1m
+          timeout: 5m
+          chartRef:
+            kind: OCIRepository
+            name: ${ocirepository.metadata.name}
+            namespace: default
+          values:
+            serviceAccount:
+              enabled: true
+              imagePullSecrets:
+                - name: ${secretDockerconfigjson.metadata.name}
+            # Localisation
+            image:
+              repository: ${resourceImage.status.reference.registry}/${resourceImage.status.reference.repository}
+              tag: ${resourceImage.status.reference.reference}
+            # Configuration
+            ui:
+              message: ${schema.spec.podinfo.message}

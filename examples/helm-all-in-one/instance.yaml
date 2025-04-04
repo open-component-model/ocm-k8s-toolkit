@@ -1,0 +1,9 @@
+apiVersion: kro.run/v1alpha1
+kind: HelmAllInOne
+metadata:
+  name: helm-all-in-one-instance
+spec:
+  prefix: helm-all-in-one
+  podinfo:
+    releaseName: podinfo
+    message: "This is the helm All in One example"

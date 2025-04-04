@@ -5,7 +5,7 @@ metadata:
 spec:
   repositorySpec:
     # TODO: Adjust for our test environment
-    baseUrl: ghcr.io/frewilhelm/helm-simple
+    baseUrl: ghcr.io/frewilhelm
     type: OCIRegistry
   interval: 10m
 ---

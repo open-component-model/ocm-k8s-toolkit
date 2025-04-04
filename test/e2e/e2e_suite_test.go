@@ -69,8 +69,18 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 		timeout = "1m"
 	}
 
-	imageRegistry = "http://localhost:31001"
-	internalImageRegistry = "http://registry-external.default.svc.cluster.local:5001"
+	imageRegistry = os.Getenv("IMAGE_REGISTRY")
+	if imageRegistry == "" {
+		// TODO: Adjust
+		imageRegistry = "http://localhost:31001"
+	}
+
+	clusterImageRegistry := os.Getenv("CLUSTER_IMAGE_REGISTRY")
+	if clusterImageRegistry == "" {
+		clusterImageRegistry = imageRegistry
+		// TODO: Adjust
+		internalImageRegistry = "http://registry-external.default.svc.cluster.local:5001"
+	}
 
 	By("Starting the operator", func() {
 		// projectimage stores the name of the image used in the example

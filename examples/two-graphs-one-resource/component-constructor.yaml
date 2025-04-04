@@ -1,0 +1,24 @@
+components:
+  - name: ocm.software/ocm-k8s-toolkit/test/e2e/testdata/two-graphs-one-resource
+    version: "1.0.0"
+    provider:
+      name: ocm.software
+    resources:
+      - name: helm-resource
+        type: helmChart
+        version: "1.0.0"
+        access:
+           type: ociArtifact
+           imageReference: ghcr.io/stefanprodan/charts/podinfo:6.7.1
+      - name: kro-rgd-1
+        type: blob
+        version: "1.0.0"
+        input:
+          type: file
+          path: ./rgd-1.yaml
+      - name: kro-rgd-2
+        type: blob
+        version: "1.0.0"
+        input:
+          type: file
+          path: ./rgd-2.yaml
