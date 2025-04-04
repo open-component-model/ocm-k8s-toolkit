@@ -166,7 +166,7 @@ func (in *OCMDeployer) DeepCopyInto(out *OCMDeployer) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
-	out.Spec = in.Spec
+	in.Spec.DeepCopyInto(&out.Spec)
 	in.Status.DeepCopyInto(&out.Status)
 }
 
@@ -224,6 +224,11 @@ func (in *OCMDeployerList) DeepCopyObject() runtime.Object {
 func (in *OCMDeployerSpec) DeepCopyInto(out *OCMDeployerSpec) {
 	*out = *in
 	out.ResourceRef = in.ResourceRef
+	if in.OCMConfig != nil {
+		in, out := &in.OCMConfig, &out.OCMConfig
+		*out = make([]OCMConfiguration, len(*in))
+		copy(*out, *in)
+	}
 	out.Interval = in.Interval
 }
 
@@ -246,6 +251,11 @@ func (in *OCMDeployerStatus) DeepCopyInto(out *OCMDeployerStatus) {
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
+	}
+	if in.EffectiveOCMConfig != nil {
+		in, out := &in.EffectiveOCMConfig, &out.EffectiveOCMConfig
+		*out = make([]OCMConfiguration, len(*in))
+		copy(*out, *in)
 	}
 }
 

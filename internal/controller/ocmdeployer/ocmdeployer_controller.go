@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
@@ -27,6 +26,7 @@ import (
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/util"
 )
 
 // Reconciler reconciles a OCMDeployer object.
@@ -108,59 +108,52 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, errors.New("ocm deployer is being deleted")
 	}
 
+	octx := ocmctx.New(datacontext.MODE_EXTENDED)
+	session := ocmctx.NewSession(datacontext.NewSession())
+	// automatically close the session when the ocm context is closed in the above defer
+	octx.Finalizer().Close(session)
+
+	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), ocmDeployer)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), ocmDeployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+
+	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), ocmDeployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return ctrl.Result{}, err
+	}
+
 	resNamespace := ocmDeployer.Spec.ResourceRef.Namespace
 	if resNamespace == "" {
 		// TODO: Check this out
 		resNamespace = "default"
 	}
 
-	resource := &deliveryv1alpha1.Resource{}
-	if err := r.Get(ctx, types.NamespacedName{
+	resource, err := util.GetReadyObject[deliveryv1alpha1.Resource, *deliveryv1alpha1.Resource](ctx, r.Client, client.ObjectKey{
 		Namespace: resNamespace,
 		Name:      ocmDeployer.Spec.ResourceRef.Name,
-	}, resource); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get resource: %w", err)
-	}
+	})
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.ResourceIsNotReadyReason, "Resource is not ready")
 
-	if !resource.GetDeletionTimestamp().IsZero() {
-		return ctrl.Result{}, errors.New("resource is being deleted")
-	}
+		if errors.Is(err, util.NotReadyError{}) || errors.Is(err, util.DeletionError{}) {
+			logger.V(1).Info(err.Error())
 
-	if !conditions.IsReady(resource) {
-		return ctrl.Result{}, errors.New("resource is not ready")
-	}
+			// return no requeue as we watch the object for changes anyway
+			return ctrl.Result{}, nil
+		}
 
-	compNamespace := resource.Spec.ComponentRef.Namespace
-	if compNamespace == "" {
-		// TODO: Check this out
-		compNamespace = "default"
+		return ctrl.Result{}, fmt.Errorf("failed to get ready resource: %w", err)
 	}
-
-	component := &deliveryv1alpha1.Component{}
-	if err := r.Get(ctx, types.NamespacedName{
-		Namespace: compNamespace,
-		Name:      resource.Spec.ComponentRef.Name,
-	}, component); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get component: %w", err)
-	}
-
-	if !component.GetDeletionTimestamp().IsZero() {
-		return ctrl.Result{}, errors.New("component is being deleted")
-	}
-
-	if !conditions.IsReady(component) {
-		return ctrl.Result{}, errors.New("component is not ready")
-	}
-
-	octx := ocmctx.New(datacontext.MODE_EXTENDED)
-	session := ocmctx.NewSession(datacontext.NewSession())
-	// automatically close the session when the ocm context is closed in the above defer
-	octx.Finalizer().Close(session)
 
 	// Download the resource
 	cv, err := ocm.GetComponentVersion(octx, session, resource.Status.Component.RepositorySpec.Raw, resource.Status.Component.Component, resource.Status.Component.Version)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to get component version: %w", err)
 	}
@@ -173,17 +166,21 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	a := cv.GetDescriptor()
 	resourceAccess, _, err := ocm.GetResourceAccessForComponentVersion(cv, resourceReference, &ocm.Descriptors{List: []*compdesc.ComponentDescriptor{a}})
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, deliveryv1alpha1.GetResourceAccessFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.GetResourceAccessFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to get resource access: %w", err)
 	}
 
 	rgdManifest, digest, err := ocm.GetResource(cv, resourceAccess)
 	if err != nil {
+		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.GetResourceFailedReason, err.Error())
+
 		return ctrl.Result{}, fmt.Errorf("failed to get resource graph definition manifest: %w", err)
 	}
 
 	if resource.Status.Resource.Digest != digest {
+		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.GetResourceFailedReason, "resource digest mismatch")
+
 		return ctrl.Result{}, fmt.Errorf("resource digest mismatch: expected %s, got %s", resource.Status.Resource.Digest, digest)
 	}
 
@@ -191,6 +188,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	var rgd krov1alpha1.ResourceGraphDefinition
 	// Unmarshal the manifest into the ResourceGraphDefinition object
 	if err := yaml.Unmarshal(rgdManifest, &rgd); err != nil {
+		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.MarshalFailedReason, "unmarshal failed")
+
 		return ctrl.Result{}, fmt.Errorf("failed to unmarshal manifest: %w", err)
 	}
 
@@ -203,6 +202,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return nil
 	})
 	if err != nil {
+		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.CreateOrUpdateFailedReason, "create or update failed")
+
 		return ctrl.Result{}, fmt.Errorf("failed to create or update resource graph definition: %w", err)
 	}
 

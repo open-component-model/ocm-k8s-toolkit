@@ -15,6 +15,11 @@ type OCMDeployerSpec struct {
 	// +required
 	ResourceRef ObjectKey `json:"resourceRef"`
 
+	// OCMConfig defines references to secrets, config maps or ocm api
+	// objects providing configuration data including credentials.
+	// +optional
+	OCMConfig []OCMConfiguration `json:"ocmConfig,omitempty"`
+
 	// Interval at which the resource is checked for updates.
 	// +required
 	Interval metav1.Duration `json:"interval"`
@@ -35,6 +40,12 @@ type OCMDeployerStatus struct {
 	// Conditions holds the conditions for the OCMDeployer.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// EffectiveOCMConfig specifies the entirety of config maps and secrets
+	// whose configuration data was applied to the Resource reconciliation,
+	// in the order the configuration data was applied.
+	// +optional
+	EffectiveOCMConfig []OCMConfiguration `json:"effectiveOCMConfig,omitempty"`
 }
 
 func (in *OCMDeployer) GetConditions() []metav1.Condition {
@@ -69,6 +80,14 @@ func (in *OCMDeployer) GetKind() string {
 // reconciled again.
 func (in OCMDeployer) GetRequeueAfter() time.Duration {
 	return in.Spec.Interval.Duration
+}
+
+func (in *OCMDeployer) GetSpecifiedOCMConfig() []OCMConfiguration {
+	return in.Spec.OCMConfig
+}
+
+func (in *OCMDeployer) GetEffectiveOCMConfig() []OCMConfiguration {
+	return in.Status.EffectiveOCMConfig
 }
 
 // +kubebuilder:object:root=true

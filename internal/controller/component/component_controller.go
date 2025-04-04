@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/goutils/sliceutils"
 	"k8s.io/apimachinery/pkg/fields"
@@ -43,6 +42,7 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/util"
 )
 
 // Reconciler reconciles a Component object.
@@ -170,7 +170,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, component *v1alpha1.Co
 			return ctrl.Result{}, fmt.Errorf("failed to remove component referencing resource: %s", strings.Join(names, ","))
 		}
 
-		if updated := controllerutil.RemoveFinalizer(component, v1alpha1.ArtifactFinalizer); updated {
+		if updated := controllerutil.RemoveFinalizer(component, v1alpha1.ComponentFinalizer); updated {
 			if err := r.Update(ctx, component); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 			}
@@ -183,7 +183,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, component *v1alpha1.Co
 		return ctrl.Result{}, nil
 	}
 
-	if updated := controllerutil.AddFinalizer(component, v1alpha1.ArtifactFinalizer); updated {
+	if updated := controllerutil.AddFinalizer(component, v1alpha1.ComponentFinalizer); updated {
 		if err := r.Update(ctx, component); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}
@@ -203,37 +203,30 @@ func (r *Reconciler) reconcileExists(ctx context.Context, component *v1alpha1.Co
 func (r *Reconciler) reconcile(ctx context.Context, component *v1alpha1.Component) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	repo := &v1alpha1.OCMRepository{}
 	repoNamespace := component.Spec.RepositoryRef.Namespace
 	if repoNamespace == "" {
 		repoNamespace = component.GetNamespace()
 	}
 
-	if err := r.Get(ctx, types.NamespacedName{
+	repo, err := util.GetReadyObject[v1alpha1.OCMRepository, *v1alpha1.OCMRepository](ctx, r.Client, client.ObjectKey{
 		Namespace: repoNamespace,
 		Name:      component.Spec.RepositoryRef.Name,
-	}, repo); err != nil {
-		logger.Info("failed to get repository")
+	})
+	if err != nil {
+		// Note: Marking the component as not ready, when the ocmrepository is not ready is not completely valid. As the
+		// component was potentially ready, then the ocmrepository changed, but that does not necessarily mean that the
+		// component is not ready as well.
+		// However, as the component is hard-dependant on the ocmrepository, we decided to mark it not ready as well.
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositoryIsNotReadyReason, "OCM Repository is not ready")
 
-		return ctrl.Result{}, fmt.Errorf("failed to get repository: %w", err)
-	}
+		if errors.Is(err, util.NotReadyError{}) || errors.Is(err, util.DeletionError{}) {
+			logger.V(1).Info(err.Error())
 
-	if !repo.DeletionTimestamp.IsZero() {
-		err := errors.New("repository is being deleted, please do not use it")
-		logger.Error(err, "repository is being deleted, please do not use it", "name", component.Spec.RepositoryRef.Name)
+			// return no requeue as we watch the object for changes anyway
+			return ctrl.Result{}, nil
+		}
 
-		return ctrl.Result{}, nil
-	}
-
-	// Note: Marking the component as not ready, when the ocmrepository is not ready is not completely valid. As the
-	// component was potentially ready, then the ocmrepository changed, but that does not necessarily mean that the
-	// component is not ready as well.
-	// However, as the component is hard-dependant on the ocmrepository, we decided to mark it not ready as well.
-	if !conditions.IsReady(repo) {
-		logger.Info("repository is not ready", "name", component.Spec.RepositoryRef.Name)
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.RepositoryIsNotReadyReason, "repository is not ready yet")
-
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, fmt.Errorf("failed to get ready ocmrepository: %w", err)
 	}
 
 	return r.reconcileOCM(ctx, component, repo)

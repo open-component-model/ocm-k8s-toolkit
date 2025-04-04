@@ -36,6 +36,9 @@ const (
 	// ComponentIsNotReadyReason is used when the referenced component is not Ready yet.
 	ComponentIsNotReadyReason = "ComponentIsNotReady"
 
+	// ResourceIsNotReadyReason is used when the referenced resource is not Ready yet.
+	ResourceIsNotReadyReason = "ResourceIsNotReady"
+
 	// ReplicationFailedReason is used when the referenced component is not Ready yet.
 	ReplicationFailedReason = "ReplicationFailed"
 
@@ -53,6 +56,9 @@ const (
 
 	// MarshalFailedReason is used when we fail to marshal a struct.
 	MarshalFailedReason = "MarshalFailed"
+
+	// CreateOrUpdateFailedReason is used when we fail to create or update a resource.
+	CreateOrUpdateFailedReason = "CreateOrUpdateFailed"
 
 	// YamlToJSONDecodeFailedReason is used when we fail to decode yaml to json.
 	YamlToJSONDecodeFailedReason = "YamlToJsonDecodeFailed"
@@ -83,6 +89,9 @@ const (
 
 	// GetResourceAccessFailedReason is used when we fail in getting a resource access(es).
 	GetResourceAccessFailedReason = "GetResourceAccessFailed"
+
+	// GetReferenceFailedReason is used when we fail to get a reference.
+	GetReferenceFailedReason = "GetReferenceFailed"
 
 	// GetBlobAccessFailedReason is used when we fail to get a blob access.
 	GetBlobAccessFailedReason = "GetBlobAccessFailed"

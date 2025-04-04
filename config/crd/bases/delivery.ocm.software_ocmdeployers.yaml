@@ -42,6 +42,55 @@ spec:
               interval:
                 description: Interval at which the resource is checked for updates.
                 type: string
+              ocmConfig:
+                description: |-
+                  OCMConfig defines references to secrets, config maps or ocm api
+                  objects providing configuration data including credentials.
+                items:
+                  description: |-
+                    OCMConfiguration defines a configuration applied to the reconciliation of an
+                    ocm k8s object as well as the policy for its propagation of this
+                    configuration.
+                  properties:
+                    apiVersion:
+                      description: API version of the referent, if not specified the
+                        Kubernetes preferred version will be used.
+                      type: string
+                    kind:
+                      description: Kind of the referent.
+                      type: string
+                    name:
+                      description: Name of the referent.
+                      type: string
+                    namespace:
+                      description: Namespace of the referent, when not specified it
+                        acts as LocalObjectReference.
+                      type: string
+                    policy:
+                      default: DoNotPropagate
+                      description: |-
+                        Policy affects the propagation behavior of the configuration. If set to
+                        ConfigurationPolicyPropagate other ocm api objects can reference this
+                        object to reuse this configuration.
+                      enum:
+                      - Propagate
+                      - DoNotPropagate
+                      type: string
+                  required:
+                  - kind
+                  - name
+                  - policy
+                  type: object
+                  x-kubernetes-validations:
+                  - message: apiVersion must be one of "v1" with kind "Secret" or
+                      "ConfigMap" or "delivery.ocm.software/v1alpha1" with the kind
+                      of an OCM kubernetes object
+                    rule: ((!has(self.apiVersion) || self.apiVersion == "" || self.apiVersion
+                      == "v1") && (self.kind == "Secret" || self.kind == "ConfigMap"))
+                      || (self.apiVersion == "delivery.ocm.software/v1alpha1" && (self.kind
+                      == "OCMRepository" || self.kind == "Component" || self.kind
+                      == "Resource" || self.kind == "Replication"))
+                type: array
               resourceRef:
                 description: ResourceRef is the k8s resource name of an OCM resource
                   containing the ResourceGroupDefinition.
@@ -121,6 +170,56 @@ spec:
                   - status
                   - type
                   type: object
+                type: array
+              effectiveOCMConfig:
+                description: |-
+                  EffectiveOCMConfig specifies the entirety of config maps and secrets
+                  whose configuration data was applied to the Resource reconciliation,
+                  in the order the configuration data was applied.
+                items:
+                  description: |-
+                    OCMConfiguration defines a configuration applied to the reconciliation of an
+                    ocm k8s object as well as the policy for its propagation of this
+                    configuration.
+                  properties:
+                    apiVersion:
+                      description: API version of the referent, if not specified the
+                        Kubernetes preferred version will be used.
+                      type: string
+                    kind:
+                      description: Kind of the referent.
+                      type: string
+                    name:
+                      description: Name of the referent.
+                      type: string
+                    namespace:
+                      description: Namespace of the referent, when not specified it
+                        acts as LocalObjectReference.
+                      type: string
+                    policy:
+                      default: DoNotPropagate
+                      description: |-
+                        Policy affects the propagation behavior of the configuration. If set to
+                        ConfigurationPolicyPropagate other ocm api objects can reference this
+                        object to reuse this configuration.
+                      enum:
+                      - Propagate
+                      - DoNotPropagate
+                      type: string
+                  required:
+                  - kind
+                  - name
+                  - policy
+                  type: object
+                  x-kubernetes-validations:
+                  - message: apiVersion must be one of "v1" with kind "Secret" or
+                      "ConfigMap" or "delivery.ocm.software/v1alpha1" with the kind
+                      of an OCM kubernetes object
+                    rule: ((!has(self.apiVersion) || self.apiVersion == "" || self.apiVersion
+                      == "v1") && (self.kind == "Secret" || self.kind == "ConfigMap"))
+                      || (self.apiVersion == "delivery.ocm.software/v1alpha1" && (self.kind
+                      == "OCMRepository" || self.kind == "Component" || self.kind
+                      == "Resource" || self.kind == "Replication"))
                 type: array
               observedGeneration:
                 description: |-

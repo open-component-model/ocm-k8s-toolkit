@@ -32,13 +32,8 @@ const (
 	LevelDebug = 4
 )
 
-// Finalizers for controllers.
+// Finalizers for the controllers.
 const (
-	// ArtifactFinalizer is the finalizer that is added to an object that handles the lifecycle of an artifact created by the ocm controllers.
-	ArtifactFinalizer = "finalizers.ocm.software/artifact"
-)
-
-// OCI related constants.
-const (
-	OCISchemaVersion = 2
+	ComponentFinalizer     = "finalizers.ocm.software/component"
+	OcmRepositoryFinalizer = "finalizers.ocm.software/ocmrepository"
 )

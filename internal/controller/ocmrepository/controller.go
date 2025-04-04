@@ -39,8 +39,6 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
 
-const repositoryFinalizer = "finalizers.ocm.software"
-
 var repositoryKey = ".spec.repositoryRef"
 
 // OCMRepositoryReconciler reconciles a OCMRepository object.
@@ -78,7 +76,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, ocmRepo *v1alpha1.OCMR
 	logger := log.FromContext(ctx)
 
 	if !ocmRepo.GetDeletionTimestamp().IsZero() {
-		if !controllerutil.ContainsFinalizer(ocmRepo, repositoryFinalizer) {
+		if !controllerutil.ContainsFinalizer(ocmRepo, v1alpha1.OcmRepositoryFinalizer) {
 			return ctrl.Result{}, nil
 		}
 
@@ -86,7 +84,7 @@ func (r *Reconciler) reconcileExists(ctx context.Context, ocmRepo *v1alpha1.OCMR
 	}
 
 	// AddFinalizer if not present already.
-	if added := controllerutil.AddFinalizer(ocmRepo, repositoryFinalizer); added {
+	if added := controllerutil.AddFinalizer(ocmRepo, v1alpha1.OcmRepositoryFinalizer); added {
 		err := r.Update(ctx, ocmRepo)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
@@ -215,7 +213,7 @@ func (r *Reconciler) reconcileDeleteRepository(ctx context.Context, obj *v1alpha
 		return ctrl.Result{}, fmt.Errorf("failed to remove repository referencing components: %s", strings.Join(names, ","))
 	}
 
-	if updated := controllerutil.RemoveFinalizer(obj, repositoryFinalizer); updated {
+	if updated := controllerutil.RemoveFinalizer(obj, v1alpha1.OcmRepositoryFinalizer); updated {
 		if err := r.Update(ctx, obj); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 		}
