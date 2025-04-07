@@ -59,6 +59,8 @@ Chosen option: "[???]", because
 
 ### Kro
 
+#### What is Kro?
+
 Kube Resource Orchestrator ([kro][kro-github]) is an open-source Kubernetes operator designed to simplify the creation
 and management of complex resource configurations within Kubernetes clusters. At the heart of kro is the
 `ResourceGraphDefinition`, a custom resource that specifies a collection of Kubernetes resources and their
@@ -66,7 +68,7 @@ interdependencies. This definition allows for the encapsulation of complex resou
 streamlining deployment processes.
 
 When a `ResourceGraphDefinition` is applied to a Kubernetes cluster, the kro controller validates its specifications.
-Upon validation, kro dynamically generates a new Custom Resource Definition (CRD) and registers it with the Kubernetes
+Upon validation, kro dynamically generates a new Custom Resource Definition and registers it with the Kubernetes
 API server, effectively extending the Kubernetes API to include the new resource type.
 Kro then deploys a dedicated controller tailored to manage instances of the newly created CRD. This microcontroller is
 responsible for overseeing the lifecycle of the resources defined within the `ResourceGraphDefinition`.
@@ -74,22 +76,275 @@ When an `instance` of the custom resource is created, the microcontroller interp
 orchestrates the creation and configuration of the underlying resources, and manages their states to ensure alignment
 with the desired specifications.
 
-kro integrates the Common Expression Language (CEL) to enable dynamic resource configuration. In its
+Kro integrates the Common Expression Language (CEL) to enable dynamic resource configuration. In its
 `ResourceGraphDefinition`, CEL expressions are used to establish dependencies and reference values between resources.
-For instance, a CEL expression can extract an output from one resource and use it as an input for another, ensuring that
+A CEL expression can extract an output from one resource and use it as an input for another, ensuring that
 interdependent resources are correctly configured and deployed in the appropriate sequence.
+For example, one can configure the value of FluxCD's `OCIRepository.spec.url` with values from another resource defined
+in the `ResourceGraphDefinition` or use the instance of a `ResourceGraphDefinition` to pass a value to one or more
+resources.
 
 Accordingly, the `ResourceGraphDefinition` provides a high-level abstraction for defining complex resources and is
 flexible enough to accommodate a wide range of deployment scenarios. It gives the possibility to configure resources
-dynamically, which is a key requirement for the deployment of resources from an OCM component version. In addition with
-FluxCDs `HelmRelease` [capability][fluxcd-helmrelease-values] to replace values using `spec.values` or FluxCDs 
-`Kustomzation` [capability][fluxcd-kustomization-patches] to replace values using `spec.patches` the localisation
-functionality is also provided.
+dynamically, which is a key requirement for the deployment of resources from an OCM component version.
+
+#### How could we use Kro for deployment?
+
+We could use Kro to give developers the possibility to define a `ResourceGraphDefinition` which orchestrates all
+required resources for the deployment of a resource. The developer could pack the created `ResourceGraphDefinition` into
+the same component version as the application and deliver the application with deployment instructions.
+
+Packing the `ResourceGraphDefinition` into the component version requires, however, some kind of bootstrapping as the
+`ResourceGraphDefinition` from the component version must be applied to the cluster, so it can orchestrate the
+deployment.
+
+To bootstrap a `ResourceGraphDefinition` an operator is required, e.g. `OCMDeployer`, that takes a Kubernetes custom
+resource (OCM) `resource`, extracts the `ResourceGraphDefinition` from the component version and applies it to the
+cluster.
+
+The following diagram shows a complete end-to-end flow:
+
+```mermaid
+graph TD
+  style git-content text-align:left
+  style component-version text-align:left
+  subgraph gitrepo["git repository"]
+    git-content["- Application Image
+- HelmChart
+- OCM Component Constructor
+- Kro ResourceGraphDefinition"]
+  end
+  subgraph ci[CI]
+    ci-content["Build (Image)<br>Create Component Version"]
+  end
+  subgraph ocmrepo["OCM Repository"]
+         component-version["Component Version
+         Resources:
+-Helm Chart
+-Image
+-Resource Graph Definition
+#nbsp; - OCM Resource: Helm Chart
+#nbsp; - OCM Resource: Image
+#nbsp; - FluxCD OCIRepository
+#nbsp; - FluxCD HelmRelease"]
+  end
+  subgraph cluster["Kubernetes Cluster"]
+    subgraph bootstrap["Bootstrap"]
+      bootstrap-ocm-repo["OCM Repository"]
+      bootstrap-ocm-component["OCM Component"]
+      bootstrap-ocm-res["OCM Resource: RGD"]
+      bootstrap-ocm-deployer["OCMDeployer"]
+    end
+    subgraph rgd["Resource Graph Definition"]
+      rgd-ocm-img-helm-chart["OCM Resource: Helm Chart"]
+      rgd-ocm-img["OCM Resource: Image"]
+      fluxcd-ocirepository["FluxCD OCIRepository"]
+      fluxcd-helmrelease["FluxCD HelmRelease"]
+    end
+    instance["Instance of RGD"]
+    deployment["Deployment based on Helm Chart"]
+  end
+
+  gitrepo --- ci
+  ci --> ocmrepo
+  ocmrepo --> bootstrap-ocm-repo
+  bootstrap-ocm-repo --> bootstrap-ocm-component --> bootstrap-ocm-res --> bootstrap-ocm-deployer
+  bootstrap-ocm-deployer --> rgd
+  rgd-ocm-img-helm-chart --> fluxcd-ocirepository
+  rgd-ocm-img -- localisation through value replacement --> fluxcd-helmrelease
+  fluxcd-ocirepository --> fluxcd-helmrelease
+  fluxcd-helmrelease --> instance
+  instance --> deployment
+```
+
+The following manifests show an example of such a setup:
+
+`component-constructor.yaml`
+```yaml
+components:
+  - name: ocm.software/adr-component
+    version: "1.0.0"
+    provider:
+      name: ocm.software
+    resources:
+      # This helm resource contains addtional deployment instructions for the application itself
+      - name: helm-resource
+        type: helmChart
+        version: "1.0.0"
+        access:
+           type: ociArtifact
+           imageReference: ghcr.io/stefanprodan/charts/podinfo:6.7.1
+      # This image resource contains the application image
+      - name: image-resource
+        type: ociArtifact
+        version: "1.0.0"
+        access:
+          type: ociArtifact
+          imageReference: ghcr.io/stefanprodan/podinfo:6.7.1
+      # This resource contains the kro resource graph definition
+      - name: kro-rgd
+        type: blob
+        version: "1.0.0"
+        input:
+          type: file
+          path: ./resource-graph-definition.yaml
+```
+
+`resource-graph-definition.yaml`
+```yaml
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: adr-rgd
+spec:
+  schema:
+    apiVersion: v1alpha1
+    # CRD that gets created
+    kind: AdrInstance
+    # Values that can configured using Kro instance (configuration) (= passed through the instance)
+    spec:
+      podinfo:
+        message: string | default="hello world"
+  resources:
+    - id: resourceChart
+      template:
+        apiVersion: delivery.ocm.software/v1alpha1
+        kind: Resource
+        metadata:
+          name: demo-helm-chart
+        spec:
+          componentRef:
+            name: static-component-name
+          resource:
+            byReference:
+              resource:
+                name: helm-resource
+          interval: 10m
+    # Kro resource that is used to do localisation
+    - id: resourceImage
+      template:
+        apiVersion: delivery.ocm.software/v1alpha1
+        kind: Resource
+        metadata:
+          name: demo-image
+        spec:
+          componentRef:
+            name: static-component-name
+          resource:
+            byReference:
+              resource:
+                name: image-resource
+          interval: 10m
+    # Any deploy can be used. In this case we are using FluxCD HelmRelease that references FluxCD OCIRepository
+    - id: ocirepository
+      template:
+        apiVersion: source.toolkit.fluxcd.io/v1beta2
+        kind: OCIRepository
+        metadata:
+          name: demo-oci-repository
+        spec:
+          interval: 1m0s
+          layerSelector:
+            mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+            operation: copy
+          # Use values from the resource "resourceChart"
+          # A resource reconciled by the resource-controller will provide a SourceReference in its status (if possible)
+          #    type SourceReference struct {
+          #      Registry   string `json:"registry"`
+          #      Repository string `json:"repository"`
+          #      Reference  string `json:"reference"`
+          #    }
+          url: oci://${resourceChart.status.reference.registry}/${resourceChart.status.reference.repository}
+          ref:
+            tag: ${resourceChart.status.reference.reference}
+    - id: helmrelease
+      template:
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata:
+          name: demo-helm-release-no-update
+        spec:
+          releaseName: demo-podinfo
+          interval: 1m
+          timeout: 5m
+          chartRef:
+            kind: OCIRepository
+            name: ${ocirepository.metadata.name}
+            namespace: default
+          values:
+            # Localisation (image location is adjusted to its location through OCM transfer)
+            image:
+              repository: ${resourceImage.status.reference.registry}/${resourceImage.status.reference.repository}
+              tag: ${resourceImage.status.reference.reference}
+            # Configuration (passed through Kro instance, respectively, the custom resource "AdrInstance")
+            ui:
+              message: ${schema.spec.podinfo.message}
+```
+
+`bootstrap.yaml`
+```yaml
+# OCMRepository contains information about the location where the component version is stored
+apiVersion: delivery.ocm.software/v1alpha1
+kind: OCMRepository
+metadata:
+  name: repository-name
+spec:
+  repositorySpec:
+    baseUrl: ghcr.io/<your-org>
+    type: OCIRegistry
+  interval: 10m
+---
+# Component contains information about which component version to use
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Component
+metadata:
+  name: component-name
+spec:
+  # Reference to the component version used above
+  component: ocm.software/adr-component
+  repositoryRef:
+    name: repository-name
+  semver: 1.0.0
+  interval: 10m
+---
+# ResourceGraphDefinition to orchestrate the deployment of the application
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  name: resource-rgd-name
+spec:
+  componentRef:
+    name: component-name
+  resource:
+    byReference:
+      resource:
+        # Reference to the resource name in the component version
+        name: kro-rgd
+  interval: 10m
+---
+# Operator to deploy the ResourceGraphDefinition
+apiVersion: delivery.ocm.software/v1alpha1
+kind: OCMDeployer
+metadata:
+  name: ocmdeployer-name
+spec:
+  resourceRef:
+    name: resource-rgd-name
+  interval: 10m
+```
+
+`instance.yaml`
+```yaml
+apiVersion: kro.run/v1alpha1
+kind: AdrInstance
+metadata:
+  name: adr-release
+spec:
+  podinfo:
+    message: "Hello from the instance!"
+```
 
 
-TODO notes:
-- Omit localisation and configuration
-  - If this is omitted, we can omit the internal registry as well
 
 #### Pros
 
