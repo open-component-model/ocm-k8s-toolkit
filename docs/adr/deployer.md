@@ -90,17 +90,20 @@ dynamically, which is a key requirement for the deployment of resources from an 
 
 #### How could we use Kro for deployment?
 
-We could use Kro to give developers the possibility to define a `ResourceGraphDefinition` which orchestrates all
-required resources for the deployment of a resource. The developer could pack the created `ResourceGraphDefinition` into
+With Kro, developers can define their `ResourceGraphDefinition` with deployment instructions which orchestrates all
+required resources for the deployment of a resource. The developer can pack that `ResourceGraphDefinition` into
 the same component version as the application and deliver the application with deployment instructions.
 
 Packing the `ResourceGraphDefinition` into the component version requires, however, some kind of bootstrapping as the
-`ResourceGraphDefinition` from the component version must be applied to the cluster, so it can orchestrate the
-deployment.
+`ResourceGraphDefinition` must be sourced from the component version and applied to the cluster.
 
 To bootstrap a `ResourceGraphDefinition` an operator is required, e.g. `OCMDeployer`, that takes a Kubernetes custom
 resource (OCM) `resource`, extracts the `ResourceGraphDefinition` from the component version and applies it to the
 cluster.
+
+The developer can define any localisation or configuration directive in the `ResourceGraphDefinition`. The operator only
+has to deploy an instance of the CRD that is created by the `ResourceGraphDefinition` and pass values to its scheme if
+necessary.
 
 The following diagram shows a complete end-to-end flow:
 
@@ -118,15 +121,15 @@ graph TD
     ci-content["Build (Image)<br>Create Component Version"]
   end
   subgraph ocmrepo["OCM Repository"]
-         component-version["Component Version
-         Resources:
--Helm Chart
--Image
--Resource Graph Definition
-#nbsp; - OCM Resource: Helm Chart
-#nbsp; - OCM Resource: Image
-#nbsp; - FluxCD OCIRepository
-#nbsp; - FluxCD HelmRelease"]
+    component-version["Component Version (excerpt)
+- Resources:
+#nbsp;- Helm Chart
+#nbsp;- Image
+#nbsp;- Resource Graph Definition
+#nbsp;#nbsp; - OCM Resource: Helm Chart
+#nbsp;#nbsp; - OCM Resource: Image
+#nbsp;#nbsp; - FluxCD OCIRepository
+#nbsp;#nbsp; - FluxCD HelmRelease"]
   end
   subgraph cluster["Kubernetes Cluster"]
     subgraph bootstrap["Bootstrap"]
@@ -167,21 +170,21 @@ components:
     provider:
       name: ocm.software
     resources:
-      # This helm resource contains addtional deployment instructions for the application itself
+      # This helm resource contains additional deployment instructions for the application itself
       - name: helm-resource
         type: helmChart
         version: "1.0.0"
         access:
            type: ociArtifact
            imageReference: ghcr.io/stefanprodan/charts/podinfo:6.7.1
-      # This image resource contains the application image
+      # This image resource contains the application image (can be used for localisation while deploying)
       - name: image-resource
         type: ociArtifact
         version: "1.0.0"
         access:
           type: ociArtifact
           imageReference: ghcr.io/stefanprodan/podinfo:6.7.1
-      # This resource contains the kro resource graph definition
+      # This resource contains the kro ResourceGraphDefinition
       - name: kro-rgd
         type: blob
         version: "1.0.0"
@@ -201,7 +204,7 @@ spec:
     apiVersion: v1alpha1
     # CRD that gets created
     kind: AdrInstance
-    # Values that can configured using Kro instance (configuration) (= passed through the instance)
+    # Values that can be configured using Kro instance (configuration) (= passed through the instance)
     spec:
       podinfo:
         message: string | default="hello world"
@@ -307,7 +310,7 @@ spec:
   semver: 1.0.0
   interval: 10m
 ---
-# ResourceGraphDefinition to orchestrate the deployment of the application
+# ResourceGraphDefinition to orchestrate the deployment
 apiVersion: delivery.ocm.software/v1alpha1
 kind: Resource
 metadata:
@@ -335,12 +338,14 @@ spec:
 
 `instance.yaml`
 ```yaml
+# The instance of the CRD created by the ResourceGraphDefinition
 apiVersion: kro.run/v1alpha1
 kind: AdrInstance
 metadata:
   name: adr-release
 spec:
   podinfo:
+    # Pass values for configuration
     message: "Hello from the instance!"
 ```
 
@@ -348,7 +353,16 @@ spec:
 
 #### Pros
 
-* ...
+* Kro and FluxCD provide the same functionality as the configuration and localisation controller, but while deploying
+  the resource. Accordingly, the controllers could be omitted.
+  * As a result, the internal storage can be omitted as well as we do not need to download the resources to
+    configure or localise them and make them available again.
+    * By omitting the internal storage, we can omit the storage implementation.
+* The codebase would get simpler as the deployment logic is outsourced
+* With Kros `ResourceGraphDefinition` the developer can create the deployment-instructions and pack them into the
+  component version.
+* The developer can use any kind of deployer (FluxCD, ArgoCD, ...) that fits their needs by specifying the
+  `ResourceGraphDefinition` accordingly.
 
 #### Cons
 
@@ -356,9 +370,20 @@ spec:
   issues. However, the project is open for contributions and some are already accepted:
   * [No possibility to refer to properties within a property of type `json`](https://github.com/open-component-model/ocm-project/issues/455): Open
   * [Kro does not reconcile instances on `ResourceGraphDefinition` changes](https://github.com/open-component-model/ocm-project/issues/451): Fixed
-  * [Kro does not own the resources it interacts with (Slack Discussion)](https://kubernetes.slack.com/archives/C081TMY9D6Y/p1744091567255169): Open
   * [Instances of an RGD are not deleted on RGD-deletion](https://kubernetes.slack.com/archives/C081TMY9D6Y/p1744098078849929): Open
-  * How are updates of resources handled? 
+  * Missing ownership of resources created by RGD/instance 
+  * How are updates of resources handled?
+  * What about drift detection of instances?
+  * What happens if the `ResourceGraphDefinition`-scheme changes (when an instance is already deployed)?
+    * Local testing: We created a `ResourceGraphDefinition` with a `schema.spec`-field of type `string` and deployed the
+      RGD as well as an instance of that. Afterwards, we changed the field type to `integer` and reapplied the RGD
+      manifest.
+      The RGD was reconciled and updated the CRD. The instance did not error, but editing the instance by using the old
+      datatype was not possible (usual error of a wrong datatype). However, the original value (of type `string`) was
+      still present.
+    * How is the migration path?
+  * It is not possible reference external resources like `configmap[namespace/name].data`.
+    * Already a ["Mega Feature" (request)](https://github.com/kro-run/kro/issues/72), but still open.
 
 ### FluxDeployer
 
