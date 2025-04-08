@@ -371,6 +371,12 @@ spec:
   * [No possibility to refer to properties within a property of type `json`](https://github.com/open-component-model/ocm-project/issues/455): Open
   * [Kro does not reconcile instances on `ResourceGraphDefinition` changes](https://github.com/open-component-model/ocm-project/issues/451): Fixed
   * [Instances of an RGD are not deleted on RGD-deletion](https://kubernetes.slack.com/archives/C081TMY9D6Y/p1744098078849929): Open
+  * Deletion handling in general
+    * Example 1: I create resource `a` in a cluster. Then, I create a RGD with the same resource `a` and its instance.
+      Now, when I delete my instance, resource `a` is also deleted, although, the original manifest of resource `a` that
+      I applied previously was not changed.
+    * Example 2: I create an RGD with the same resource `a`. Then, I create two instances of that RGD. Now, when I
+      delete one instance, resource `a` is deleted, even though the other instance is still present.
   * Missing ownership of resources created by RGD/instance 
   * How are updates of resources handled?
   * What about drift detection of instances?
