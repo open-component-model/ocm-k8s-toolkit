@@ -352,7 +352,13 @@ spec:
 
 #### Cons
 
-* ...
+* Kro is a new dependency and is not production-ready and [APIs may change][kro-alpha-stage]. We already found some
+  issues. However, the project is open for contributions and some are already accepted:
+  * [No possibility to refer to properties within a property of type `json`](https://github.com/open-component-model/ocm-project/issues/455): Open
+  * [Kro does not reconcile instances on `ResourceGraphDefinition` changes](https://github.com/open-component-model/ocm-project/issues/451): Fixed
+  * [Kro does not own the resources it interacts with (Slack Discussion)](https://kubernetes.slack.com/archives/C081TMY9D6Y/p1744091567255169): Open
+  * [Instances of an RGD are not deleted on RGD-deletion](https://kubernetes.slack.com/archives/C081TMY9D6Y/p1744098078849929): Open
+  * How are updates of resources handled? 
 
 ### FluxDeployer
 
@@ -384,5 +390,6 @@ _Description_
 - Issue [#90](https://github.com/open-component-model/ocm-k8s-toolkit/issues/136)
 
 [kro-github]: https://github.com/kro-run/kro
+[kro-alpha-stage]: https://github.com/kro-run/kro/blob/965cb76668433742033c0e413e3cc756ef86d89a/website/docs/docs/getting-started/01-Installation.md?plain=1#L21
 [fluxcd-helmrelease-values]: https://fluxcd.io/flux/components/helm/helmreleases/#values
 [fluxcd-kustomization-patches]: https://fluxcd.io/flux/components/kustomize/kustomizations/#patches
