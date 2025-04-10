@@ -59,36 +59,9 @@ Chosen option: "[???]", because
 
 ### Kro
 
-#### What is Kro?
-
-Kube Resource Orchestrator ([kro][kro-github]) is an open-source Kubernetes operator designed to simplify the creation
-and management of complex resource configurations within Kubernetes clusters. At the heart of kro is the
-`ResourceGraphDefinition`, a custom resource that specifies a collection of Kubernetes resources and their
-interdependencies. This definition allows for the encapsulation of complex resource groupings into reusable components,
-streamlining deployment processes.
-
-When a `ResourceGraphDefinition` is applied to a Kubernetes cluster, the kro controller validates its specifications.
-Upon validation, kro dynamically generates a new Custom Resource Definition and registers it with the Kubernetes
-API server, effectively extending the Kubernetes API to include the new resource type.
-Kro then deploys a dedicated controller tailored to manage instances of the newly created CRD. This microcontroller is
-responsible for overseeing the lifecycle of the resources defined within the `ResourceGraphDefinition`.
-When an `instance` of the custom resource is created, the microcontroller interprets the instance parameters,
-orchestrates the creation and configuration of the underlying resources, and manages their states to ensure alignment
-with the desired specifications.
-
-Kro integrates the Common Expression Language (CEL) to enable dynamic resource configuration. In its
-`ResourceGraphDefinition`, CEL expressions are used to establish dependencies and reference values between resources.
-A CEL expression can extract an output from one resource and use it as an input for another, ensuring that
-interdependent resources are correctly configured and deployed in the appropriate sequence.
-For example, one can configure the value of FluxCD's `OCIRepository.spec.url` with values from another resource defined
-in the `ResourceGraphDefinition` or use the instance of a `ResourceGraphDefinition` to pass a value to one or more
-resources.
-
-Accordingly, the `ResourceGraphDefinition` provides a high-level abstraction for defining complex resources and is
-flexible enough to accommodate a wide range of deployment scenarios. It gives the possibility to configure resources
-dynamically, which is a key requirement for the deployment of resources from an OCM component version.
-
-#### How could we use Kro for deployment?
+> [!IMPORTANT]
+> This approach requires a basic understanding of [kro][kro-github]! Please read the [documentation][kro-doc] before
+> proceeding.
 
 With Kro, developers can define their `ResourceGraphDefinition` with deployment instructions which orchestrates all
 required resources for the deployment of a resource. The developer can pack that `ResourceGraphDefinition` into
@@ -370,6 +343,7 @@ _Description_
 - Issue [#90](https://github.com/open-component-model/ocm-k8s-toolkit/issues/136)
 
 [kro-github]: https://github.com/kro-run/kro
+[kro-doc]: https://kro.run/docs/overview 
 [kro-alpha-stage]: https://github.com/kro-run/kro/blob/965cb76668433742033c0e413e3cc756ef86d89a/website/docs/docs/getting-started/01-Installation.md?plain=1#L21
 [fluxcd-helmrelease-values]: https://fluxcd.io/flux/components/helm/helmreleases/#values
 [fluxcd-kustomization-patches]: https://fluxcd.io/flux/components/kustomize/kustomizations/#patches
