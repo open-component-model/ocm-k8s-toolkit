@@ -446,6 +446,11 @@ spec:
     * How is the migration path?
   * It is not possible reference external resources like `configmap[namespace/name].data`.
     * Already a ["Mega Feature" (request)](https://github.com/kro-run/kro/issues/72), but still open.
+* In scenarios, in which the developer has to provide deployment instructions with a `ResourceGraphDefinition` within
+  the component version, the developer must be familiar with the deployment technology (e.g. FluxCD).
+  * To make it clearer: Previously, the configuration and localisation were processed in our controllers and the result
+    was stored in an internal storage. Thus, the developer only had to provide the resources, rules, and configurations.
+    The developer was not required to know about the deployment technology.
 
 ### FluxDeployer
 
