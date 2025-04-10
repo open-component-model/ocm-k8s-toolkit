@@ -112,24 +112,24 @@ graph TD
   style git-content text-align:left
   style component-version text-align:left
   subgraph gitrepo["git repository"]
-    git-content["- Application Image
-- HelmChart
-- OCM Component Constructor
-- Kro ResourceGraphDefinition"]
+    git-content["\- Application Image
+\- HelmChart
+\- OCM Component Constructor
+\- Kro ResourceGraphDefinition"]
   end
   subgraph ci[CI]
     ci-content["Build (Image)<br>Create Component Version"]
   end
   subgraph ocmrepo["OCM Repository"]
     component-version["Component Version (excerpt)
-- Resources:
-#nbsp;- Helm Chart
-#nbsp;- Image
-#nbsp;- Resource Graph Definition
-#nbsp;#nbsp; - OCM Resource: Helm Chart
-#nbsp;#nbsp; - OCM Resource: Image
-#nbsp;#nbsp; - FluxCD OCIRepository
-#nbsp;#nbsp; - FluxCD HelmRelease"]
+\- Resources:
+#nbsp;\- Helm Chart
+#nbsp;\- Image
+#nbsp;\- Resource Graph Definition
+#nbsp;#nbsp;\- OCM Resource: Helm Chart
+#nbsp;#nbsp;\- OCM Resource: Image
+#nbsp;#nbsp;\- FluxCD OCIRepository
+#nbsp;#nbsp;\- FluxCD HelmRelease"]
   end
   subgraph cluster["Kubernetes Cluster"]
     subgraph bootstrap["Bootstrap"]
