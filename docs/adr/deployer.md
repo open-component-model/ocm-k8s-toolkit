@@ -407,8 +407,10 @@ spec:
 
 #### Pros
 
-* Kro and FluxCD provide the same functionality as the configuration and localisation controller, but while deploying
-  the resource. Accordingly, the controllers could be omitted.
+* Kro and FluxCD provide the same functionality as the configuration and localisation controller. But instead of
+  localising and configuring the resource and then storing it somewhere to be processed, the resource is configured and
+  localised within the `ResourceGraphDefinition` and FluxCDs `HelmRelease.spec.values` or `Kustomization.spec.path`.
+  Accordingly, the controllers could be omitted.
   * As a result, the internal storage can be omitted as well as we do not need to download the resources to
     configure or localise them and make them available again.
     * By omitting the internal storage, we can omit the storage implementation.
