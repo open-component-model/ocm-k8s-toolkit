@@ -63,12 +63,148 @@ Chosen option: "[???]", because
 > This approach requires a basic understanding of [kro][kro-github]! Please read the [documentation][kro-doc] before
 > proceeding.
 
-With Kro, developers can define their `ResourceGraphDefinition` with deployment instructions which orchestrates all
-required resources for the deployment of a resource. The developer can pack that `ResourceGraphDefinition` into
-the same component version as the application and deliver the application with deployment instructions.
+Using Kro, developers or operators can define `ResourceGraphDefinition`s with deployment instructions which
+orchestrates all required resources for the deployment of a resource from an OCM component version. The deployment can
+be very flexible by using CEL expression to configure the resources based on other resources or values from the
+instance.
 
-Packing the `ResourceGraphDefinition` into the component version requires, however, some kind of bootstrapping as the
-`ResourceGraphDefinition` must be sourced from the component version and applied to the cluster.
+#### A simple use case
+
+A simple use case is an OCM component version containing a Helm chart and using a `ResourceGraphDefinition` to create
+the deployment.
+
+![ocm-controller-deployer](../assets/ocm-controller-deployer.svg)
+
+The flowchart shows an OCM repository that contains an OCM component version. This OCM component version holds a Helm
+chart. By creating a `ResourceGraphDefinition` with the respective resources referring each other accordingly, the
+deployment of that Helm chart can be orchestrated by creating an instance of the resulting CRD `Simple`.
+
+The manifests for such a use case could look like this:
+
+`component-constructor.yaml`
+```yaml
+components:
+  - name: ocm.software/ocm-k8s-toolkit/helm-simple
+    version: "1.0.0"
+    provider:
+      name: ocm.software
+    resources:
+      # This helm resource contains additional deployment instructions for the application itself
+      - name: helm-resource
+        type: helmChart
+        version: "1.0.0"
+        access:
+           type: ociArtifact
+           imageReference: ghcr.io/stefanprodan/charts/podinfo:6.7.1
+```
+
+`resource-graph-definition.yaml`
+```yaml
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: helm-simple-rgd
+spec:
+  schema:
+    apiVersion: v1alpha1
+    # CRD that gets created
+    kind: Simple
+    # Values that can be configured using Kro instance (configuration) (= passed through the instance)
+    spec:
+      releaseName: string | default="helm-simple"
+  resources:
+    - id: OCMRepository
+      template:
+        apiVersion: delivery.ocm.software/v1alpha1
+        kind: OCMRepository
+        metadata:
+          name: "helm-simple-ocmrepository"
+        spec:
+          repositorySpec:
+            baseUrl: ghcr.io/open-component-model
+            type: OCIRegistry
+          interval: 10m 
+    - id: component
+      template:
+        apiVersion: delivery.ocm.software/v1alpha1
+        kind: Component
+        metadata:
+          name: "helm-simple-component" 
+        spec:
+          component: ocm.software/ocm-k8s-toolkit/helm-simple
+          repositoryRef:
+            name: "${OCMRepository.metadata.name}"
+          semver: 1.0.0
+          interval: 10m
+    - id: resourceChart
+      template:
+        apiVersion: delivery.ocm.software/v1alpha1
+        kind: Resource
+        metadata:
+          name: "helm-simple-resource-chart"
+        spec:
+          componentRef:
+            name: ${component.metadata.name}
+          resource:
+            byReference:
+              resource:
+                name: helm-resource
+          interval: 10m
+    - id: ocirepository
+      template:
+        apiVersion: source.toolkit.fluxcd.io/v1beta2
+        kind: OCIRepository
+        metadata:
+          name: "helm-simple-ocirepository"
+        spec:
+          interval: 1m0s
+          layerSelector:
+            mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+            operation: copy
+          # Use values from the resource "resourceChart"
+          # A resource reconciled by the resource-controller will provide a SourceReference in its status (if possible)
+          #    type SourceReference struct {
+          #      Registry   string `json:"registry"`
+          #      Repository string `json:"repository"`
+          #      Reference  string `json:"reference"`
+          #    }
+          url: oci://${resourceChart.status.reference.registry}/${resourceChart.status.reference.repository}
+          ref:
+            tag: ${resourceChart.status.reference.reference}
+    - id: helmrelease
+      template:
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata:
+          name: "helm-simple-helm-release"
+        spec:
+          # Configuration (passed through Kro instance, respectively, the custom resource "AdrInstance")
+          releaseName: ${schema.spec.releaseName}
+          interval: 1m
+          timeout: 5m
+          chartRef:
+            kind: OCIRepository
+            name: ${ocirepository.metadata.name}
+            namespace: default
+```
+
+`instance.yaml`
+```yaml
+# The instance of the CRD created by the ResourceGraphDefinition
+apiVersion: kro.run/v1alpha1
+kind: Simple
+metadata:
+  name: helm-simple-instance
+spec:
+  # Pass values for configuration
+  releaseName: "helm-simple-instance"
+```
+
+#### A more complex use case with bootstrapping
+
+It is possible to ship the `ResourceGraphDefinition` with the OCM component version itself. This, however, requires some
+kind of bootstrapping as the `ResourceGraphDefinition` must be sourced from the component version and applied to the
+cluster.
 
 To bootstrap a `ResourceGraphDefinition` an operator is required, e.g. `OCMDeployer`, that takes a Kubernetes custom
 resource (OCM) `resource`, extracts the `ResourceGraphDefinition` from the component version and applies it to the
@@ -77,8 +213,6 @@ cluster.
 The developer can define any localisation or configuration directive in the `ResourceGraphDefinition`. The operator only
 has to deploy an instance of the CRD that is created by the `ResourceGraphDefinition` and pass values to its scheme if
 necessary.
-
-The following diagram shows a complete end-to-end flow:
 
 ![ocm-controller-deployer-bootstrap](../assets/ocm-controller-deployer-bootstrap.svg)
 
@@ -92,7 +226,6 @@ components:
     provider:
       name: ocm.software
     resources:
-      # This helm resource contains additional deployment instructions for the application itself
       - name: helm-resource
         type: helmChart
         version: "1.0.0"
@@ -120,16 +253,14 @@ components:
 apiVersion: kro.run/v1alpha1
 kind: ResourceGraphDefinition
 metadata:
-  name: adr-rgd
+  name: bootstrap-rgd
 spec:
   schema:
     apiVersion: v1alpha1
-    # CRD that gets created
-    kind: AdrInstance
-    # Values that can be configured using Kro instance (configuration) (= passed through the instance)
+    kind: Bootstrap
     spec:
-      podinfo:
-        message: string | default="hello world"
+      releaseName: string | default="bootstrap-release"
+      message: string | default="hello world"
   resources:
     - id: resourceChart
       template:
@@ -160,7 +291,7 @@ spec:
               resource:
                 name: image-resource
           interval: 10m
-    # Any deploy can be used. In this case we are using FluxCD HelmRelease that references FluxCD OCIRepository
+    # Any deployer can be used. In this case we are using FluxCD HelmRelease that references FluxCD OCIRepository
     - id: ocirepository
       template:
         apiVersion: source.toolkit.fluxcd.io/v1beta2
@@ -172,13 +303,6 @@ spec:
           layerSelector:
             mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
             operation: copy
-          # Use values from the resource "resourceChart"
-          # A resource reconciled by the resource-controller will provide a SourceReference in its status (if possible)
-          #    type SourceReference struct {
-          #      Registry   string `json:"registry"`
-          #      Repository string `json:"repository"`
-          #      Reference  string `json:"reference"`
-          #    }
           url: oci://${resourceChart.status.reference.registry}/${resourceChart.status.reference.repository}
           ref:
             tag: ${resourceChart.status.reference.reference}
@@ -189,7 +313,7 @@ spec:
         metadata:
           name: demo-helm-release-no-update
         spec:
-          releaseName: demo-podinfo
+          releaseName: ${schema.spec.releaseName}
           interval: 1m
           timeout: 5m
           chartRef:
@@ -201,9 +325,8 @@ spec:
             image:
               repository: ${resourceImage.status.reference.registry}/${resourceImage.status.reference.repository}
               tag: ${resourceImage.status.reference.reference}
-            # Configuration (passed through Kro instance, respectively, the custom resource "AdrInstance")
             ui:
-              message: ${schema.spec.podinfo.message}
+              message: ${schema.spec.message}
 ```
 
 `bootstrap.yaml`
@@ -260,15 +383,13 @@ spec:
 
 `instance.yaml`
 ```yaml
-# The instance of the CRD created by the ResourceGraphDefinition
 apiVersion: kro.run/v1alpha1
-kind: AdrInstance
+kind: Bootstrap
 metadata:
   name: adr-release
 spec:
-  podinfo:
-    # Pass values for configuration
-    message: "Hello from the instance!"
+  releaseName: "bootstrap-instance"
+  message: "Hello from the instance!"
 ```
 
 
