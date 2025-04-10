@@ -63,7 +63,7 @@ Chosen option: "[???]", because
 > This approach requires a basic understanding of [kro][kro-github]! Please read the [documentation][kro-doc] before
 > proceeding.
 
-Using Kro, developers or operators can define `ResourceGraphDefinition`s with deployment instructions which
+Using Kro, developers or operators can define a `ResourceGraphDefinition` with deployment instructions which
 orchestrates all required resources for the deployment of a resource from an OCM component version. The deployment can
 be very flexible by using CEL expression to configure the resources based on other resources or values from the
 instance.
