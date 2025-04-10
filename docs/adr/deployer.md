@@ -220,9 +220,12 @@ The flowchart shows a git repository containing the application source code for 
 the component constructor, and a `ResourceGraphDefinition`. In the example, all these components are stored in an OCM
 component version and transferred to an OCM repository.
 
-Then, several resources for the bootstrapping are deployed into the cluster, which refer to the created OCM component
-version, take the `ResourceGraphDefinition`, and apply that manifest. Based on the `ResourceGraphDefinition` a CRD and
-its instance is created, which result in the deployment of the Helm chart.
+Then, several resources for bootstrapping are deployed into the cluster, which refer to the created OCM component
+version, take the `ResourceGraphDefinition`, and apply that manifest. In comparison to the simple use case, this
+`ResourceGraphDefinition` contains the image of the application. The `resource.status.sourceReference` field is used to
+localise the image using FluxCDs `HelmRelease.spec.values` field since the location-reference of that image was adjusted
+while transferring the image to its new location using OCM. As a result, the image-reference in the Helm chart now
+points to the new location of the image.
 
 The following manifests show an example of such a setup:
 
