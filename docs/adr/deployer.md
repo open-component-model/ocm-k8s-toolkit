@@ -113,7 +113,7 @@ spec:
     spec:
       releaseName: string | default="helm-simple"
   resources:
-    - id: OCMRepository
+    - id: ocmRepository
       template:
         apiVersion: delivery.ocm.software/v1alpha1
         kind: OCMRepository
@@ -121,19 +121,19 @@ spec:
           name: "helm-simple-ocmrepository"
         spec:
           repositorySpec:
-            baseUrl: ghcr.io/open-component-model
+            baseUrl: ghcr.io/<your-org>
             type: OCIRegistry
-          interval: 10m 
+          interval: 10m
     - id: component
       template:
         apiVersion: delivery.ocm.software/v1alpha1
         kind: Component
         metadata:
-          name: "helm-simple-component" 
+          name: "helm-simple-component"
         spec:
           component: ocm.software/ocm-k8s-toolkit/helm-simple
           repositoryRef:
-            name: "${OCMRepository.metadata.name}"
+            name: "${ocmRepository.metadata.name}"
           semver: 1.0.0
           interval: 10m
     - id: resourceChart
@@ -216,12 +216,20 @@ necessary.
 
 ![ocm-controller-deployer-bootstrap](../assets/ocm-controller-deployer-bootstrap.svg)
 
+The flowchart shows a git repository containing the application source code for the image, the according Helm chart,
+the component constructor, and a `ResourceGraphDefinition`. In the example, all these components are stored in an OCM
+component version and transferred to an OCM repository.
+
+Then, several resources for the bootstrapping are deployed into the cluster, which refer to the created OCM component
+version, take the `ResourceGraphDefinition`, and apply that manifest. Based on the `ResourceGraphDefinition` a CRD and
+its instance is created, which result in the deployment of the Helm chart.
+
 The following manifests show an example of such a setup:
 
 `component-constructor.yaml`
 ```yaml
 components:
-  - name: ocm.software/adr-component
+  - name: ocm.software/ocm-k8s-toolkit/helm-bootstrap
     version: "1.0.0"
     provider:
       name: ocm.software
@@ -267,10 +275,10 @@ spec:
         apiVersion: delivery.ocm.software/v1alpha1
         kind: Resource
         metadata:
-          name: demo-helm-chart
+          name: helm-chart
         spec:
           componentRef:
-            name: static-component-name
+            name: component-name
           resource:
             byReference:
               resource:
@@ -282,10 +290,10 @@ spec:
         apiVersion: delivery.ocm.software/v1alpha1
         kind: Resource
         metadata:
-          name: demo-image
+          name: image
         spec:
           componentRef:
-            name: static-component-name
+            name: component-name
           resource:
             byReference:
               resource:
@@ -297,7 +305,7 @@ spec:
         apiVersion: source.toolkit.fluxcd.io/v1beta2
         kind: OCIRepository
         metadata:
-          name: demo-oci-repository
+          name: oci-repository
         spec:
           interval: 1m0s
           layerSelector:
@@ -311,7 +319,7 @@ spec:
         apiVersion: helm.toolkit.fluxcd.io/v2
         kind: HelmRelease
         metadata:
-          name: demo-helm-release-no-update
+          name: helm-release
         spec:
           releaseName: ${schema.spec.releaseName}
           interval: 1m
@@ -349,7 +357,7 @@ metadata:
   name: component-name
 spec:
   # Reference to the component version used above
-  component: ocm.software/adr-component
+  component: ocm.software/ocm-k8s-toolkit/helm-bootstrap
   repositoryRef:
     name: repository-name
   semver: 1.0.0
@@ -386,7 +394,7 @@ spec:
 apiVersion: kro.run/v1alpha1
 kind: Bootstrap
 metadata:
-  name: adr-release
+  name: helm-bootstrap
 spec:
   releaseName: "bootstrap-instance"
   message: "Hello from the instance!"
