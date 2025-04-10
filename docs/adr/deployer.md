@@ -206,13 +206,13 @@ It is possible to ship the `ResourceGraphDefinition` with the OCM component vers
 kind of bootstrapping as the `ResourceGraphDefinition` must be sourced from the component version and applied to the
 cluster.
 
-To bootstrap a `ResourceGraphDefinition` an operator is required, e.g. `OCMDeployer`, that takes a Kubernetes custom
-resource (OCM) `resource`, extracts the `ResourceGraphDefinition` from the component version and applies it to the
-cluster.
+To bootstrap a `ResourceGraphDefinition` an Kubernetes operator is required, e.g. `OCMDeployer`, that takes a Kubernetes
+custom resource (OCM) `resource`, extracts the `ResourceGraphDefinition` from the component version and applies it to
+the cluster.
 
 The developer can define any localisation or configuration directive in the `ResourceGraphDefinition`. The operator only
-has to deploy an instance of the CRD that is created by the `ResourceGraphDefinition` and pass values to its scheme if
-necessary.
+has to deploy the bootstrap and an instance of the CRD that is created by the `ResourceGraphDefinition` and pass values
+to its scheme if necessary.
 
 ![ocm-controller-deployer-bootstrap](../assets/ocm-controller-deployer-bootstrap.svg)
 
