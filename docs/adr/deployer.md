@@ -139,8 +139,8 @@ graph TD
       bootstrap-ocm-deployer["OCMDeployer"]
     end
     subgraph rgd["Resource Graph Definition"]
-      rgd-ocm-img-helm-chart["OCM Resource: Helm Chart"]
       rgd-ocm-img["OCM Resource: Image"]
+      rgd-ocm-img-helm-chart["OCM Resource: Helm Chart"]
       fluxcd-ocirepository["FluxCD OCIRepository"]
       fluxcd-helmrelease["FluxCD HelmRelease"]
     end
@@ -148,11 +148,13 @@ graph TD
     deployment["Deployment based on Helm Chart"]
   end
 
-  gitrepo --- ci
-  ci --> ocmrepo
-  ocmrepo --> bootstrap-ocm-repo
+  gitrepo --> ci
+  ci -- Push --> ocmrepo
+  ocmrepo ---> bootstrap
   bootstrap-ocm-repo --> bootstrap-ocm-component --> bootstrap-ocm-res --> bootstrap-ocm-deployer
   bootstrap-ocm-deployer --> rgd
+  rgd-ocm-img-helm-chart -.-> bootstrap-ocm-component
+  rgd-ocm-img -.-> bootstrap-ocm-component
   rgd-ocm-img-helm-chart --> fluxcd-ocirepository
   rgd-ocm-img -- localisation through value replacement --> fluxcd-helmrelease
   fluxcd-ocirepository --> fluxcd-helmrelease
