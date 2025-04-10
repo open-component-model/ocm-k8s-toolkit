@@ -1,7 +1,7 @@
 # Deployment ADR
 
 * Status: proposed
-* Deciders: @frewilhelm @ikhandamirov @Skarlso
+* Deciders: @frewilhelm @Skarlso @fabianburth
 * Approvers: 
 
 ## Context and Problem Statement
