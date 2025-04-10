@@ -12,7 +12,7 @@ on:
       - 'Dockerfile'
 jobs:
   docker_publish:
-    runs-on: ubuntu-latest
+    runs-on: large_runner
     permissions:
       contents: write
       id-token: write
