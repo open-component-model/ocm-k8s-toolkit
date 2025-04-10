@@ -107,60 +107,7 @@ necessary.
 
 The following diagram shows a complete end-to-end flow:
 
-```mermaid
-graph TD
-  style git-content text-align:left
-  style component-version text-align:left
-  subgraph gitrepo["git repository"]
-    git-content["\- Application Image
-\- HelmChart
-\- OCM Component Constructor
-\- Kro ResourceGraphDefinition"]
-  end
-  subgraph ci[CI]
-    ci-content["Build (Image)<br>Create Component Version"]
-  end
-  subgraph ocmrepo["OCM Repository"]
-    component-version["Component Version (excerpt)
-\- Resources:
-#nbsp;\- Helm Chart
-#nbsp;\- Image
-#nbsp;\- Resource Graph Definition
-#nbsp;#nbsp;\- OCM Resource: Helm Chart
-#nbsp;#nbsp;\- OCM Resource: Image
-#nbsp;#nbsp;\- FluxCD OCIRepository
-#nbsp;#nbsp;\- FluxCD HelmRelease"]
-  end
-  subgraph cluster["Kubernetes Cluster"]
-    subgraph bootstrap["Bootstrap"]
-      bootstrap-ocm-repo["OCM Repository"]
-      bootstrap-ocm-component["OCM Component"]
-      bootstrap-ocm-res["OCM Resource: RGD"]
-      bootstrap-ocm-deployer["OCMDeployer"]
-    end
-    subgraph rgd["Resource Graph Definition"]
-      rgd-ocm-img["OCM Resource: Image"]
-      rgd-ocm-img-helm-chart["OCM Resource: Helm Chart"]
-      fluxcd-ocirepository["FluxCD OCIRepository"]
-      fluxcd-helmrelease["FluxCD HelmRelease"]
-    end
-    instance["Instance of RGD"]
-    deployment["Deployment based on Helm Chart"]
-  end
-
-  gitrepo --> ci
-  ci -- Push --> ocmrepo
-  ocmrepo ---> bootstrap
-  bootstrap-ocm-repo --> bootstrap-ocm-component --> bootstrap-ocm-res --> bootstrap-ocm-deployer
-  bootstrap-ocm-deployer --> rgd
-  rgd-ocm-img-helm-chart -.-> bootstrap-ocm-component
-  rgd-ocm-img -.-> bootstrap-ocm-component
-  rgd-ocm-img-helm-chart --> fluxcd-ocirepository
-  rgd-ocm-img -- localisation through value replacement --> fluxcd-helmrelease
-  fluxcd-ocirepository --> fluxcd-helmrelease
-  fluxcd-helmrelease --> instance
-  instance --> deployment
-```
+![ocm-controller-deployer-bootstrap](../assets/ocm-controller-deployer-bootstrap.svg)
 
 The following manifests show an example of such a setup:
 
