@@ -42,7 +42,8 @@ Essentially, the requirements can be breakdown to:
   resources to be created.
 * Currently, we kind of opinionate on using FluxCD as a deployment technology. FluxCD offers functionalities to alter
   the deployment resources, e.g. using `HelmRelease.spec.values` to inject values into the Helm chart or using
-  `Kustomization.spec.patches` to inject values into the Kustomization.
+  `Kustomization.spec.patches` to inject values into the Kustomization. This is important to consider because this
+  functionality could potentially replace the localisation controller.
 
 ## Considered Options
 
