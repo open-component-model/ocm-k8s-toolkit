@@ -26,19 +26,31 @@ resources of an ocm component version. It must be possible to configure these re
 the resource that is deployed, while deploying it. For example, injecting cluster-names or substituting values in the
 to-be-deployed resources.
 
+Essentially, the requirements can be breakdown to:
+* We need to dynamically create a deployer specific custom resource, e.g. FluxCDs `OCIRepository`, that is filled with
+  information provided by the status of a Kubernetes resource OCM `Resource`.
+* Simplify the deployment of the building block custom resources (`OCMRepository`, `Component`, `Resource`, ...)
+
 ## Decision Drivers
 
-* The simpler, the better, but flexible enough for all our use-cases.
-* Currently, our focus is on using FluxCD to deploy resources and use FluxCDs `OCIRepository` to provide our resources 
-for deployment as we store the resources internally in an OCI registry.
+* Simplicity: The deployer should be easy to understand and use. It should not require a lot of different resources to
+  be created.
+* Flexibility: The deployer should be flexible enough to deploy different kinds of resources and reference several
+  resources of an ocm component version. It should be possible to configure these resources and dynamically configure
+  the resource that is deployed, while deploying it.
+* Maintainability: The deployer should be easy to maintain and extend. It should not require a lot of different
+  resources to be created.
+* Currently, we kind of opinionate on using FluxCD as a deployment technology. FluxCD offers functionalities to alter
+  the deployment resources, e.g. using `HelmRelease.spec.values` to inject values into the Helm chart or using
+  `Kustomization.spec.patches` to inject values into the Kustomization.
 
 ## Considered Options
 
-* [Kro](#kro): Use Kro's `ResourceGraphDefinition` to orchestrate all required resources (from OCM Kubernetes-resources to
-  the deployment resources).
+* [Kro](#kro): Use Kro's `ResourceGraphDefinition` to orchestrate all required resources (from OCM Kubernetes-resources
+  to the deployment resources).
 * [FluxDeployer](#fluxdeployer): Create a CRD `FluxDeployer` that points to the consumable resource and its reconciler 
-creates FluxCDs `OCIRepository` and `HelmRelease`/`Kustomization` to create the deployment based on the resource.
-(This option would be closest to the `ocm-controllers` v1 implementation.)
+  creates FluxCDs `OCIRepository` and `HelmRelease`/`Kustomization` to create the deployment based on the resource.
+  (This option would be closest to the `ocm-controllers` v1 implementation.)
 * [Deployer](#deployer): Create a CRD `Deployment` that is a wrapper for all resources that are required for the deployment.
 
 ## Decision Outcome
@@ -207,12 +219,12 @@ kind of bootstrapping as the `ResourceGraphDefinition` must be sourced from the 
 cluster.
 
 To bootstrap a `ResourceGraphDefinition` an Kubernetes operator is required, e.g. `OCMDeployer`, that takes a Kubernetes
-custom resource (OCM) `resource`, extracts the `ResourceGraphDefinition` from the component version and applies it to
+custom resource (OCM) `Resource`, extracts the `ResourceGraphDefinition` from the component version, and applies it to
 the cluster.
 
 The developer can define any localisation or configuration directive in the `ResourceGraphDefinition`. The operator only
-has to deploy the bootstrap and an instance of the CRD that is created by the `ResourceGraphDefinition` and pass values
-to its scheme if necessary.
+has to deploy the bootstrap and an instance of the CRD that is created by the `ResourceGraphDefinition` as well as
+passing values to its scheme if necessary.
 
 ![ocm-controller-deployer-bootstrap](../assets/ocm-controller-deployer-bootstrap.svg)
 
@@ -220,12 +232,24 @@ The flowchart shows a git repository containing the application source code for 
 the component constructor, and a `ResourceGraphDefinition`. In the example, all these components are stored in an OCM
 component version and transferred to an OCM repository.
 
-Then, several resources for bootstrapping are deployed into the cluster, which refer to the created OCM component
-version, take the `ResourceGraphDefinition`, and apply that manifest. In comparison to the simple use case, this
-`ResourceGraphDefinition` contains the image of the application. The `resource.status.sourceReference` field is used to
-localise the image using FluxCDs `HelmRelease.spec.values` field since the location-reference of that image was adjusted
-while transferring the image to its new location using OCM. As a result, the image-reference in the Helm chart now
-points to the new location of the image.
+To deploy the application into a Kubernetes cluster, it is required to bootstrap the `ResourceGraphDefinition` by
+* deploying an `OCMRepository` that points to the OCM repository in which the component version is stored,
+* deploying a `Component` that points to the OCM component version in that OCM repository,
+* deploying a `Resource` that points to the `ResourceGraphDefinition` in the component version, and
+* deploying an `OCMDeployer` that points to the `Resource` and applies the `ResourceGraphDefinition` to the cluster.
+
+The manifests for that bootstrap cannot be shipped with the component version (as this would require another bootstrap).
+Accordingly, the bootstrap manifests must be provided in separately and the provider must know which component version
+and resources to use.
+
+As one can see, the `ResourceGraphDefinition` in the component version contains the image of the application itself. The
+reason for this, is to localise the image:
+
+When an OCM resources get transferred to an OCM repository, the location-reference (if any) of the resource is adjusted
+to the new location. By creating a CR `Resource` for that OCM resource, the image reference is stored in the status of
+that `resource` (`resource.status.sourceReference`). This reference can be used to localise the image using FluxCDs
+`HelmRelease.spec.values` field. As a result, the image-reference in the Helm chart now points to the new location of
+that resource.
 
 The following manifests show an example of such a setup:
 
@@ -433,6 +457,7 @@ spec:
       I applied previously was not changed.
     * Example 2: I create an RGD with the same resource `a`. Then, I create two instances of that RGD. Now, when I
       delete one instance, resource `a` is deleted, even though the other instance is still present.
+    * Check out this [spike](https://github.com/open-component-model/ocm-project/issues/456) for more details.
   * Missing ownership of resources created by RGD/instance 
   * How are updates of resources handled?
   * What about drift detection of instances?
