@@ -40,7 +40,7 @@ Essentially, the requirements can be breakdown to:
   the resource that is deployed, while deploying it.
 * Maintainability: The deployer should be easy to maintain and extend. It should not require a lot of different
   resources to be created.
-* Currently, we kind of opinionate on using FluxCD as a deployment technology. FluxCD offers functionalities to alter
+* Currently, we opinionate on using FluxCD as a deployment technology. FluxCD offers functionalities to alter
   the deployment resources, e.g. using `HelmRelease.spec.values` to inject values into the Helm chart or using
   `Kustomization.spec.patches` to inject values into the Kustomization. This is important to consider because this
   functionality could potentially replace the localisation controller.
@@ -438,8 +438,12 @@ spec:
   Accordingly, the controllers could be omitted.
   * As a result, the internal storage can be omitted as well as we do not need to download the resources to
     configure or localise them and make them available again.
-    * By omitting the internal storage, we can omit the storage implementation.
-* The codebase would get simpler as the deployment logic is outsourced
+    * By omitting the internal storage,
+      * we can omit the storage implementation.
+      * users do not have to maintain an OCI storage in their production cluster.
+      * it gets easier to debug.
+  * We can omit the CRDs `ResourceConfig`, `ConfiguredResource`, `LocalizationConfig`, and `LocalizedResource`.
+* The codebase would get simpler as the deployment logic is outsourced.
 * With Kros `ResourceGraphDefinition` the developer can create the deployment-instructions and pack them into the
   component version.
 * The developer can use any kind of deployer (FluxCD, ArgoCD, ...) that fits their needs by specifying the
