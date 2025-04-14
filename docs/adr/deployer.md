@@ -6,7 +6,7 @@
 
 ## Context and Problem Statement
 
-The purpose of the ocm-controllers is to provide a way to deploy resources from an ocm component version. As discussed
+The purpose of the ocm-controllers is to provide a way to deploy resources from an OCM component version. As discussed
 in the [artifacts ADR](./artifacts.md#negative-consequences) this requires some kind of deployer that consumes the
 given resource and uses it to create some kind of deployment.
 
@@ -17,12 +17,12 @@ OCI artifact that FluxCDs `OCIRepository` can consume.
 The resource provides a status that holds a reference to an OCI artifact and its manifest. The deployer must be
 able to get the OCI artifact reference through a reference to that resource by accessing the status of the resource.
 
-The deployer must make it easy for the user to deploy the resources from the ocm component version. It is easy if the
+The deployer must make it easy for the user to deploy the resources from the OCM component version. It is easy if the
 structure of the deployer is simple and easy to understand, e.g. not requiring a lot of different resources for a
 deployment (like `OCMRepository`, `Component`, `Resource`, `OCIRepository`, `HelmRelease`, `Kustomization`, ...).
 
 However, the deployer must also be flexible enough to deploy different kinds of resources and reference several
-resources of an ocm component version. It must be possible to configure these resources and dynamically configure
+resources of an OCM component version. It must be possible to configure these resources and dynamically configure
 the resource that is deployed, while deploying it. For example, injecting cluster-names or substituting values in the
 to-be-deployed resources.
 
@@ -36,7 +36,7 @@ Essentially, the requirements can be breakdown to:
 * Simplicity: The deployer should be easy to understand and use. It should not require a lot of different resources to
   be created.
 * Flexibility: The deployer should be flexible enough to deploy different kinds of resources and reference several
-  resources of an ocm component version. It should be possible to configure these resources and dynamically configure
+  resources of an OCM component version. It should be possible to configure these resources and dynamically configure
   the resource that is deployed, while deploying it.
 * Maintainability: The deployer should be easy to maintain and extend. It should not require a lot of different
   resources to be created.
@@ -216,12 +216,12 @@ spec:
 #### A more complex use case with bootstrapping
 
 It is possible to ship the `ResourceGraphDefinition` with the OCM component version itself. This, however, requires some
-kind of bootstrapping as the `ResourceGraphDefinition` must be sourced from the component version and applied to the
+kind of bootstrapping as the `ResourceGraphDefinition` must be sourced from the OCM component version and applied to the
 cluster.
 
 To bootstrap a `ResourceGraphDefinition` an Kubernetes operator is required, e.g. `OCMDeployer`, that takes a Kubernetes
-custom resource (OCM) `Resource`, extracts the `ResourceGraphDefinition` from the component version, and applies it to
-the cluster.
+custom resource (OCM) `Resource`, extracts the `ResourceGraphDefinition` from the OCM component version, and applies it
+to the cluster.
 
 The developer can define any localisation or configuration directive in the `ResourceGraphDefinition`. The operator only
 has to deploy the bootstrap and an instance of the CRD that is created by the `ResourceGraphDefinition` as well as
@@ -234,21 +234,21 @@ the component constructor, and a `ResourceGraphDefinition`. In the example, all 
 component version and transferred to an OCM repository.
 
 To deploy the application into a Kubernetes cluster, it is required to bootstrap the `ResourceGraphDefinition` by
-* deploying an `OCMRepository` that points to the OCM repository in which the component version is stored,
+* deploying an `OCMRepository` that points to the OCM repository in which the OCM component version is stored,
 * deploying a `Component` that points to the OCM component version in that OCM repository,
 * deploying a `Resource` that points to the `ResourceGraphDefinition` in the component version, and
 * deploying an `OCMDeployer` that points to the `Resource` and applies the `ResourceGraphDefinition` to the cluster.
 
-The manifests for that bootstrap cannot be shipped with the component version (as this would require another bootstrap).
-Accordingly, the bootstrap manifests must be provided in separately and the provider must know which component version
-and resources to use.
+The manifests for that bootstrap cannot be shipped with the OCM component version (as this would require another
+bootstrap). Accordingly, the bootstrap manifests must be provided separately and the provider must know which OCM
+component version and resources to use.
 
-As one can see, the `ResourceGraphDefinition` in the component version contains the image of the application itself. The
-reason for this, is to localise the image:
+As one can see, the `ResourceGraphDefinition` in the OCM component version contains the image of the application itself.
+The reason for this, is to localise the image:
 
-When an OCM resources get transferred to an OCM repository, the location-reference (if any) of the resource is adjusted
-to the new location. By creating a CR `Resource` for that OCM resource, the image reference is stored in the status of
-that `resource` (`resource.status.sourceReference`). This reference can be used to localise the image using FluxCDs
+When an OCM resources get transferred to an OCM repository, the access of the resource is adjusted to the new location.
+By creating a CR `Resource` for that OCM resource, the image reference is stored in the status of that `resource`
+(`resource.status.sourceReference`). This reference can be used to localise the image using FluxCDs
 `HelmRelease.spec.values` field. As a result, the image-reference in the Helm chart now points to the new location of
 that resource.
 
@@ -432,20 +432,20 @@ spec:
 
 #### Pros
 
-* Kro and FluxCD provide the same functionality as the configuration and localisation controller. But instead of
-  localising and configuring the resource and then storing it somewhere to be processed, the resource is configured and
-  localised within the `ResourceGraphDefinition` and FluxCDs `HelmRelease.spec.values` or `Kustomization.spec.path`.
-  Accordingly, the controllers could be omitted.
+* Kro and FluxCD provide the same functionality as the configuration and localization controller. But instead of
+  localizing and configuring the resource and then storing it somewhere to be processed, the resource is configured and
+  localized within the `ResourceGraphDefinition` and FluxCDs `HelmRelease.spec.values` or `Kustomization.spec.path`.
+  Accordingly, our current controllers for localization and configuration could be omitted.
   * As a result, the internal storage can be omitted as well as we do not need to download the resources to
-    configure or localise them and make them available again.
+    configure or localize them and make them available again.
     * By omitting the internal storage,
       * we can omit the storage implementation.
       * users do not have to maintain an OCI storage in their production cluster.
       * it gets easier to debug.
   * We can omit the CRDs `ResourceConfig`, `ConfiguredResource`, `LocalizationConfig`, and `LocalizedResource`.
-* The codebase would get simpler as the deployment logic is outsourced.
+  * The codebase would get simpler as the deployment logic is outsourced.
 * With Kros `ResourceGraphDefinition` the developer can create the deployment-instructions and pack them into the
-  component version.
+  OCM component version.
 * The developer can use any kind of deployer (FluxCD, ArgoCD, ...) that fits their needs by specifying the
   `ResourceGraphDefinition` accordingly.
 
@@ -484,28 +484,13 @@ spec:
 
 ### FluxDeployer
 
-_Description_
-
-#### Pros
-
-* ...
-
-#### Cons
-
-* ...
+This approach would require the localization and configuration controllers and the internal storage. As we can probably
+omit these components using the approach with Kro, we will not go into detail here (yet).
 
 ### Deployer
 
-_Description_
-
-#### Pros
-
-* ...
-
-#### Cons
-
-* ...
-
+This approach would require the localization and configuration controllers and the internal storage. As we can probably
+omit these components using the approach with Kro, we will not go into detail here (yet).
 
 # Links
 - Epic [#404](https://github.com/open-component-model/ocm-k8s-toolkit/issues/147)
