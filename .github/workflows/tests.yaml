@@ -106,7 +106,7 @@ jobs:
           kubectl wait pod -l app=protected-registry2 --for condition=Ready --timeout 5m
 
       - name: Setup Flux CLI
-        uses: fluxcd/flux2/action@c436708a13c1cfe00dd2453dd5a2f2a2c7c8f9aa
+        uses: fluxcd/flux2/action@912718103cd4ea985d82cb9db6677ef6a953eebb
 
       - name: Install Flux in Kind
         run: flux install
