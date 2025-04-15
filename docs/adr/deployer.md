@@ -448,6 +448,8 @@ spec:
   OCM component version.
 * The developer can use any kind of deployer (FluxCD, ArgoCD, ...) that fits their needs by specifying the
   `ResourceGraphDefinition` accordingly.
+* Kro can be used to orchestrate the deployment of resources that are dependent on each other. The resources are
+  then deployed in such an order that the dependencies are satisfied.
 
 #### Cons
 
