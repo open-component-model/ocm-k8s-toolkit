@@ -300,7 +300,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		}
 
 		sourceRef.Registry = reference.Context().RegistryStr()
-		sourceRef.Repository = reference.Context().RepositoryStr()
+		sourceRef.Repository = strings.TrimLeft(reference.Context().RepositoryStr(), "/")
 		sourceRef.Reference = reference.Identifier()
 	case *helm.AccessSpec:
 		sourceRef.Registry = access.HelmRepository
