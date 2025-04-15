@@ -1,6 +1,0 @@
-apiVersion: kro.run/v1alpha1
-kind: TwoInstancesOneResource
-metadata:
-  name: two-instances-one-resource-instance-1
-spec:
-  prefix: "same-name"

@@ -1,32 +1,32 @@
 apiVersion: delivery.ocm.software/v1alpha1
 kind: OCMRepository
 metadata:
-  name: static-repository-name
+  name: helm-simple-repository
 spec:
   repositorySpec:
     # TODO: Adjust for our test environment
-    baseUrl: ghcr.io/frewilhelm
+    baseUrl: http://image-registry:5000
     type: OCIRegistry
   interval: 10m
 ---
 apiVersion: delivery.ocm.software/v1alpha1
 kind: Component
 metadata:
-  name: static-component-name
+  name: helm-simple-component
 spec:
   component: ocm.software/ocm-k8s-toolkit/test/e2e/testdata/helm-simple
   repositoryRef:
-    name: static-repository-name
+    name: helm-simple-repository
   semver: 1.0.0
   interval: 10m
 ---
 apiVersion: delivery.ocm.software/v1alpha1
 kind: Resource
 metadata:
-  name: static-resource-rgd-name
+  name: helm-simple-resource-rgd
 spec:
   componentRef:
-    name: static-component-name
+    name: helm-simple-component
   resource:
     byReference:
       resource:
@@ -36,8 +36,8 @@ spec:
 apiVersion: delivery.ocm.software/v1alpha1
 kind: OCMDeployer
 metadata:
-  name: static-ocmdeployer-name
+  name: helm-simple-ocmdeployer
 spec:
   resourceRef:
-    name: static-resource-rgd-name
+    name: helm-simple-resource-rgd
   interval: 10m

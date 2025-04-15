@@ -1,32 +1,32 @@
 apiVersion: delivery.ocm.software/v1alpha1
 kind: OCMRepository
 metadata:
-  name: static-repository-name
+  name: helm-configuration-localization-repository
 spec:
   repositorySpec:
     # TODO: Adjust for our test environment
-    baseUrl: ghcr.io/frewilhelm
+    baseUrl: http://image-registry:5000
     type: OCIRegistry
   interval: 10m
 ---
 apiVersion: delivery.ocm.software/v1alpha1
 kind: Component
 metadata:
-  name: static-component-name
+  name: helm-configuration-localization-component
 spec:
   component: ocm.software/ocm-k8s-toolkit/test/e2e/testdata/helm-configuration-localisation
   repositoryRef:
-    name: static-repository-name
+    name: helm-configuration-localization-repository
   semver: 1.0.0
   interval: 10m
 ---
 apiVersion: delivery.ocm.software/v1alpha1
 kind: Resource
 metadata:
-  name: static-resource-rgd-name
+  name: helm-configuration-localization-resource-rgd
 spec:
   componentRef:
-    name: static-component-name
+    name: helm-configuration-localization-component
   resource:
     byReference:
       resource:
@@ -36,8 +36,8 @@ spec:
 apiVersion: delivery.ocm.software/v1alpha1
 kind: OCMDeployer
 metadata:
-  name: static-ocmdeployer-name
+  name: helm-configuration-localization-ocmdeployer
 spec:
   resourceRef:
-    name: static-resource-rgd-name
+    name: helm-configuration-localization-resource-rgd
   interval: 10m

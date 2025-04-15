@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Secret
 metadata:
-  name: static-secret-name
+  name: helm-signing-secret
 data:
   # Base64 encoded value of the public key ocm.software.pub
   ocm.software: "LS0tLS1CRUdJTiBSU0EgUFVCTElDIEtFWS0tLS0tCk1JSUJDZ0tDQVFFQTE0UUhEdHlaVFJXbThCZDdoZjVkVnp1L3VhQ3JVSmU4UFhXc2M0U0ZEWjJuRWZWWmZ2Rm8KQXV4aFF6UzFjN2dEOVlmRDBTSnpKU0ZnbmNlY29EQTI5TTBPTFltd2ptQWZoajlBNm1YNm1JbXlienVPYU9vago0RkpabkpkM3JGek5Cb0t3cW9ld0lIUkIvb1R6ZDZIWDZmQUM1M2RyYW8vaDFoTWpFODFEcld5a1hSQmd2ekJpClZ6ZGd1N0ZleUxMVzZEVzE1VmZMdmlpL1RTVk9RT3FlTHdpc3hUR2JpNjdMYy8vVFRnQlZCRUg5NjU0MnB2bjAKUTVuRzVKa3hGVWY2ajBxM3lkM0lPVW9nUHZJbzNkcDllR1Q0b1VRTTNTSTdKcC9NRG5NNHEySkpjbERNL1pZTQpwWE5ub2VXWlQ3NEZ3QzdBcTdBWmxKSG9hRHVqVGdGSTR3SURBUUFCCi0tLS0tRU5EIFJTQSBQVUJMSUMgS0VZLS0tLS0K"
@@ -9,36 +9,36 @@ data:
 apiVersion: delivery.ocm.software/v1alpha1
 kind: OCMRepository
 metadata:
-  name: static-repository-name
+  name: helm-signing-repository
 spec:
   repositorySpec:
     # TODO: Adjust for our test environment
-    baseUrl: ghcr.io/frewilhelm
+    baseUrl: http://image-registry:5000
     type: OCIRegistry
   interval: 10m
 ---
 apiVersion: delivery.ocm.software/v1alpha1
 kind: Component
 metadata:
-  name: static-component-name
+  name: helm-signing-component
 spec:
   component: ocm.software/ocm-k8s-toolkit/test/e2e/testdata/helm-signing
   verify:
     - signature: ocm.software
       secretRef:
-        name: static-secret-name
+        name: helm-signing-secret
   repositoryRef:
-    name: static-repository-name
+    name: helm-signing-repository
   semver: 1.0.0
   interval: 10m
 ---
 apiVersion: delivery.ocm.software/v1alpha1
 kind: Resource
 metadata:
-  name: static-resource-rgd-name
+  name: helm-signing-resource-rgd
 spec:
   componentRef:
-    name: static-component-name
+    name: helm-signing-component
   resource:
     byReference:
       resource:
@@ -48,8 +48,8 @@ spec:
 apiVersion: delivery.ocm.software/v1alpha1
 kind: OCMDeployer
 metadata:
-  name: static-ocmdeployer-name
+  name: helm-signing-ocmdeployer
 spec:
   resourceRef:
-    name: static-resource-rgd-name
+    name: helm-signing-resource-rgd
   interval: 10m

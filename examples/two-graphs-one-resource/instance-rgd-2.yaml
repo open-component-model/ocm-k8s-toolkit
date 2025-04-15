@@ -1,6 +1,0 @@
-apiVersion: kro.run/v1alpha1
-kind: TwoGraphsOneResourceTwo
-metadata:
-  name: two-graphs-one-resource-two-instance
-spec:
-  prefix: "same-name"

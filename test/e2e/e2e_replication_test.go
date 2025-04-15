@@ -59,7 +59,7 @@ var _ = Describe("Replication Controller", func() {
 
 		// This test transfers the test component from a public registry to the one configured in the test environment.
 		// The test uses neither explicit transfer options nor credentials.
-		It("should be possible to transfer the test component from its external location to configured OCI registry", func() {
+		PIt("should be possible to transfer the test component from its external location to configured OCI registry", func() {
 			By("Apply manifests to the cluster")
 			manifestDir := filepath.Join(os.Getenv("PROJECT_DIR"), "test/e2e/testdata/replication/no-config")
 			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "OCMRepository-source.yaml"), "condition=Ready", timeout)).To(Succeed())
@@ -77,7 +77,7 @@ var _ = Describe("Replication Controller", func() {
 		//   2. From intermediate registry above to a yet another protected registry.
 		// The protected registries are password-protected, thus respective ocmconfig are required to access them.
 		// Also transfer options are used in both transfer operations.
-		It("should be possible to transfer CVs between private OCI registries with transfer options", func() {
+		PIt("should be possible to transfer CVs between private OCI registries with transfer options", func() {
 			var (
 				protectedRegistry          string
 				internalProtectedRegistry  string

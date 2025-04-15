@@ -57,13 +57,7 @@ func DeployAndWaitForResource(manifestFilePath, waitingFor, timeout string) erro
 		return err
 	}
 
-	cmd := exec.Command("kubectl", "wait", "-f", manifestFilePath,
-		"--for", waitingFor,
-		"--timeout", timeout,
-	)
-	_, err = Run(cmd)
-
-	return err
+	return WaitForResource(waitingFor, timeout, "-f", manifestFilePath)
 }
 
 // DeployResource takes a manifest file of a k8s resource and deploys it with "kubectl". Correspondingly,
@@ -85,10 +79,18 @@ func DeployResource(manifestFilePath string) error {
 	return err
 }
 
-// PrepareOCMComponent creates an OCM component from a component-constructor file. The component-constructor file can
-// contain go-template-logic and the respective key-value pairs can be by templateValues.
+func WaitForResource(condition, timeout string, resource ...string) error {
+	cmdArgs := append([]string{"wait", "--for=" + condition}, resource...)
+	cmdArgs = append(cmdArgs, "--timeout="+timeout)
+	cmd := exec.Command("kubectl", cmdArgs...)
+	_, err := Run(cmd)
+
+	return err
+}
+
+// PrepareOCMComponent creates an OCM component from a component-constructor file.
 // After creating the OCM component, the component is transferred to imageRegistry.
-func PrepareOCMComponent(ccPath, imageRegistry string) error {
+func PrepareOCMComponent(ccPath, imageRegistry, signingKey string) error {
 	By("creating ocm component")
 	tmpDir := GinkgoT().TempDir()
 
@@ -107,9 +109,28 @@ func PrepareOCMComponent(ccPath, imageRegistry string) error {
 		return fmt.Errorf("could not create ocm component: %w", err)
 	}
 
+	if signingKey != "" {
+		By("signing ocm component")
+		cmdArgs = []string{}
+		cmd = exec.Command(
+			"ocm",
+			"sign",
+			"componentversions",
+			"--signature",
+			"ocm.software",
+			"--private-key",
+			signingKey,
+			ctfDir,
+		)
+		_, err := Run(cmd)
+		if err != nil {
+			return fmt.Errorf("could not create ocm component: %w", err)
+		}
+	}
+
 	// Note: The option '--overwrite' is necessary, when a digest of a resource is changed or unknown (which is the case
 	// in our default test)
-	cmd = exec.Command("ocm", "transfer", "ctf", "--overwrite", ctfDir, imageRegistry)
+	cmd = exec.Command("ocm", "transfer", "ctf", "--copy-resources", "--overwrite", ctfDir, imageRegistry)
 	_, err = Run(cmd)
 	if err != nil {
 		return fmt.Errorf("could not transfer ocm component: %w", err)
@@ -216,4 +237,24 @@ func DeleteNamespace(ns string) error {
 	_, err := Run(cmd)
 
 	return err
+}
+
+func CompareResourceField(fieldSelector, expected string, resource ...string) error {
+	args := append([]string{"get"}, resource...)
+	args = append(args, "-o", "jsonpath="+fieldSelector)
+	cmd := exec.Command("kubectl", args...)
+	output, err := Run(cmd)
+	if err != nil {
+		return err
+	}
+
+	// Sanitize output
+	result := strings.TrimSpace(string(output))
+	result = strings.ReplaceAll(result, "'", "")
+
+	if strings.TrimSpace(result) != expected {
+		return fmt.Errorf("expected %s, got %s", expected, string(output))
+	}
+
+	return nil
 }

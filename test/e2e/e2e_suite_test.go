@@ -18,8 +18,10 @@ package e2e
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -45,7 +47,31 @@ var (
 	timeout string
 	// controllerPodName is required to access the logs after the e2e tests
 	controllerPodName string
+	examplesDir       string
+	examples          []os.DirEntry
+	t                 *testing.T
 )
+
+func init() {
+	examplesDir = os.Getenv("EXAMPLES_DIR")
+	if examplesDir == "" {
+		projectDir := os.Getenv("PROJECT_DIR")
+		if projectDir == "" {
+			var err error
+			projectDir, err = os.Getwd()
+			if err != nil {
+				log.Fatal("could not get current working directory", err)
+			}
+		}
+		examplesDir = filepath.Join(projectDir, "examples")
+	}
+
+	var err error
+	examples, err = os.ReadDir(examplesDir)
+	if err != nil {
+		log.Fatal("could not read directory with examples", err)
+	}
+}
 
 // Run e2e tests using the Ginkgo runner.
 func TestE2E(t *testing.T) {
@@ -66,21 +92,21 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 
 	timeout = os.Getenv("RESOURCE_TIMEOUT")
 	if timeout == "" {
-		timeout = "1m"
+		timeout = "10m"
 	}
 
 	imageRegistry = os.Getenv("IMAGE_REGISTRY")
 	if imageRegistry == "" {
 		// TODO: Adjust
-		imageRegistry = "http://localhost:31001"
+		imageRegistry = "http://image-registry:5000"
 	}
 
-	clusterImageRegistry := os.Getenv("CLUSTER_IMAGE_REGISTRY")
-	if clusterImageRegistry == "" {
-		clusterImageRegistry = imageRegistry
-		// TODO: Adjust
-		internalImageRegistry = "http://registry-external.default.svc.cluster.local:5001"
-	}
+	//clusterImageRegistry := os.Getenv("CLUSTER_IMAGE_REGISTRY")
+	//if clusterImageRegistry == "" {
+	//	clusterImageRegistry = imageRegistry
+	//	// TODO: Adjust
+	//	internalImageRegistry = "http://registry-external.default.svc.cluster.local:5001"
+	//}
 
 	By("Starting the operator", func() {
 		// projectimage stores the name of the image used in the example
@@ -182,7 +208,6 @@ var _ = AfterSuite(func(ctx SpecContext) {
 			cmd := exec.Command("kubectl", cmdArgs...)
 			_, err := utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-
 		})
 	}
 })

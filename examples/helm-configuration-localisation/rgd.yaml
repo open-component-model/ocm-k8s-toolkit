@@ -1,7 +1,7 @@
 apiVersion: kro.run/v1alpha1
 kind: ResourceGraphDefinition
 metadata:
-  name: helm-configuration-localisation-rgd
+  name: helm-configuration-localisation
 spec:
   schema:
     apiVersion: v1alpha1
@@ -20,7 +20,7 @@ spec:
           name: "${schema.spec.prefix}-resource-chart-name"
         spec:
           componentRef:
-            name: static-component-name
+            name: helm-configuration-localization-component
           resource:
             byReference:
               resource:
@@ -34,7 +34,7 @@ spec:
           name: "${schema.spec.prefix}-resource-image-name"
         spec:
           componentRef:
-            name: static-component-name
+            name: helm-configuration-localization-component
           resource:
             byReference:
               resource:
@@ -48,6 +48,7 @@ spec:
           name: "${schema.spec.prefix}-oci-repository-name"
         spec:
           interval: 1m0s
+          insecure: true
           layerSelector:
             mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
             operation: copy

@@ -1,17 +1,8 @@
 apiVersion: kro.run/v1alpha1
 kind: HelmConfigurationLocalisation
 metadata:
-  name: helm-configuration-localisation-1
+  name: helm-configuration-localisation
 spec:
   podinfo:
-    message: "Boy, this is complicated!"
-    releaseName: "helm-configuration-localisation-1"
----
-apiVersion: kro.run/v1alpha1
-kind: HelmConfigurationLocalisation
-metadata:
-  name: helm-configuration-localisation-2
-spec:
-  podinfo:
-    message: "Is it though?"
-    releaseName: "helm-configuration-localisation-2"
+    message: "helm-configuration-localisation"
+    releaseName: "helm-configuration-localisation"
