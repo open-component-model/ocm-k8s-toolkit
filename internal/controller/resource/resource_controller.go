@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/git"
+	"ocm.software/ocm/api/ocm/extensions/accessmethods/github"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/helm"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
 	"ocm.software/ocm/api/ocm/resolvers"
@@ -285,7 +286,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 			return ctrl.Result{}, err
 		}
 
-		// url.Parse will not acknowledge a hostname if a scheme is missing. But we cannot make sure that the reference
+		// gitHubUrl.Parse will not acknowledge a hostname if a scheme is missing. But we cannot make sure that the reference
 		// has a scheme.
 		if ociURL.Host == "" {
 			ociURL.Host = strings.Split(ociURL.Path, "/")[0]
@@ -306,16 +307,26 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		sourceRef.Registry = access.HelmRepository
 		sourceRef.Repository = access.HelmChart
 		sourceRef.Reference = access.GetVersion()
+	case *github.AccessSpec:
+		gitHubUrl, err := giturls.Parse(access.RepoURL)
+		if err != nil {
+			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetReferenceFailedReason, err.Error())
+
+			return ctrl.Result{}, err
+		}
+		sourceRef.Registry = fmt.Sprintf("%s://%s", gitHubUrl.Scheme, gitHubUrl.Host)
+		sourceRef.Repository = gitHubUrl.Path
+		sourceRef.Reference = access.Commit
 	case *git.AccessSpec:
-		url, err := giturls.Parse(access.Repository)
+		gitUrl, err := giturls.Parse(access.Repository)
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetReferenceFailedReason, err.Error())
 
 			return ctrl.Result{}, err
 		}
 
-		sourceRef.Registry = fmt.Sprintf("%s://%s", url.Scheme, url.Host)
-		sourceRef.Repository = url.Path
+		sourceRef.Registry = fmt.Sprintf("%s://%s", gitUrl.Scheme, gitUrl.Host)
+		sourceRef.Repository = gitUrl.Path
 		sourceRef.Reference = access.Ref
 	default:
 		logger.V(v1alpha1.LevelDebug).Info("skip setting reference for resource as no source reference is available for this access type", "access type", access)
