@@ -9,8 +9,8 @@ components:
         version: "1.0.0"
         access:
           type: gitHub
-          repoUrl: github.com/frewilhelm/ocm-k8s-toolkit/examples/kustomize-simple
-          commit: main
+          repoUrl: https://github.com/frewilhelm/ocm-k8s-toolkit
+          commit: 5e7b44335480b204a1eabe35378029f33eed12d0
       - name: kro-rgd
         type: blob
         version: "1.0.0"

@@ -9,12 +9,12 @@ spec:
     spec:
       prefix: string | default="kustomize-simple"
   resources:
-    - id: resourceChart
+    - id: kustomizationResource
       template:
         apiVersion: delivery.ocm.software/v1alpha1
         kind: Resource
         metadata:
-          name: "${schema.spec.prefix}-resource-chart-name"
+          name: "${schema.spec.prefix}-resource-name"
         spec:
           componentRef:
             name: kustomize-simple-component
@@ -23,21 +23,18 @@ spec:
               resource:
                 name: kustomize-resource
           interval: 10m
-    - id: ocirepository
+    - id: gitrepository
       template:
-        apiVersion: source.toolkit.fluxcd.io/v1beta2
-        kind: OCIRepository
+        apiVersion: source.toolkit.fluxcd.io/v1
+        kind: GitRepository
         metadata:
-          name: "${schema.spec.prefix}-oci-repository-name"
+          name: podinfo
+          namespace: default
         spec:
-          interval: 1m0s
-          insecure: true
-          layerSelector:
-            mediaType: "application/vnd.oci.image.layer.v1.tar+gzip"
-            operation: copy
-          url: oci://${resourceChart.status.reference.registry}/${resourceChart.status.reference.repository}
+          interval: 5m
+          url: ${kustomizationResource.status.reference.registry}/${kustomizationResource.status.reference.repository}
           ref:
-            tag: ${resourceChart.status.reference.reference}
+            commit: ${kustomizationResource.status.reference.reference}
     - id: kustomization
       template:
         apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -49,6 +46,6 @@ spec:
           interval: 1m
           prune: true
           sourceRef:
-            kind: OCIRepository
-            name: ${ocirepository.metadata.name}
-            namespace: default
+            kind: GitRepository
+            name: ${gitrepository.metadata.name}
+          path: "examples/kustomize-simple/kustomization"
