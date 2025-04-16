@@ -2,7 +2,7 @@
 
 * Status: proposed
 * Deciders: @frewilhelm @Skarlso @fabianburth
-* Approvers: 
+* Approvers: @jakobmoellerdev
 
 ## Context and Problem Statement
 
@@ -40,10 +40,6 @@ Essentially, the requirements can be breakdown to:
   the resource that is deployed, while deploying it.
 * Maintainability: The deployer should be easy to maintain and extend. It should not require a lot of different
   resources to be created.
-* Currently, we opinionate on using FluxCD as a deployment technology. FluxCD offers functionalities to alter
-  the deployment resources, e.g. using `HelmRelease.spec.values` to inject values into the Helm chart or using
-  `Kustomization.spec.patches` to inject values into the Kustomization. This is important to consider because this
-  functionality could potentially replace the localisation controller.
 
 ## Considered Options
 
@@ -246,11 +242,13 @@ component version and resources to use.
 As one can see, the `ResourceGraphDefinition` in the OCM component version contains the image of the application itself.
 The reason for this, is to localise the image:
 
-When an OCM resources get transferred to an OCM repository, the access of the resource is adjusted to the new location.
-By creating a CR `Resource` for that OCM resource, the image reference is stored in the status of that `resource`
-(`resource.status.sourceReference`). This reference can be used to localise the image using FluxCDs
+When an OCM resource get transferred to an OCM repository, the access of the resource is adjusted to the new location.
+This access reference can be stored in the status of that `resource` and used to localise the image using FluxCDs
 `HelmRelease.spec.values` field. As a result, the image-reference in the Helm chart now points to the new location of
 that resource.
+(The access reference that is provided by the `Resource` is in `json`, which, currently, cannot be resolved by Kros
+`ResourceGraphDefinition`. That is why we currently use a `resource.status.sourceReference` field instead, in which we
+parse the access references. However, the Kro maintainers already mentioned that they would welcome such a feature.)
 
 The following manifests show an example of such a setup:
 
@@ -465,7 +463,6 @@ spec:
     * Example 2: I create an RGD with the same resource `a`. Then, I create two instances of that RGD. Now, when I
       delete one instance, resource `a` is deleted, even though the other instance is still present.
     * Check out this [spike](https://github.com/open-component-model/ocm-project/issues/456) for more details.
-  * Missing ownership of resources created by RGD/instance 
   * How are updates of resources handled?
   * What about drift detection of instances?
   * What happens if the `ResourceGraphDefinition`-scheme changes (when an instance is already deployed)?
@@ -486,13 +483,19 @@ spec:
 
 ### FluxDeployer
 
-This approach would require the localization and configuration controllers and the internal storage. As we can probably
-omit these components using the approach with Kro, we will not go into detail here (yet).
+This approach requires the localization and configuration controllers along with internal storage.
+However, since these components can likely be omitted using Kro, we will not elaborate further here. For details check
+[Kro](#kro).
 
 ### Deployer
 
-This approach would require the localization and configuration controllers and the internal storage. As we can probably
-omit these components using the approach with Kro, we will not go into detail here (yet).
+This approach requires the localization and configuration controllers along with internal storage.
+However, since these components can likely be omitted using Kro, we will not elaborate further here. For details check
+[Kro](#kro).
+
+### Simplifications:
+1. Removed redundant phrases like "would require" and "as we can probably omit these components."
+2. Combined sentences to make the explanation more concise while retaining the original meaning.
 
 # Links
 - Epic [#404](https://github.com/open-component-model/ocm-k8s-toolkit/issues/147)
