@@ -22,7 +22,7 @@ kind: Component
 metadata:
   name: helm-signing-component
 spec:
-  component: ocm.software/ocm-k8s-toolkit/test/e2e/testdata/helm-signing
+  component: ocm.software/ocm-k8s-toolkit/examples/helm-signing
   verify:
     - signature: ocm.software
       secretRef:

@@ -14,7 +14,7 @@ kind: Component
 metadata:
   name: helm-simple-component
 spec:
-  component: ocm.software/ocm-k8s-toolkit/test/e2e/testdata/helm-simple
+  component: ocm.software/ocm-k8s-toolkit/examples/helm-simple
   repositoryRef:
     name: helm-simple-repository
   semver: 1.0.0

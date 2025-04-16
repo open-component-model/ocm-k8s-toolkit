@@ -1,5 +1,5 @@
 components:
-  - name: ocm.software/ocm-k8s-toolkit/test/e2e/testdata/helm-simple
+  - name: ocm.software/ocm-k8s-toolkit/examples/helm-simple
     version: "1.0.0"
     provider:
       name: ocm.software
