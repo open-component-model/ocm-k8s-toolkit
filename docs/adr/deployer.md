@@ -484,18 +484,20 @@ spec:
 ### FluxDeployer
 
 This approach requires the localization and configuration controllers along with internal storage.
-However, since these components can likely be omitted using Kro, we will not elaborate further here. For details check
-[Kro](#kro).
+However, in the approach using [Kro](#kro), these components can be omitted as the localization and configuration can
+be achieved using Kros `ResourceGraphDefinition` and FluxCDs `HelmRelease.spec.values` or `Kustomization.spec.patch`
+(ArgoCD offers similar functionalities). Because the internal storage was mainly used for our own localization and
+configuration, we can omit it as well.
+This is why, we will not elaborate further on this approach.
 
 ### Deployer
 
 This approach requires the localization and configuration controllers along with internal storage.
-However, since these components can likely be omitted using Kro, we will not elaborate further here. For details check
-[Kro](#kro).
-
-### Simplifications:
-1. Removed redundant phrases like "would require" and "as we can probably omit these components."
-2. Combined sentences to make the explanation more concise while retaining the original meaning.
+However, in the approach using [Kro](#kro), these components can be omitted as the localization and configuration can
+be achieved using Kros `ResourceGraphDefinition` and FluxCDs `HelmRelease.spec.values` or `Kustomization.spec.patch`
+(ArgoCD offers similar functionalities). Because the internal storage was mainly used for our own localization and
+configuration, we can omit it as well.
+This is why, we will not elaborate further on this approach.
 
 # Links
 - Epic [#404](https://github.com/open-component-model/ocm-k8s-toolkit/issues/147)
