@@ -48,4 +48,16 @@ spec:
           sourceRef:
             kind: GitRepository
             name: ${gitrepository.metadata.name}
-          path: "examples/kustomize-simple/kustomization"
+          path: "kustomize"
+          patches:
+            # e2e-test related patch to validate deployment
+            - patch: |
+                - op: replace
+                  path: /metadata/name
+                  value: kustomize-simple-podinfo
+                - op: replace
+                  path: /spec/template/metadata/labels/app
+                  value: kustomize-simple-podinfo
+              target:
+                kind: Deployment
+                name: .*
