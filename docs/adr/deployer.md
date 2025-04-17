@@ -52,17 +52,30 @@ Essentially, the requirements can be breakdown to:
 
 ## Decision Outcome
 
-Chosen option: "[???]", because 
+Chosen option: [Kro](#kro), because
+* the `ResourceGraphDefinition` is an intuitive way to orchestrate the deployment of resources and map dependencies
+  between them.
+* the `ResourceGraphDefinition` can be packed into the OCM component version itself.
+* using a `ResourceGraphDefinition` with a deployment-tool that can replace values in the deployments itself, e.g.
+  FluxCDs `HelmRelease.spec.values` or `Kustomization.spec.patches`, we can omit the localization and configuration
+  operators. If we do not need to localize or configure the resources, we do not need to store them in an internal
+  storage, which is why we can omit the internal storage as well.
 
 ### Positive Consequences
 
-* [e.g., improvement of quality attribute satisfaction, follow-up decisions required, …]
-* …
+* Maintainability is improved a lot, as we can omit the localization and configuration controllers as well as the
+  internal storage.
+  * Users do not have to maintain an OCI storage in their production cluster.
+* Only one additional operator is required to deploy the `ResourceGraphDefinition` as Kro will take care of the
+  resource orchestration as defined in the `ResourceGraphDefinition`.
 
 ### Negative Consequences
 
-* [e.g., compromising quality attribute, follow-up decisions required, …]
-* …
+* Kro is a third-party open-source project that we do not maintain. Thus, we have to rely on the maintainers of Kro to
+  keep it up to date and fix bugs. However, the Kro maintainers are open for contributions and already accepted some
+  issues and contributions that we reported.
+* When the `ResourceGraphDefinition` is part of the OCM component version, the developers themselves must know and be
+  aware of the deployment-technology that is used to deploy the resources.
 
 ## Pros and Cons of the Options
 
