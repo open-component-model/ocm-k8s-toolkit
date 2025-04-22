@@ -23,11 +23,6 @@ if kind get clusters | grep -q kind; then
 fi
 
 script_dir="$(dirname "$0")"
-kind_config="${script_dir}/kind.yaml"
-if [ ! -f "${kind_config}" ]; then
-  echo "Kind config file not found: ${kind_config}"
-  exit 1
-fi
 image_registries="${script_dir}/image-registries.yaml"
 if [ ! -f "${image_registries}" ]; then
   echo "Image registry config file not found: ${image_registries}"
