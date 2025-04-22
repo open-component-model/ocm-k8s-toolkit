@@ -54,11 +54,7 @@ var _ = Describe("controller", func() {
 			It("should deploy the example "+example.Name(), func() {
 				r := require.New(t)
 
-				if example.Name() == "replication" || example.Name() == "kustomize-release" {
-					t.Skipf("skipping example %s", example.Name())
-				}
-
-				By("validating the example directory")
+				By("validating the example directory " + example.Name())
 				var files []string
 				Expect(filepath.WalkDir(
 					filepath.Join(examplesDir, example.Name()),
@@ -75,13 +71,14 @@ var _ = Describe("controller", func() {
 
 				r.Subsetf(files, reqFiles, "required files %s not found in example directory %s", reqFiles, example.Name())
 
-				By("creating and transferring a component version")
+				By("creating and transferring a component version for " + example.Name())
 				// If directory contains a private key, the component version is signed.
 				signingKey := ""
 				if slices.Contains(files, PrivateKey) {
 					signingKey = filepath.Join(examplesDir, example.Name(), PrivateKey)
 				}
 				Expect(utils.PrepareOCMComponent(
+					example.Name(),
 					filepath.Join(examplesDir, example.Name(), ComponentConstructor),
 					imageRegistry,
 					signingKey,
@@ -129,61 +126,5 @@ var _ = Describe("controller", func() {
 				}
 			})
 		}
-
-		//	It("should deploy a helm resource", func() {
-		//		// TODO: https://github.com/open-component-model/ocm-k8s-toolkit/issues/154
-		//		testdata := os.Getenv("TESTDATA_HELM")
-		//		if testdata == "" {
-		//			testdata = filepath.Join(os.Getenv("PROJECT_DIR"), "test/e2e/testdata/helm-release")
-		//		}
-
-		//		Expect(utils.PrepareOCMComponent(
-		//			filepath.Join(testdata, "component-constructor.yaml"),
-		//			imageRegistry,
-		//		)).To(Succeed())
-
-		//		By("creating and validating the custom resource OCM repository")
-		//		Expect(utils.DeployAndWaitForResource(filepath.Join(testdata, "ocm-base.yaml"), "condition=Ready", timeout))
-
-		//		By("creating and validating the custom resource for the release")
-		//		Expect(utils.DeployAndWaitForResource(filepath.Join(testdata, "flux-deployment.yaml"), "condition=Ready", timeout))
-
-		//		By("validating that the resource was deployed successfully through the helm-controller")
-		//		cmd := exec.Command("kubectl", "wait", "deployment.apps/helm-podinfo",
-		//			"--for", "condition=Available",
-		//			"--namespace", "default",
-		//			"--timeout", timeout,
-		//		)
-		//		_, err := utils.Run(cmd)
-		//		ExpectWithOffset(1, err).NotTo(HaveOccurred())
-		//	})
-
-		//	It("should deploy a kustomize resource", func() {
-		//		// TODO: https://github.com/open-component-model/ocm-k8s-toolkit/issues/154
-		//		testdata := os.Getenv("TESTDATA_KUSTOMIZE")
-		//		if testdata == "" {
-		//			testdata = filepath.Join(os.Getenv("PROJECT_DIR"), "test/e2e/testdata/kustomize-release")
-		//		}
-
-		//		Expect(utils.PrepareOCMComponent(
-		//			filepath.Join(testdata, "component-constructor.yaml"),
-		//			imageRegistry,
-		//		)).To(Succeed())
-
-		//		By("creating and validating the custom resource OCM repository")
-		//		Expect(utils.DeployAndWaitForResource(filepath.Join(testdata, "ocm-base.yaml"), "condition=Ready", timeout))
-
-		//		By("creating and validating the custom resource for the release")
-		//		Expect(utils.DeployAndWaitForResource(filepath.Join(testdata, "flux-deployment.yaml"), "condition=Ready", timeout))
-
-		//		By("validating that the resource was deployed successfully through the kustomize-controller")
-		//		cmd := exec.Command("kubectl", "wait", "deployment.apps/kustomize-podinfo",
-		//			"--for", "condition=Available",
-		//			"--namespace", "default",
-		//			"--timeout", timeout,
-		//		)
-		//		_, err := utils.Run(cmd)
-		//		ExpectWithOffset(1, err).NotTo(HaveOccurred())
-		//	})
 	})
 })

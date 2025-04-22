@@ -90,8 +90,8 @@ func WaitForResource(condition, timeout string, resource ...string) error {
 
 // PrepareOCMComponent creates an OCM component from a component-constructor file.
 // After creating the OCM component, the component is transferred to imageRegistry.
-func PrepareOCMComponent(ccPath, imageRegistry, signingKey string) error {
-	By("creating ocm component")
+func PrepareOCMComponent(name, ccPath, imageRegistry, signingKey string) error {
+	By("creating ocm component for " + name)
 	tmpDir := GinkgoT().TempDir()
 
 	ctfDir := filepath.Join(tmpDir, "ctf")
@@ -110,8 +110,7 @@ func PrepareOCMComponent(ccPath, imageRegistry, signingKey string) error {
 	}
 
 	if signingKey != "" {
-		By("signing ocm component")
-		cmdArgs = []string{}
+		By("signing ocm component for " + name)
 		cmd = exec.Command(
 			"ocm",
 			"sign",
@@ -128,9 +127,15 @@ func PrepareOCMComponent(ccPath, imageRegistry, signingKey string) error {
 		}
 	}
 
+	By("transferring ocm component for " + name)
 	// Note: The option '--overwrite' is necessary, when a digest of a resource is changed or unknown (which is the case
 	// in our default test)
-	cmd = exec.Command("ocm", "transfer", "ctf", "--copy-resources", "--overwrite", ctfDir, imageRegistry)
+	cmdArgs = []string{"transfer", "ctf", "--overwrite", ctfDir, imageRegistry}
+	if strings.Contains(name, "localisation") {
+		cmdArgs = append(cmdArgs, "--copy-resources")
+	}
+
+	cmd = exec.Command("ocm", cmdArgs...)
 	_, err = Run(cmd)
 	if err != nil {
 		return fmt.Errorf("could not transfer ocm component: %w", err)
