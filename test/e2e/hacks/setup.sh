@@ -6,6 +6,7 @@ cmds=(
   kubectl
   helm
   docker
+  flux
 )
 
 ## Check if all required commands are available
@@ -78,16 +79,24 @@ if [ "$(docker inspect -f='{{json .NetworkSettings.Networks.kind}}' "${reg_name}
   docker network connect "kind" "${reg_name}"
 fi
 
+# Make sure the image registry is resolvable using localhost
+if [[ ! -f /etc/hosts ]]; then
+  echo "No /etc/hosts file found. Required for localhost resolution to address the image registry."
+  exit 1
+fi
+
+if ! grep -q "${reg_name}" /etc/hosts; then
+  echo "adding '127.0.0.1 ${reg_name}' to /etc/hosts"
+  echo "127.0.0.1 ${reg_name}" | sudo tee -a /etc/hosts
+fi
+
 # Create private image registries in cluster
-kubectl apply -f "${image_registries}"
-kubectl wait pod -l app=protected-registry1 --for condition=Ready --timeout 5m
-kubectl wait pod -l app=protected-registry2 --for condition=Ready --timeout 5m
+kubectl apply -f "${image_registries}" || exit 1
+kubectl wait pod -l app=protected-registry1 --for condition=Ready --timeout 5m || exit 1
+kubectl wait pod -l app=protected-registry2 --for condition=Ready --timeout 5m || exit 1
 
 # Install flux operators
-flux install
+flux install || exit 1
 
 # Install kro operators
-helm install kro oci://ghcr.io/kro-run/kro/kro --namespace kro --create-namespace --version=0.2.2
-
-# Setup environment
-source "${script_dir}/.env"
+helm install kro oci://ghcr.io/kro-run/kro/kro --namespace kro --create-namespace --version=0.2.2 || exit 1
