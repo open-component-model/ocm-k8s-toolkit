@@ -37,19 +37,12 @@ const namespace = "ocm-k8s-toolkit-system"
 var (
 	// image registry that is used to push and pull images.
 	imageRegistry string
-	// internal image registry represents the same image registry but is required, when using an image registry inside
-	// a cluster.
-	internalImageRegistry string
-	// image reference is used to copy the original image from the example into the image registry and test the
-	// localization and configuration.
-	imageReference string
 	// timeout for waiting for kuberentes resources
 	timeout string
 	// controllerPodName is required to access the logs after the e2e tests
 	controllerPodName string
 	examplesDir       string
 	examples          []os.DirEntry
-	t                 *testing.T
 )
 
 func init() {
@@ -96,17 +89,7 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	}
 
 	imageRegistry = os.Getenv("IMAGE_REGISTRY")
-	if imageRegistry == "" {
-		// TODO: Adjust
-		imageRegistry = "http://image-registry:5000"
-	}
-
-	//clusterImageRegistry := os.Getenv("CLUSTER_IMAGE_REGISTRY")
-	//if clusterImageRegistry == "" {
-	//	clusterImageRegistry = imageRegistry
-	//	// TODO: Adjust
-	//	internalImageRegistry = "http://registry-external.default.svc.cluster.local:5001"
-	//}
+	Expect(imageRegistry).NotTo(BeEmpty(), "IMAGE_REGISTRY must be set")
 
 	By("Starting the operator", func() {
 		// projectimage stores the name of the image used in the example
@@ -201,9 +184,13 @@ var _ = AfterSuite(func(ctx SpecContext) {
 	logPath := os.Getenv("CONTROLLER_LOG_PATH")
 	if logPath != "" {
 		By("displays logs from the controller", func() {
-			cmdArgs := []string{"logs", "-n", namespace, controllerPodName}
-			if os.Getenv("LOG_PATH") != "" {
-				cmdArgs = append(cmdArgs, "--log-path", os.Getenv("LOG_PATH"))
+			cmdArgs := []string{
+				"logs",
+				"-n",
+				namespace,
+				controllerPodName,
+				"--log-path",
+				os.Getenv("CONTROLLER_LOG_PATH"),
 			}
 			cmd := exec.Command("kubectl", cmdArgs...)
 			_, err := utils.Run(cmd)

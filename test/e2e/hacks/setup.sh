@@ -22,6 +22,18 @@ if kind get clusters | grep -q kind; then
   exit 1
 fi
 
+script_dir="$(dirname "$0")"
+kind_config="${script_dir}/kind.yaml"
+if [ ! -f "${kind_config}" ]; then
+  echo "Kind config file not found: ${kind_config}"
+  exit 1
+fi
+image_registries="${script_dir}/image-registries.yaml"
+if [ ! -f "${image_registries}" ]; then
+  echo "Image registry config file not found: ${image_registries}"
+  exit 1
+fi
+
 # Create registry container unless it already exists
 ## Required to store the controller image and have a registry to transfer OCM component versions to test localisation.
 reg_name='image-registry'
@@ -40,29 +52,29 @@ cat <<EOF | kind create cluster --config=-
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
-- role: control-plane
-  extraPortMappings:
-  - containerPort: 31002
-    hostPort: 31002
-  - containerPort: 31003
-    hostPort: 31003
-- role: worker
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 31002
+        hostPort: 31002
+      - containerPort: 31003
+        hostPort: 31003
+  - role: worker
 containerdConfigPatches:
-- |-
-      [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
-        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."${reg_name}:${reg_port}"]
-          endpoint = ["http://${reg_name}:${reg_port}"]
-        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry-internal.default.svc.cluster.local:5002"]
-          endpoint = ["http://localhost:31002"]
-        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry-internal.default.svc.cluster.local:5003"]
-          endpoint = ["http://localhost:31003"]
-      [plugins."io.containerd.grpc.v1.cri".registry.configs]
-        [plugins."io.containerd.grpc.v1.cri".registry.configs."${reg_name}:${reg_port}".tls]
-          insecure_skip_verify = true
-        [plugins."io.containerd.grpc.v1.cri".registry.configs."registry-internal.default.svc.cluster.local:5002".tls]
-          insecure_skip_verify = true
-        [plugins."io.containerd.grpc.v1.cri".registry.configs."registry-internal.default.svc.cluster.local:5003".tls]
-          insecure_skip_verify = true
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
+      [plugins."io.containerd.grpc.v1.cri".registry.mirrors."${reg_name}:${reg_port}"]
+        endpoint = ["http://${reg_name}:${reg_port}"]
+      [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry-internal.default.svc.cluster.local:5002"]
+        endpoint = ["http://localhost:31002"]
+      [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry-internal.default.svc.cluster.local:5003"]
+        endpoint = ["http://localhost:31003"]
+    [plugins."io.containerd.grpc.v1.cri".registry.configs]
+      [plugins."io.containerd.grpc.v1.cri".registry.configs."${reg_name}:${reg_port}".tls]
+        insecure_skip_verify = true
+      [plugins."io.containerd.grpc.v1.cri".registry.configs."registry-internal.default.svc.cluster.local:5002".tls]
+        insecure_skip_verify = true
+      [plugins."io.containerd.grpc.v1.cri".registry.configs."registry-internal.default.svc.cluster.local:5003".tls]
+        insecure_skip_verify = true
 EOF
 
 # Connect the registry to the cluster network if not already connected.
@@ -72,7 +84,9 @@ if [ "$(docker inspect -f='{{json .NetworkSettings.Networks.kind}}' "${reg_name}
 fi
 
 # Create private image registries in cluster
-kubectl apply -f config/image-registry.yaml
+kubectl apply -f "${image_registries}"
+kubectl wait pod -l app=protected-registry1 --for condition=Ready --timeout 5m
+kubectl wait pod -l app=protected-registry2 --for condition=Ready --timeout 5m
 
 # Install flux operators
 flux install
@@ -81,10 +95,4 @@ flux install
 helm install kro oci://ghcr.io/kro-run/kro/kro --namespace kro --create-namespace --version=0.2.2
 
 # Setup environment
-export RESOURCE_TIMEOUT=5m
-export PROTECTED_REGISTRY_URL=http://localhost:31002
-export INTERNAL_PROTECTED_REGISTRY_URL=http://protected-registry1-internal.default.svc.cluster.local:5002
-export PROTECTED_REGISTRY_URL2=http://localhost:31003
-export INTERNAL_PROTECTED_REGISTRY_URL2=http://protected-registry2-internal.default.svc.cluster.local:5003
-
-# Start tests in root directory
+source "${script_dir}/.env"
