@@ -45,6 +45,8 @@ var (
 	examples          []os.DirEntry
 )
 
+// To create a test-case for every example in the examples directory, it is required to set the examples before the
+// test suite is started.
 func init() {
 	examplesDir = os.Getenv("EXAMPLES_DIR")
 	if examplesDir == "" {
