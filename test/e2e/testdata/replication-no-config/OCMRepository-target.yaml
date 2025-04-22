@@ -6,6 +6,6 @@ metadata:
 spec:
   interval: 2m0s
   repositorySpec:
-    baseUrl: http://registry-internal.default.svc.cluster.local:5001
+    baseUrl: http://image-registry:5000
     componentNameMapping: urlPath
     type: OCIRegistry

@@ -1,4 +1,4 @@
-# One more registry, now password-protected.
+# Password-protected registry (replication tests)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -37,7 +37,7 @@ spec:
           secret:
             secretName: registry-secret1
 ---
-# External port to the image registry. Can be reached from the host with 'localhost:31001'
+# External port to the image registry. Can be reached from the host with 'localhost:31002'
 apiVersion: v1
 kind: Service
 metadata:
@@ -52,7 +52,7 @@ spec:
   selector:
     app: protected-registry1
 ---
-# Internal port to the image registry. Can be reached from inside the cluster with 'http://protected-registry1-internal.default.svc.cluster.local:5001/'
+# Internal port to the image registry. Can be reached from inside the cluster with 'http://protected-registry1-internal.default.svc.cluster.local:5002/'
 apiVersion: v1
 kind: Service
 metadata:
@@ -114,7 +114,7 @@ spec:
           secret:
             secretName: registry-secret2
 ---
-# External port to the image registry. Can be reached from the host with 'localhost:31002'
+# External port to the image registry. Can be reached from the host with 'localhost:31003'
 apiVersion: v1
 kind: Service
 metadata:
@@ -129,7 +129,7 @@ spec:
   selector:
     app: protected-registry2
 ---
-# Internal port to the image registry. Can be reached from inside the cluster with 'http://protected-registry2-internal.default.svc.cluster.local:5002/'
+# Internal port to the image registry. Can be reached from inside the cluster with 'http://protected-registry2-internal.default.svc.cluster.local:5003/'
 apiVersion: v1
 kind: Service
 metadata:
