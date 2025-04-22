@@ -6,9 +6,10 @@ import (
 	"text/template"
 
 	"github.com/fluxcd/pkg/runtime/conditions"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
