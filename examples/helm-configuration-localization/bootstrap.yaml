@@ -14,7 +14,7 @@ kind: Component
 metadata:
   name: helm-configuration-localization-component
 spec:
-  component: ocm.software/ocm-k8s-toolkit/examples/helm-configuration-localisation
+  component: ocm.software/ocm-k8s-toolkit/examples/helm-configuration-localization
   repositoryRef:
     name: helm-configuration-localization-repository
   semver: 1.0.0

@@ -1,16 +1,16 @@
 apiVersion: kro.run/v1alpha1
 kind: ResourceGraphDefinition
 metadata:
-  name: helm-configuration-localisation
+  name: helm-configuration-localization
 spec:
   schema:
     apiVersion: v1alpha1
-    kind: HelmConfigurationLocalisation
+    kind: HelmConfigurationLocalization
     spec:
-      prefix: string | default="helm-configuration-localisation"
+      prefix: string | default="helm-configuration-localization"
       podinfo:
-        releaseName: string
         message: string | default="hello world"
+        releaseName: string | default="podinfo"
   resources:
     - id: resourceChart
       template:
@@ -70,7 +70,7 @@ spec:
             name: ${ocirepository.metadata.name}
             namespace: default
           values:
-            # Localisation
+            # Localization
             image:
               repository: ${resourceImage.status.reference.registry}/${resourceImage.status.reference.repository}
               tag: ${resourceImage.status.reference.reference}

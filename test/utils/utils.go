@@ -130,9 +130,15 @@ func PrepareOCMComponent(name, ccPath, imageRegistry, signingKey string) error {
 	By("transferring ocm component for " + name)
 	// Note: The option '--overwrite' is necessary, when a digest of a resource is changed or unknown (which is the case
 	// in our default test)
-	cmdArgs = []string{"transfer", "ctf", "--overwrite", ctfDir, imageRegistry}
-	if strings.Contains(name, "localisation") {
-		cmdArgs = append(cmdArgs, "--copy-resources")
+	cmdArgs = []string{
+		"transfer",
+		"ctf",
+		"--overwrite",
+		"--copy-resources",
+		"--omit-access-types",
+		"gitHub",
+		ctfDir,
+		imageRegistry,
 	}
 
 	cmd = exec.Command("ocm", cmdArgs...)

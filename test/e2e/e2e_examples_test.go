@@ -69,10 +69,10 @@ var _ = Describe("controller", func() {
 						return nil
 					})).To(Succeed())
 
-				r.Subsetf(files, reqFiles, "required files %s not found in example directory %s", reqFiles, example.Name())
+				r.Subsetf(files, reqFiles, "required files %s not found in example directory %q", reqFiles, example.Name())
 
 				By("creating and transferring a component version for " + example.Name())
-				// If directory contains a private key, the component version is signed.
+				// If directory contains a private key, the component version must signed.
 				signingKey := ""
 				if slices.Contains(files, PrivateKey) {
 					signingKey = filepath.Join(examplesDir, example.Name(), PrivateKey)
@@ -109,9 +109,9 @@ var _ = Describe("controller", func() {
 					"pod", "-l", "app.kubernetes.io/name="+example.Name()+"-podinfo",
 				)).To(Succeed())
 
-				switch example.Name() {
-				case "helm-configuration-localisation":
-					By("validating the localisation")
+				// Check for configuration and localization
+				if strings.HasSuffix(example.Name(), "-configuration-localization") {
+					By("validating the localization")
 					Expect(utils.CompareResourceField(
 						"'{.items[0].spec.containers[0].image}'",
 						strings.TrimLeft(imageRegistry, "http://")+"/stefanprodan/podinfo:6.7.1",

@@ -31,7 +31,7 @@ if [ ! -f "${image_registries}" ]; then
 fi
 
 # Create registry container unless it already exists
-## Required to store the controller image and have a registry to transfer OCM component versions to test localisation.
+## Required to store the controller image and have a registry to transfer OCM component versions to test localization.
 reg_name='image-registry'
 reg_port='5000'
 if [ "$(docker inspect -f '{{.State.Running}}' "${reg_name}" 2>/dev/null || true)" != 'true' ]; then

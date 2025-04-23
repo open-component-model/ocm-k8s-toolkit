@@ -9,7 +9,7 @@ spec:
     spec:
       prefix: string | default="kustomize-simple"
   resources:
-    - id: kustomizationResource
+    - id: resourceKustomization
       template:
         apiVersion: delivery.ocm.software/v1alpha1
         kind: Resource
@@ -32,9 +32,9 @@ spec:
           namespace: default
         spec:
           interval: 5m
-          url: ${kustomizationResource.status.reference.registry}/${kustomizationResource.status.reference.repository}
+          url: ${resourceKustomization.status.reference.registry}/${resourceKustomization.status.reference.repository}
           ref:
-            commit: ${kustomizationResource.status.reference.reference}
+            commit: ${resourceKustomization.status.reference.reference}
     - id: kustomization
       template:
         apiVersion: kustomize.toolkit.fluxcd.io/v1
