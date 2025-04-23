@@ -26,7 +26,6 @@ import (
 	"ocm.software/ocm/api/utils/mime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -382,7 +381,6 @@ consumers:
 		utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 		utilruntime.Must(v1alpha1.AddToScheme(scheme))
-		utilruntime.Must(artifactv1.AddToScheme(scheme))
 
 		BeforeEach(func() {
 			bldr = fake.NewClientBuilder()

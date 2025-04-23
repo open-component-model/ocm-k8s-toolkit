@@ -10,6 +10,10 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+OS ?= $(shell go env GOOS)
+ARCH ?= $(shell go env GOARCH)
+
+
 # CONTAINER_TOOL defines the container tool to be used for building images.
 # Be aware that the target commands are only tested with Docker which is
 # scaffolded by default. However, you might want to replace it to use other
@@ -64,7 +68,7 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate envtest ## Run tests.
+test: manifests generate envtest zot-registry ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 # Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
@@ -73,12 +77,12 @@ test-e2e:
 	PROJECT_DIR=$(REPOSITORY_ROOT) go test ./test/e2e/ -v -timeout 30m -ginkgo.v
 
 .PHONY: lint
-lint: golangci-lint ## Run golangci-lint linter
-	$(GOLANGCI_LINT) run
+lint: ## Run golangci-lint linter
+	go tool golangci-lint run
 
 .PHONY: lint-fix
-lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
-	$(GOLANGCI_LINT) run --fix
+lint-fix: ## Run golangci-lint linter and perform fixes
+	go tool golangci-lint run --fix
 
 ##@ Build
 
@@ -152,7 +156,7 @@ deploy: deploy-cert-manager manifests kustomize ## Deploy controller to the K8s 
 	$(call set-images)
 	$(KUSTOMIZE) build config/default-zot-https | $(KUBECTL) apply -f -
 
-# Undeploy target undeploys the controller, its zot regostry and related certificates. 
+# Undeploy target undeploys the controller, its zot registry and related certificates.
 # However, it does not undeploy the cert-manager, which might still be needed by other applications in the cluster.
 # If you wish to undeploy cert manager as well, execute 'make undeploy-cert-manager' in addition.
 .PHONY: undeploy
@@ -171,13 +175,12 @@ KUBECTL ?= kubectl
 KUSTOMIZE ?= $(LOCALBIN)/kustomize-$(KUSTOMIZE_VERSION)
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
-GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
+ZOT_BINARY ?= $(LOCALBIN)/zot-registry
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.1
 CONTROLLER_TOOLS_VERSION ?= v0.17.1
 ENVTEST_VERSION ?= release-0.18
-GOLANGCI_LINT_VERSION ?= v1.61.0
 
 ## ZOT OCI Registry
 ZOT_VERSION ?= v2.1.2
@@ -213,10 +216,13 @@ deploy-cert-manager: ## Deploy cert-manager to the K8s cluster specified in ~/.k
 undeploy-cert-manager: ## Undeploy cert-manager from the K8s cluster specified in ~/.kube/config.
 	$(KUBECTL) delete --ignore-not-found=$(IGNORE_NOT_FOUND) -f $(CERT-MANAGER_YAML)
 
-.PHONY: golangci-lint
-golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
-$(GOLANGCI_LINT): $(LOCALBIN)
-	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,${GOLANGCI_LINT_VERSION})
+.PHONY: zot-registry
+zot-registry: $(LOCALBIN) ## Download zot registry binary locally if necessary.
+ifeq (, $(shell which $(ZOT_BINARY)))
+	wget "https://github.com/project-zot/zot/releases/download/$(ZOT_VERSION)/zot-$(OS)-$(ARCH)-minimal" \
+		-O $(ZOT_BINARY) \
+		&& chmod u+x $(ZOT_BINARY)
+endif
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary (ideally with version)

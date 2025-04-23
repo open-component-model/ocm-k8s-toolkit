@@ -33,9 +33,8 @@ var _ = Describe("Replication Controller", func() {
 		// podinfo is preferred, because it has an image, which can either be copied or not,
 		// depending on provided transfer options.
 		const (
-			externalRegistry       = "ghcr.io/open-component-model" // "ghcr.io/open-component-model/ocm"
-			ocmCompName            = "ocm.software/podinfo"         // "ocm.software/ocmcli"
-			ocmCompVersion         = "6.6.2"                        // "0.17.0"
+			ocmCompName            = "ocm.software/podinfo" // "ocm.software/ocmcli"
+			ocmCompVersion         = "6.6.2"                // "0.17.0"
 			podinfoImage           = "stefanprodan/podinfo:6.6.2"
 			podinfoImgResourceName = "image"
 			ocmCheckOptFailOnError = "--fail-on-error"

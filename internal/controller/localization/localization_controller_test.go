@@ -3,30 +3,29 @@ package localization
 import (
 	"bytes"
 	"context"
-	"os"
+	"fmt"
 	"path/filepath"
 	"text/template"
 
 	_ "embed"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
-
+	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/mandelsoft/vfs/pkg/memoryfs"
 	"github.com/mandelsoft/vfs/pkg/osfs"
 	"github.com/mandelsoft/vfs/pkg/projectionfs"
 	"github.com/mandelsoft/vfs/pkg/vfs"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"ocm.software/ocm/api/utils/tarutils"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	ocmbuilder "ocm.software/ocm/api/helper/builder"
 	environment "ocm.software/ocm/api/helper/env"
+	"ocm.software/ocm/api/utils/tarutils"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
@@ -46,49 +45,96 @@ var (
 )
 
 const (
-	Namespace         = "test-namespace"
-	RepositoryObj     = "test-repository"
-	ComponentObj      = "test-component"
-	CfgResourceObj    = "cfg-test-util"
-	TargetResourceObj = "target-test-util"
+	RepositoryObj     = "localisation-repository"
+	ComponentObj      = "localisation-component"
+	CfgResourceObj    = "cfg-localisation-util"
+	TargetResourceObj = "target-localisation-util"
 	Localization      = "test-localization"
 )
 
 var _ = Describe("Localization Controller", func() {
 	var (
-		tmp string
-		env *ocmbuilder.Builder
+		tmp, namespaceName string
+		env                *ocmbuilder.Builder
 
+		component      *v1alpha1.Component
 		targetResource *v1alpha1.Resource
 		cfgResource    *v1alpha1.Resource
 	)
 
 	BeforeEach(func() {
 		tmp = GinkgoT().TempDir()
-		testfs, err := projectionfs.New(osfs.New(), tmp)
+		testFs, err := projectionfs.New(osfs.New(), tmp)
 		Expect(err).ToNot(HaveOccurred())
-		env = ocmbuilder.NewBuilder(environment.FileSystem(testfs))
+		env = ocmbuilder.NewBuilder(environment.FileSystem(testFs))
 		DeferCleanup(env.Cleanup)
 	})
 
 	BeforeEach(func(ctx SpecContext) {
-		By("creating namespace object")
+		namespaceName = test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
 		namespace := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: Namespace,
+				Name: namespaceName,
 			},
 		}
 		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
 	})
 
-	It("should localize an artifact from a resource based on a config supplied in a sibling resource", func(ctx SpecContext) {
-		component := test.SetupComponentWithDescriptorList(ctx,
+	AfterEach(func(ctx SpecContext) {
+		By("deleting the component")
+		Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+		Eventually(func(ctx context.Context) error {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+			return fmt.Errorf("expected not-found error, but got none")
+		}, "15s").WithContext(ctx).Should(Succeed())
+
+		By("deleting the target resource")
+		Expect(k8sClient.Delete(ctx, targetResource)).To(Succeed())
+		Eventually(func(ctx context.Context) error {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(targetResource), targetResource)
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+			return fmt.Errorf("expected not-found error, but got none")
+		}, "15s").WithContext(ctx).Should(Succeed())
+
+		By("deleting the config resource")
+		Expect(k8sClient.Delete(ctx, cfgResource)).To(Succeed())
+		Eventually(func(ctx context.Context) error {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(cfgResource), cfgResource)
+			if errors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+			return fmt.Errorf("expected not-found error, but got none")
+		}, "15s").WithContext(ctx).Should(Succeed())
+
+		locResource := &v1alpha1.LocalizedResourceList{}
+		Expect(k8sClient.List(ctx, locResource, client.InNamespace(namespaceName))).To(Succeed())
+		Expect(locResource.Items).To(HaveLen(0))
+	})
+
+	It("should localize an OCI artifact from a resource based on a config supplied in a sibling resource", func(ctx SpecContext) {
+		component = test.SetupComponentWithDescriptorList(ctx,
 			ComponentObj,
-			Namespace,
+			namespaceName,
 			descriptorListYAML,
 			&test.MockComponentOptions{
-				BasePath: tmp,
-				Strg:     strg,
+				Registry: registry,
 				Client:   k8sClient,
 				Recorder: recorder,
 				Info: v1alpha1.ComponentInfo{
@@ -99,78 +145,74 @@ var _ = Describe("Localization Controller", func() {
 				Repository: RepositoryObj,
 			},
 		)
-		DeferCleanup(func(ctx SpecContext) {
-			Expect(k8sClient.Delete(ctx, component, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
-		})
 
-		var err error
 		targetResource = test.SetupMockResourceWithData(ctx,
 			TargetResourceObj,
-			Namespace,
+			namespaceName,
 			&test.MockResourceOptions{
-				BasePath: tmp,
 				DataPath: filepath.Join("testdata", "deployment-instruction-helm"),
 				ComponentRef: v1alpha1.ObjectKey{
-					Namespace: Namespace,
+					Namespace: namespaceName,
 					Name:      ComponentObj,
 				},
-				Strg:     strg,
+				Registry: registry,
 				Clnt:     k8sClient,
 				Recorder: recorder,
 			},
 		)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func(ctx SpecContext) {
-			Expect(k8sClient.Delete(ctx, targetResource, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
-		})
+
 		cfgResource = test.SetupMockResourceWithData(ctx,
 			CfgResourceObj,
-			Namespace,
+			namespaceName,
 			&test.MockResourceOptions{
-				BasePath: tmp,
-				Data:     bytes.NewReader(configYAML),
+				Data: bytes.NewReader(configYAML),
 				ComponentRef: v1alpha1.ObjectKey{
-					Namespace: Namespace,
+					Namespace: namespaceName,
 					Name:      ComponentObj,
 				},
-				Strg:     strg,
+				Registry: registry,
 				Clnt:     k8sClient,
 				Recorder: recorder,
 			},
 		)
-		DeferCleanup(func(ctx SpecContext) {
-			Expect(k8sClient.Delete(ctx, cfgResource, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
-		})
 
-		localization := SetupLocalizedResource(ctx, map[string]string{
-			"Namespace":          Namespace,
+		setupLocalizedResource(ctx, map[string]string{
+			"Namespace":          namespaceName,
 			"Name":               Localization,
 			"TargetResourceName": targetResource.Name,
 			"ConfigResourceName": cfgResource.Name,
 		})
-		DeferCleanup(func(ctx SpecContext) {
-			Expect(k8sClient.Delete(ctx, localization, client.PropagationPolicy(metav1.DeletePropagationForeground))).To(Succeed())
-		})
 
-		Eventually(Object(localization), "15s").Should(
-			HaveField("Status.ArtifactRef.Name", Not(BeEmpty())))
+		By("checking that the resource has been reconciled successfully")
+		localization := &v1alpha1.LocalizedResource{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      Localization,
+				Namespace: namespaceName,
+			},
+		}
+		Eventually(func(ctx context.Context) error {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(localization), localization)
+			if err != nil {
+				return err
+			}
 
-		art := &artifactv1.Artifact{}
-		art.Name = localization.Status.ArtifactRef.Name
-		art.Namespace = localization.Namespace
+			if !conditions.IsReady(localization) {
+				return fmt.Errorf("expected localization %s to be ready, but it was not", localization.GetName())
+			}
 
-		Eventually(Object(art), "5s").Should(HaveField("Spec.URL", Not(BeEmpty())))
+			return nil
+		}, "15s").WithContext(ctx).Should(Succeed())
 
-		localized := strg.LocalPath(art)
-		Expect(localized).To(BeAnExistingFile())
+		Eventually(komega.Object(localization), "15s").Should(
+			HaveField("Status.OCIArtifact", Not(BeNil())))
+
+		repository, err := registry.NewRepository(ctx, localization.GetOCIRepository())
+		Expect(err).ToNot(HaveOccurred())
+		data, err := repository.FetchArtifact(ctx, localization.GetManifestDigest())
+		Expect(err).ToNot(HaveOccurred())
 
 		memFs := vfs.New(memoryfs.New())
-		localizedArchiveData, err := os.OpenFile(localized, os.O_RDONLY, 0o600)
-		Expect(err).ToNot(HaveOccurred())
-		DeferCleanup(func() {
-			Expect(localizedArchiveData.Close()).To(Succeed())
-		})
-		Expect(tarutils.UnzipTarToFs(memFs, localizedArchiveData)).To(Succeed())
+		Expect(tarutils.UnzipTarToFs(memFs, bytes.NewReader(data))).To(Succeed())
 
 		valuesData, err := memFs.ReadFile("values.yaml")
 		Expect(err).ToNot(HaveOccurred())
@@ -180,18 +222,23 @@ var _ = Describe("Localization Controller", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(deploymentData).To(BeEquivalentTo(replacedDeploymentYAML))
 
+		By("delete resources manually")
+		Expect(k8sClient.Delete(ctx, localization)).To(Succeed())
+		Eventually(func(ctx context.Context) bool {
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(localization), localization)
+			return errors.IsNotFound(err)
+		}, "15s").WithContext(ctx).Should(BeTrue())
 	})
 })
 
-func SetupLocalizedResource(ctx context.Context, data map[string]string) *v1alpha1.LocalizedResource {
+func setupLocalizedResource(ctx context.Context, data map[string]string) {
 	localizationTemplate, err := template.New("localization").Parse(localizationTemplateKustomizePatch)
 	Expect(err).ToNot(HaveOccurred())
 	var ltpl bytes.Buffer
 	Expect(localizationTemplate.ExecuteTemplate(&ltpl, "localization", data)).To(Succeed())
 	localization := &v1alpha1.LocalizedResource{}
-	serializer := serializer.NewCodecFactory(k8sClient.Scheme()).UniversalDeserializer()
-	_, _, err = serializer.Decode(ltpl.Bytes(), nil, localization)
+	serializerFactory := serializer.NewCodecFactory(k8sClient.Scheme()).UniversalDeserializer()
+	_, _, err = serializerFactory.Decode(ltpl.Bytes(), nil, localization)
 	Expect(err).To(Not(HaveOccurred()))
 	Expect(k8sClient.Create(ctx, localization)).To(Succeed())
-	return localization
 }

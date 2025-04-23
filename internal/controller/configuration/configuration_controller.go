@@ -23,20 +23,19 @@ import (
 	"os"
 
 	"github.com/fluxcd/pkg/runtime/patch"
-	"github.com/openfluxcd/controller-manager/storage"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	artifactv1 "github.com/openfluxcd/artifact/api/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	configurationclient "github.com/open-component-model/ocm-k8s-toolkit/internal/controller/configuration/client"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/artifact"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/compression"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/index"
+	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ociartifact"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
 )
@@ -50,8 +49,6 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.ConfiguredResource{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// Update when the owned artifact containing the configured data changes
-		Owns(&artifactv1.Artifact{}).
 		// Update when a resource specified as target changes
 		Watches(&v1alpha1.Resource{}, onTargetChange).
 		Watches(&v1alpha1.LocalizedResource{}, onTargetChange).
@@ -69,8 +66,8 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 // Reconciler reconciles a ConfiguredResource object.
 type Reconciler struct {
 	*ocm.BaseReconciler
-	*storage.Storage
 	ConfigClient configurationclient.Client
+	Registry     *ociartifact.Registry
 }
 
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=configuredresources,verbs=get;list;watch;create;update;patch;delete
@@ -85,6 +82,8 @@ type Reconciler struct {
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
+	logger := log.FromContext(ctx)
+
 	configuration := &v1alpha1.ConfiguredResource{}
 	if err := r.Get(ctx, req.NamespacedName, configuration); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -94,23 +93,30 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, nil
 	}
 
-	if !configuration.GetDeletionTimestamp().IsZero() {
-		// TODO: This is a temporary solution until a artifact-reconciler is written to handle the deletion of artifacts
-		if err := ocm.RemoveArtifactForCollectable(ctx, r.Client, r.Storage, configuration); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to remove artifact: %w", err)
+	if configuration.GetDeletionTimestamp() != nil {
+		if err := ociartifact.DeleteForObject(ctx, r.Registry, configuration); err != nil {
+			return ctrl.Result{}, err
 		}
 
-		if removed := controllerutil.RemoveFinalizer(configuration, v1alpha1.ArtifactFinalizer); removed {
+		if updated := controllerutil.RemoveFinalizer(configuration, v1alpha1.ArtifactFinalizer); updated {
 			if err := r.Update(ctx, configuration); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 			}
+
+			return ctrl.Result{}, nil
 		}
 
-		return ctrl.Result{}, nil
+		logger.Info("configuration is being deleted and still has existing finalizers", "name", configuration.GetName())
+
+		return ctrl.Result{Requeue: true}, nil
 	}
 
-	if added := controllerutil.AddFinalizer(configuration, v1alpha1.ArtifactFinalizer); added {
-		return ctrl.Result{Requeue: true}, r.Update(ctx, configuration)
+	if updated := controllerutil.AddFinalizer(configuration, v1alpha1.ArtifactFinalizer); updated {
+		if err := r.Update(ctx, configuration); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
+		}
+
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	return r.reconcileWithStatusUpdate(ctx, configuration)
@@ -131,12 +137,9 @@ func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, localization
 	return result, nil
 }
 
+//nolint:funlen // function length is acceptable
 func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha1.ConfiguredResource) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-
-	if err := r.Storage.ReconcileStorage(ctx, configuration); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to reconcile storage: %w", err)
-	}
 
 	if configuration.Spec.Target.Namespace == "" {
 		configuration.Spec.Target.Namespace = configuration.Namespace
@@ -160,28 +163,48 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 		return ctrl.Result{}, fmt.Errorf("failed to fetch cfg: %w", err)
 	}
 
-	digest, revision, filename, err := artifact.UniqueIDsForArtifactContentCombination(cfg, target)
+	combinedDigest, revision, _, err := ociartifact.UniqueIDsForArtifactContentCombination(cfg, target)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.UniqueIDGenerationFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to map digest from config to target: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to map combinedDigest from config to target: %w", err)
 	}
 
-	logger.V(1).Info("verifying configuration", "digest", digest, "revision", revision)
-	hasValidArtifact, err := ocm.ValidateArtifactForCollectable(
-		ctx,
-		r.Client,
-		r.Storage,
-		configuration,
-		digest,
-	)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to check if artifact is valid: %w", err)
+	// TODO: we cannot use `combinedDigest` to determine a change as the combinedDigest calculation is incorrect
+	//   (it takes a k8s object with managed fields that change on every update).
+	// See https://github.com/open-component-model/ocm-k8s-toolkit/issues/150
+
+	// Check if an OCI artifact of the configuration resource already exists and if it holds the same calculated
+	// combinedDigest from above. If so, we can skip the configuration process as the target is already configured.
+	logger.V(1).Info("verifying configuration", "combinedDigest", combinedDigest, "revision", revision)
+
+	hasValidArtifact := false
+
+	if configuration.GetOCIArtifact() != nil {
+		ociRepository, err := r.Registry.NewRepository(ctx, configuration.GetOCIRepository())
+		if err != nil {
+			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.CreateOCIRepositoryFailedReason, err.Error())
+
+			return ctrl.Result{}, err
+		}
+
+		exists, err := ociRepository.ExistsArtifact(ctx, configuration.GetManifestDigest())
+		if err != nil {
+			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.OCIRepositoryExistsFailedReason, err.Error())
+
+			return ctrl.Result{}, err
+		}
+
+		if exists {
+			hasValidArtifact = combinedDigest == configuration.GetBlobDigest()
+		}
 	}
 
-	var configured string
+	// If no valid OCI artifact is present (because it never existed or is just not valid), we will configure the target,
+	// create an OCI artifact and return.
+	//nolint:nestif // Ignore as it is not that complex.
 	if !hasValidArtifact {
-		logger.V(1).Info("configuring", "digest", digest, "revision", revision)
+		logger.V(1).Info("configuring", "combinedDigest", combinedDigest, "revision", revision)
 		basePath, err := os.MkdirTemp("", "configured-")
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to create temporary directory to perform configuration: %w", err)
@@ -192,43 +215,69 @@ func (r *Reconciler) reconcileExists(ctx context.Context, configuration *v1alpha
 			}
 		}()
 
-		if configured, err = Configure(ctx, r.ConfigClient, cfg, target, basePath); err != nil {
+		configured, err := Configure(ctx, r.ConfigClient, cfg, target, basePath)
+		if err != nil {
 			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.ConfigurationFailedReason, err.Error())
 
 			return ctrl.Result{}, fmt.Errorf("failed to configure: %w", err)
 		}
+
+		// Create archive from configured directory and gzip it.
+		dataTGZ, err := compression.CreateTGZFromPath(configured)
+		if err != nil {
+			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.CreateTGZFailedReason, err.Error())
+
+			return ctrl.Result{}, fmt.Errorf("failed to create TGZ from path: %w", err)
+		}
+
+		repositoryName, err := ociartifact.CreateRepositoryName(combinedDigest)
+		if err != nil {
+			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.CreateOCIRepositoryNameFailedReason, err.Error())
+
+			return ctrl.Result{}, fmt.Errorf("failed to create repository name: %w", err)
+		}
+
+		repository, err := r.Registry.NewRepository(ctx, repositoryName)
+		if err != nil {
+			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.ConfigurationFailedReason, err.Error())
+
+			return ctrl.Result{}, fmt.Errorf("failed to configure: %w", err)
+		}
+
+		// TODO: Find out which version should be used to tag the OCI artifact.
+		//  Things to consider:
+		//   - HelmRelease (FluxCD) requires the OCI artifact to have the same tag as the helm chart itself
+		//     - But how to get the helm chart version? (User input, parse from content)
+		// See https://github.com/open-component-model/ocm-k8s-toolkit/issues/151
+		tag := "latest"
+		manifestDigest, err := repository.PushArtifact(ctx, tag, dataTGZ)
+		if err != nil {
+			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.ConfigurationFailedReason, err.Error())
+
+			return ctrl.Result{}, fmt.Errorf("failed to configure: %w", err)
+		}
+
+		// Delete previous artifact version, if any.
+		err = ociartifact.DeleteIfDigestMismatch(ctx, r.Registry, configuration, manifestDigest)
+		if err != nil {
+			status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.DeleteOCIArtifactFailedReason, err.Error())
+
+			return ctrl.Result{}, err
+		}
+
+		// We use the combinedDigest calculated above for the blob-info combinedDigest, so we can compare for any changes
+		configuration.Status.OCIArtifact = &v1alpha1.OCIArtifactInfo{
+			Repository: repositoryName,
+			Digest:     manifestDigest.String(),
+			Blob: v1alpha1.BlobInfo{
+				Digest: combinedDigest,
+				Tag:    tag,
+				Size:   int64(len(dataTGZ)),
+			},
+		}
 	}
 
-	configuration.Status.Digest = digest
-
-	if err := r.Storage.ReconcileArtifact(
-		ctx,
-		configuration,
-		revision,
-		configured,
-		filename,
-		func(artifact *artifactv1.Artifact, dir string) error {
-			if !hasValidArtifact {
-				// Archive directory to storage
-				if err := r.Storage.Archive(artifact, dir, nil); err != nil {
-					return fmt.Errorf("unable to archive artifact to storage: %w", err)
-				}
-			}
-
-			configuration.Status.ArtifactRef = &v1alpha1.ObjectKey{
-				Name:      artifact.Name,
-				Namespace: artifact.Namespace,
-			}
-
-			return nil
-		},
-	); err != nil {
-		status.MarkNotReady(r.EventRecorder, configuration, v1alpha1.ReconcileArtifactFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to reconcile artifact: %w", err)
-	}
-
-	logger.Info("configuration successful", "artifact", configuration.Status.ArtifactRef)
+	logger.Info("configuration successful", "OCIArtifact", configuration.GetOCIArtifact())
 	status.MarkReady(r.EventRecorder, configuration, "configured successfully")
 
 	return ctrl.Result{RequeueAfter: configuration.Spec.Interval.Duration}, nil

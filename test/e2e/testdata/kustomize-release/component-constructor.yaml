@@ -9,18 +9,4 @@ components:
         version: "1.0.0"
         input:
           type: dir
-          path: {{ .KustomizationPath }}
-      - name: kustomize-localization-config
-        type: ocm.localization
-        input:
-          type: file
-          path: {{ .LocalizationConfigPath }}
-          mediaType: text/plain
-      - name: image
-        type: ociArtifact
-        version: "1.0.0"
-        options:
-          skipDigestGeneration: true
-        access:
-          type: ociArtifact
-          imageReference: {{ .ImageReference }}
+          path: ./kustomization
