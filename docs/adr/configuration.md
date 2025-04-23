@@ -426,7 +426,7 @@ spec:
 
 The value would be used to find the relevant exchange value in the referenced
 configuration object as well. Be that a value file or a ConfigMap it isn't
-relevent.
+relevant.
 
 _Note_: We might be able to even re-name this object to something like
 MutationConfig that would perform either operation based on the referencing
