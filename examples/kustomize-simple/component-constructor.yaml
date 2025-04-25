@@ -9,8 +9,6 @@ components:
         version: "1.0.0"
         access:
           type: gitHub
-          # TODO: Replace this with our own kustomization (Problem: Chicken-Egg problem for testing as the commit is
-          #       required).
           repoUrl: https://github.com/stefanprodan/podinfo
           commit: b3396adb98a6a0f5eeedd1a600beaf5e954a1f28
       - name: kro-rgd

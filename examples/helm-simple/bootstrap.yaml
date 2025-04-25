@@ -4,7 +4,7 @@ metadata:
   name: helm-simple-repository
 spec:
   repositorySpec:
-    # TODO: Adjust for our test environment
+    # Adjust to your OCM repository
     baseUrl: http://image-registry:5000
     type: OCIRegistry
   interval: 10m
