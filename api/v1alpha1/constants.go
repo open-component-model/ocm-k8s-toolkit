@@ -34,6 +34,10 @@ const (
 
 // Finalizers for the controllers.
 const (
-	ComponentFinalizer     = "finalizers.ocm.software/component"
-	OcmRepositoryFinalizer = "finalizers.ocm.software/ocmrepository"
+	// ComponentFinalizer makes sure that the component is only deleted when it is no longer referenced by any other
+	// resource.
+	ComponentFinalizer = "finalizers.ocm.software/component"
+	// OCMRepositoryFinalizer makes sure that the OCM repository is only deleted when it is no longer referenced by any
+	// other component.
+	OCMRepositoryFinalizer = "finalizers.ocm.software/ocmrepository"
 )

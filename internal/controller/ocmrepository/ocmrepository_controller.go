@@ -64,7 +64,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}(ctx)
 
 	if !ocmRepo.GetDeletionTimestamp().IsZero() {
-		if !controllerutil.ContainsFinalizer(ocmRepo, v1alpha1.OcmRepositoryFinalizer) {
+		if !controllerutil.ContainsFinalizer(ocmRepo, v1alpha1.OCMRepositoryFinalizer) {
 			return ctrl.Result{}, nil
 		}
 
@@ -72,7 +72,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	// AddFinalizer if not present already.
-	if added := controllerutil.AddFinalizer(ocmRepo, v1alpha1.OcmRepositoryFinalizer); added {
+	if added := controllerutil.AddFinalizer(ocmRepo, v1alpha1.OCMRepositoryFinalizer); added {
 		err := r.Update(ctx, ocmRepo)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
@@ -186,7 +186,7 @@ func (r *Reconciler) reconcileDeleteRepository(ctx context.Context, obj *v1alpha
 		return ctrl.Result{}, fmt.Errorf("failed to remove repository referencing components: %s", strings.Join(names, ","))
 	}
 
-	if updated := controllerutil.RemoveFinalizer(obj, v1alpha1.OcmRepositoryFinalizer); updated {
+	if updated := controllerutil.RemoveFinalizer(obj, v1alpha1.OCMRepositoryFinalizer); updated {
 		if err := r.Update(ctx, obj); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 		}
