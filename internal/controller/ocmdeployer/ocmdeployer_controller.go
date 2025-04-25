@@ -89,9 +89,10 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 		Complete(r)
 }
 
-func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+//nolint:funlen // we do not want to cut the function at arbitrary points
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("reconciling ocmdeployer")
+	logger.Info("starting reconciliation")
 
 	ocmDeployer := &deliveryv1alpha1.OCMDeployer{}
 	if err := r.Get(ctx, req.NamespacedName, ocmDeployer); err != nil {
@@ -99,6 +100,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	patchHelper := patch.NewSerialPatcher(ocmDeployer, r.Client)
+	defer func(ctx context.Context) {
+		err = status.UpdateStatus(ctx, patchHelper, ocmDeployer, r.EventRecorder, ocmDeployer.GetRequeueAfter(), err)
+	}(ctx)
 
 	if ocmDeployer.Spec.Suspend {
 		return ctrl.Result{}, nil
@@ -110,6 +114,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	octx := ocmctx.New(datacontext.MODE_EXTENDED)
 	session := ocmctx.NewSession(datacontext.NewSession())
+	defer func() {
+		err = octx.Finalize()
+	}()
+
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
 
@@ -117,31 +125,30 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), ocmDeployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
 
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get effective config: %w", err)
 	}
 
 	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs)
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), ocmDeployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
 
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to configure context: %w", err)
 	}
 
-	resNamespace := ocmDeployer.Spec.ResourceRef.Namespace
-	if resNamespace == "" {
-		// TODO: Check this out
-		resNamespace = "default"
+	resourceNamespace := ocmDeployer.Spec.ResourceRef.Namespace
+	if resourceNamespace == "" {
+		resourceNamespace = ocmDeployer.GetNamespace()
 	}
 
 	resource, err := util.GetReadyObject[deliveryv1alpha1.Resource, *deliveryv1alpha1.Resource](ctx, r.Client, client.ObjectKey{
-		Namespace: resNamespace,
+		Namespace: resourceNamespace,
 		Name:      ocmDeployer.Spec.ResourceRef.Name,
 	})
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.ResourceIsNotReadyReason, "Resource is not ready")
+		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.ResourceIsNotAvailable, err.Error())
 
 		if errors.Is(err, util.NotReadyError{}) || errors.Is(err, util.DeletionError{}) {
-			logger.V(1).Info(err.Error())
+			logger.Info("stop reconciling as the resource is not available", "error", err.Error())
 
 			// return no requeue as we watch the object for changes anyway
 			return ctrl.Result{}, nil
@@ -151,7 +158,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	// Download the resource
-	cv, err := ocm.GetComponentVersion(octx, session, resource.Status.Component.RepositorySpec.Raw, resource.Status.Component.Component, resource.Status.Component.Version)
+	cv, err := ocm.GetComponentVersion(
+		octx,
+		session,
+		resource.Status.Component.RepositorySpec.Raw,
+		resource.Status.Component.Component,
+		resource.Status.Component.Version,
+	)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
 
@@ -164,9 +177,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	a := cv.GetDescriptor()
-	resourceAccess, _, err := ocm.GetResourceAccessForComponentVersion(cv, resourceReference, &ocm.Descriptors{List: []*compdesc.ComponentDescriptor{a}})
+	resourceAccess, _, err := ocm.GetResourceAccessForComponentVersion(
+		cv,
+		resourceReference,
+		&ocm.Descriptors{List: []*compdesc.ComponentDescriptor{a}},
+	)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.GetResourceAccessFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.GetOCMResourceFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to get resource access: %w", err)
 	}
@@ -193,6 +210,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, fmt.Errorf("failed to unmarshal manifest: %w", err)
 	}
 
+	// TODO: Improve deployer maturity (Follow ups)
 	// Create or update the object in the cluster
 	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, &rgd, func() error {
 		if err := controllerutil.SetControllerReference(ocmDeployer, &rgd, r.Scheme); err != nil {
@@ -207,13 +225,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, fmt.Errorf("failed to create or update resource graph definition: %w", err)
 	}
 
-	// TODO: Drift detection required?
-
 	status.MarkReady(r.EventRecorder, ocmDeployer, "Applied version %s", resourceAccess.Meta().GetVersion())
-
-	if err := status.UpdateStatus(ctx, patchHelper, ocmDeployer, r.EventRecorder, ocmDeployer.GetRequeueAfter(), err); err != nil {
-		return ctrl.Result{}, err
-	}
 
 	return ctrl.Result{RequeueAfter: resource.GetRequeueAfter()}, nil
 }

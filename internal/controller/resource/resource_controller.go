@@ -109,32 +109,22 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=resources,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=resources/status,verbs=get;update;patch
 
-func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+//nolint:cyclop,funlen,gocognit,maintidx // we do not want to cut the function at arbitrary points
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
+	logger := log.FromContext(ctx)
+	logger.Info("starting reconciliation")
+
 	resource := &v1alpha1.Resource{}
 	if err := r.Get(ctx, req.NamespacedName, resource); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	return r.reconcileWithStatusUpdate(ctx, resource)
-}
-
-func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, resource *v1alpha1.Resource) (ctrl.Result, error) {
 	patchHelper := patch.NewSerialPatcher(resource, r.Client)
+	defer func(ctx context.Context) {
+		err = status.UpdateStatus(ctx, patchHelper, resource, r.EventRecorder, resource.GetRequeueAfter(), err)
+	}(ctx)
 
-	result, err := r.reconcileExists(ctx, resource)
-
-	err = errors.Join(err, status.UpdateStatus(ctx, patchHelper, resource, r.EventRecorder, resource.GetRequeueAfter(), err))
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	return result, nil
-}
-
-func (r *Reconciler) reconcileExists(ctx context.Context, resource *v1alpha1.Resource) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-	logger.V(1).Info("preparing reconciling resource")
-
+	logger.Info("preparing reconciling resource")
 	if resource.Spec.Suspend {
 		return ctrl.Result{}, nil
 	}
@@ -143,21 +133,15 @@ func (r *Reconciler) reconcileExists(ctx context.Context, resource *v1alpha1.Res
 		return ctrl.Result{}, errors.New("resource is being deleted")
 	}
 
-	return r.reconcile(ctx, resource)
-}
-
-func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
 	component, err := util.GetReadyObject[v1alpha1.Component, *v1alpha1.Component](ctx, r.Client, client.ObjectKey{
 		Namespace: resource.GetNamespace(),
 		Name:      resource.Spec.ComponentRef.Name,
 	})
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ComponentIsNotReadyReason, "Component is not ready")
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.ResourceIsNotAvailable, err.Error())
 
 		if errors.Is(err, util.NotReadyError{}) || errors.Is(err, util.DeletionError{}) {
-			logger.V(1).Info(err.Error())
+			logger.Info("component is not available", "error", err)
 
 			// return no requeue as we watch the object for changes anyway
 			return ctrl.Result{}, nil
@@ -166,30 +150,11 @@ func (r *Reconciler) reconcile(ctx context.Context, resource *v1alpha1.Resource)
 		return ctrl.Result{}, fmt.Errorf("failed to get ready component: %w", err)
 	}
 
-	return r.reconcileOCM(ctx, resource, component)
-}
-
-func (r *Reconciler) reconcileOCM(ctx context.Context, resource *v1alpha1.Resource, component *v1alpha1.Component) (ctrl.Result, error) {
+	logger.Info("reconciling resource")
 	octx := ocmctx.New(datacontext.MODE_EXTENDED)
-
-	result, err := r.reconcileResource(ctx, octx, resource, component)
-
-	// Always finalize ocm context after reconciliation
-	err = errors.Join(err, octx.Finalize())
-	if err != nil {
-		// this should be retryable, as it is difficult to forsee whether
-		// another error condition might lead to problems closing the ocm
-		// context
-		return ctrl.Result{}, err
-	}
-
-	return result, nil
-}
-
-//nolint:funlen,cyclop // we do not want to cut function at an arbitrary point
-func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context, resource *v1alpha1.Resource, component *v1alpha1.Component) (_ ctrl.Result, retErr error) {
-	logger := log.FromContext(ctx)
-	logger.V(1).Info("reconciling resource")
+	defer func() {
+		err = octx.Finalize()
+	}()
 
 	session := ocmctx.NewSession(datacontext.NewSession())
 	// automatically close the session when the ocm context is closed in the above defer
@@ -199,7 +164,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.ConfigureContextFailedReason, err.Error())
 
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get effective config: %w", err)
 	}
 
 	// If the component holds verification information, we need to add it to the ocm context
@@ -207,35 +172,35 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.ConfigureContextFailedReason, err.Error())
 
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get verifications: %w", err)
 	}
 
 	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs, verifications)
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.ConfigureContextFailedReason, err.Error())
 
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to configure context: %w", err)
 	}
 
 	spec, err := octx.RepositorySpecForConfig(component.Status.Component.RepositorySpec.Raw, nil)
 	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.RepositorySpecInvalidReason, err.Error())
+		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.GetComponentVersionFailedReason, err.Error())
 
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get repository spec: %w", err)
 	}
 
 	repo, err := session.LookupRepository(octx, spec)
 	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.RepositorySpecInvalidReason, err.Error())
+		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.GetComponentVersionFailedReason, err.Error())
 
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to lookup repository: %w", err)
 	}
 
 	cv, err := session.LookupComponentVersion(repo, component.Status.Component.Component, component.Status.Component.Version)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentVersionFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to get component version: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to lookup component version: %w", err)
 	}
 
 	// Assuming the component descriptors are cached by the verification in the component controller, the verification
@@ -244,7 +209,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		return verify.Signature
 	}))
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.VerificationFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentVersionFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to list verified descriptors: %w", err)
 	}
@@ -256,16 +221,16 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 
 	resourceAccess, resourceCompDesc, err := ocm.GetResourceAccessForComponentVersion(cv, resourceReference, cds)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceAccessFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetOCMResourceFailedReason, err.Error())
 
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get resource access: %w", err)
 	}
 
 	accSpec, err := resourceAccess.Access()
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetResourceAccessFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetOCMResourceFailedReason, err.Error())
 
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get resource access spec: %w", err)
 	}
 
 	sourceRef := &v1alpha1.SourceReference{}
@@ -276,14 +241,14 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetReferenceFailedReason, err.Error())
 
-			return ctrl.Result{}, err
+			return ctrl.Result{}, fmt.Errorf("failed to get OCI reference: %w", err)
 		}
 
 		ociURL, err := url.Parse(strings.Split(ociURLDigest, "@")[0])
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetReferenceFailedReason, err.Error())
 
-			return ctrl.Result{}, err
+			return ctrl.Result{}, fmt.Errorf("failed to parse OCI reference URL: %w", err)
 		}
 
 		// gitHubURL.Parse will not acknowledge a hostname if a scheme is missing. But we cannot make sure that the reference
@@ -297,7 +262,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetReferenceFailedReason, err.Error())
 
-			return ctrl.Result{}, err
+			return ctrl.Result{}, fmt.Errorf("failed to parse OCI reference: %w", err)
 		}
 
 		sourceRef.Registry = reference.Context().RegistryStr()
@@ -312,7 +277,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetReferenceFailedReason, err.Error())
 
-			return ctrl.Result{}, err
+			return ctrl.Result{}, fmt.Errorf("failed to parse GitHub URL: %w", err)
 		}
 		sourceRef.Registry = fmt.Sprintf("%s://%s", gitHubURL.Scheme, gitHubURL.Host)
 		sourceRef.Repository = gitHubURL.Path
@@ -322,14 +287,14 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetReferenceFailedReason, err.Error())
 
-			return ctrl.Result{}, err
+			return ctrl.Result{}, fmt.Errorf("failed to parse Git URL: %w", err)
 		}
 
 		sourceRef.Registry = fmt.Sprintf("%s://%s", gitURL.Scheme, gitURL.Host)
 		sourceRef.Repository = gitURL.Path
 		sourceRef.Reference = access.Ref
 	default:
-		logger.V(v1alpha1.LevelDebug).Info("skip setting reference for resource as no source reference is available for this access type", "access type", access)
+		logger.Info("skip setting reference for resource as no source reference is available for this access type", "access type", access)
 	}
 
 	// Get repository spec of actual component descriptor of the referenced resource
@@ -346,7 +311,7 @@ func (r *Reconciler) reconcileResource(ctx context.Context, octx ocmctx.Context,
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.MarshalFailedReason, err.Error())
 
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to marshal resource spec: %w", err)
 	}
 
 	// Update status

@@ -125,7 +125,7 @@ func (r *Reconciler) reconcile(ctx context.Context, replication *v1alpha1.Replic
 
 	if !conditions.IsReady(comp) {
 		logger.Info("component is not ready", "name", comp.Name)
-		status.MarkNotReady(r.EventRecorder, replication, v1alpha1.ComponentIsNotReadyReason, "Component is not ready yet")
+		status.MarkNotReady(r.EventRecorder, replication, v1alpha1.GetResourceFailedReason, "Component is not ready yet")
 
 		return ctrl.Result{Requeue: true}, nil
 	}
@@ -149,7 +149,7 @@ func (r *Reconciler) reconcile(ctx context.Context, replication *v1alpha1.Replic
 
 	if !conditions.IsReady(repo) {
 		logger.Info("repository is not ready", "name", repo.Name)
-		status.MarkNotReady(r.EventRecorder, replication, v1alpha1.RepositoryIsNotReadyReason, "Repository is not ready yet")
+		status.MarkNotReady(r.EventRecorder, replication, v1alpha1.GetResourceFailedReason, "Repository is not ready yet")
 
 		return ctrl.Result{Requeue: true}, nil
 	}

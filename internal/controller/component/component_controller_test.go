@@ -191,8 +191,8 @@ var _ = Describe("Component Controller", func() {
 				}
 
 				reason := conditions.GetReason(component, "Ready")
-				if reason != v1alpha1.RepositoryIsNotReadyReason {
-					return fmt.Errorf("expected component ready-condition reason to be %s, but it was %s", v1alpha1.RepositoryIsNotReadyReason, reason)
+				if reason != v1alpha1.GetResourceFailedReason {
+					return fmt.Errorf("expected component ready-condition reason to be %s, but it was %s", v1alpha1.GetResourceFailedReason, reason)
 				}
 
 				return nil
@@ -251,8 +251,8 @@ var _ = Describe("Component Controller", func() {
 				}
 
 				reason := conditions.GetReason(component, "Ready")
-				if reason != v1alpha1.RepositoryIsNotReadyReason {
-					return fmt.Errorf("expected component ready-condition reason to be %s, but it was %s", v1alpha1.RepositoryIsNotReadyReason, reason)
+				if reason != v1alpha1.GetResourceFailedReason {
+					return fmt.Errorf("expected component ready-condition reason to be %s, but it was %s", v1alpha1.GetResourceFailedReason, reason)
 				}
 
 				return nil

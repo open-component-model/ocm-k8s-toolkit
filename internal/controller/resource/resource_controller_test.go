@@ -49,11 +49,9 @@ const (
 var _ = Describe("Resource Controller", func() {
 	var (
 		env *Builder
-		//resourceLocalPath string
 	)
 
 	Context("resource controller", func() {
-		//var componentName, resourceName string
 		var componentObj *v1alpha1.Component
 		var namespace *corev1.Namespace
 
@@ -65,11 +63,6 @@ var _ = Describe("Resource Controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
-
-			//componentName = "ocm.software/component-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
-			//resourceName = "resource-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
-
-			//resourceLocalPath = GinkgoT().TempDir()
 
 			env = NewBuilder(environment.FileSystem(osfs.OsFs))
 			DeferCleanup(env.Cleanup)

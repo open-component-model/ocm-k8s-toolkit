@@ -134,6 +134,7 @@ func PrepareOCMComponent(name, ccPath, imageRegistry, signingKey string) error {
 		"transfer",
 		"ctf",
 		"--overwrite",
+		"--enforce",
 		"--copy-resources",
 		"--omit-access-types",
 		"gitHub",

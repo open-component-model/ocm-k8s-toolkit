@@ -52,4 +52,5 @@ metadata:
 spec:
   resourceRef:
     name: helm-signing-resource-rgd
+    namespace: default
   interval: 10m
