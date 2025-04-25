@@ -50,7 +50,7 @@ resources:
   controller: true
   domain: ocm.software
   group: delivery
-  kind: OCMDeployer
+  kind: Deployer
   path: github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1
   version: v1alpha1
 version: "3"

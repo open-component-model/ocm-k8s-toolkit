@@ -46,9 +46,9 @@ spec:
   interval: 10m
 ---
 apiVersion: delivery.ocm.software/v1alpha1
-kind: OCMDeployer
+kind: Deployer
 metadata:
-  name: helm-signing-ocmdeployer
+  name: helm-signing-deployer
 spec:
   resourceRef:
     name: helm-signing-resource-rgd

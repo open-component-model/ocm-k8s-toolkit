@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: ocmdeployers.delivery.ocm.software
+  name: deployers.delivery.ocm.software
 spec:
   group: delivery.ocm.software
   names:
-    kind: OCMDeployer
-    listKind: OCMDeployerList
-    plural: ocmdeployers
-    singular: ocmdeployer
+    kind: Deployer
+    listKind: DeployerList
+    plural: deployers
+    singular: deployer
   scope: Cluster
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: OCMDeployer is the Schema for the ocmdeployers API.
+        description: Deployer is the Schema for the deployers API.
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: OCMDeployerSpec defines the desired state of OCMDeployer.
+            description: DeployerSpec defines the desired state of Deployer.
             properties:
               interval:
                 description: Interval at which the resource is checked for updates.
@@ -112,10 +112,10 @@ spec:
             - resourceRef
             type: object
           status:
-            description: OCMDeployerStatus defines the observed state of OCMDeployer.
+            description: DeployerStatus defines the observed state of Deployer.
             properties:
               conditions:
-                description: Conditions holds the conditions for the OCMDeployer.
+                description: Conditions holds the conditions for the Deployer.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -223,7 +223,7 @@ spec:
                 type: array
               observedGeneration:
                 description: |-
-                  ObservedGeneration is the last observed generation of the OCMDeployer
+                  ObservedGeneration is the last observed generation of the Deployer
                   object.
                 format: int64
                 type: integer

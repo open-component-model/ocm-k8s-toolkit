@@ -35,9 +35,9 @@ spec:
   interval: 10m
 ---
 apiVersion: delivery.ocm.software/v1alpha1
-kind: OCMDeployer
+kind: Deployer
 metadata:
-  name: helm-configuration-localization-ocmdeployer
+  name: helm-configuration-localization-deployer
 spec:
   resourceRef:
     name: helm-configuration-localization-resource-rgd

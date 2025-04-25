@@ -7,10 +7,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const KindOCMDeployer = "OCMDeployer"
+const KindDeployer = "Deployer"
 
-// OCMDeployerSpec defines the desired state of OCMDeployer.
-type OCMDeployerSpec struct {
+// DeployerSpec defines the desired state of Deployer.
+type DeployerSpec struct {
 	// ResourceRef is the k8s resource name of an OCM resource containing the ResourceGroupDefinition.
 	// +required
 	ResourceRef ObjectKey `json:"resourceRef"`
@@ -30,14 +30,14 @@ type OCMDeployerSpec struct {
 	Suspend bool `json:"suspend,omitempty"`
 }
 
-// OCMDeployerStatus defines the observed state of OCMDeployer.
-type OCMDeployerStatus struct {
-	// ObservedGeneration is the last observed generation of the OCMDeployer
+// DeployerStatus defines the observed state of Deployer.
+type DeployerStatus struct {
+	// ObservedGeneration is the last observed generation of the Deployer
 	// object.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
-	// Conditions holds the conditions for the OCMDeployer.
+	// Conditions holds the conditions for the Deployer.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
@@ -48,15 +48,15 @@ type OCMDeployerStatus struct {
 	EffectiveOCMConfig []OCMConfiguration `json:"effectiveOCMConfig,omitempty"`
 }
 
-func (in *OCMDeployer) GetConditions() []metav1.Condition {
+func (in *Deployer) GetConditions() []metav1.Condition {
 	return in.Status.Conditions
 }
 
-func (in *OCMDeployer) SetConditions(conditions []metav1.Condition) {
+func (in *Deployer) SetConditions(conditions []metav1.Condition) {
 	in.Status.Conditions = conditions
 }
 
-func (in *OCMDeployer) GetVID() map[string]string {
+func (in *Deployer) GetVID() map[string]string {
 	vid := fmt.Sprintf("%s:%s", in.GetNamespace(), in.GetName())
 	metadata := make(map[string]string)
 	metadata[GroupVersion.Group+"/resource_version"] = vid
@@ -64,29 +64,29 @@ func (in *OCMDeployer) GetVID() map[string]string {
 	return metadata
 }
 
-func (in *OCMDeployer) SetObservedGeneration(v int64) {
+func (in *Deployer) SetObservedGeneration(v int64) {
 	in.Status.ObservedGeneration = v
 }
 
-func (in *OCMDeployer) GetObjectMeta() *metav1.ObjectMeta {
+func (in *Deployer) GetObjectMeta() *metav1.ObjectMeta {
 	return &in.ObjectMeta
 }
 
-func (in *OCMDeployer) GetKind() string {
-	return KindOCMDeployer
+func (in *Deployer) GetKind() string {
+	return KindDeployer
 }
 
-// GetRequeueAfter returns the duration after which the OCMDeployer must be
+// GetRequeueAfter returns the duration after which the Deployer must be
 // reconciled again.
-func (in OCMDeployer) GetRequeueAfter() time.Duration {
+func (in Deployer) GetRequeueAfter() time.Duration {
 	return in.Spec.Interval.Duration
 }
 
-func (in *OCMDeployer) GetSpecifiedOCMConfig() []OCMConfiguration {
+func (in *Deployer) GetSpecifiedOCMConfig() []OCMConfiguration {
 	return in.Spec.OCMConfig
 }
 
-func (in *OCMDeployer) GetEffectiveOCMConfig() []OCMConfiguration {
+func (in *Deployer) GetEffectiveOCMConfig() []OCMConfiguration {
 	return in.Status.EffectiveOCMConfig
 }
 
@@ -94,24 +94,24 @@ func (in *OCMDeployer) GetEffectiveOCMConfig() []OCMConfiguration {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
 
-// OCMDeployer is the Schema for the ocmdeployers API.
-type OCMDeployer struct {
+// Deployer is the Schema for the deployers API.
+type Deployer struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   OCMDeployerSpec   `json:"spec,omitempty"`
-	Status OCMDeployerStatus `json:"status,omitempty"`
+	Spec   DeployerSpec   `json:"spec,omitempty"`
+	Status DeployerStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// OCMDeployerList contains a list of OCMDeployer.
-type OCMDeployerList struct {
+// DeployerList contains a list of Deployer.
+type DeployerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []OCMDeployer `json:"items"`
+	Items           []Deployer `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&OCMDeployer{}, &OCMDeployerList{})
+	SchemeBuilder.Register(&Deployer{}, &DeployerList{})
 }

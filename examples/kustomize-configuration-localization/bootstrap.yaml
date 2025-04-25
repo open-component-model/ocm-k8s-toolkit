@@ -34,9 +34,9 @@ spec:
   interval: 10m
 ---
 apiVersion: delivery.ocm.software/v1alpha1
-kind: OCMDeployer
+kind: Deployer
 metadata:
-  name: kustomize-configuration-localization-ocmdeployer
+  name: kustomize-configuration-localization-deployer
 spec:
   resourceRef:
     name: kustomize-configuration-localization-resource-rgd

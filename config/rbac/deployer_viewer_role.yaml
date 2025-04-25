@@ -1,27 +1,23 @@
-# permissions for end users to edit ocmdeployers.
+# permissions for end users to view deployers.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: ocm-k8s-toolkit
     app.kubernetes.io/managed-by: kustomize
-  name: ocmdeployer-editor-role
+  name: deployer-viewer-role
 rules:
 - apiGroups:
   - delivery.ocm.software
   resources:
-  - ocmdeployers
+  - deployers
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - delivery.ocm.software
   resources:
-  - ocmdeployers/status
+  - deployers/status
   verbs:
   - get

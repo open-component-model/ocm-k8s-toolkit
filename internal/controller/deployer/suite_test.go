@@ -1,4 +1,4 @@
-package ocmdeployer
+package deployer
 
 import (
 	"context"

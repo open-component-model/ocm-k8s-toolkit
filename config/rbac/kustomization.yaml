@@ -13,8 +13,6 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the Project itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
-- ocmdeployer_editor_role.yaml
-- ocmdeployer_viewer_role.yaml
 - replication_editor_role.yaml
 - replication_viewer_role.yaml
 - resource_editor_role.yaml
@@ -23,4 +21,6 @@ resources:
 - component_viewer_role.yaml
 - ocmrepository_editor_role.yaml
 - ocmrepository_viewer_role.yaml
+- deployer_editor_role.yaml
+- deployer_viewer_role.yaml
 

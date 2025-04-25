@@ -1,4 +1,4 @@
-package ocmdeployer
+package deployer
 
 import (
 	"context"
@@ -29,24 +29,24 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/pkg/util"
 )
 
-// Reconciler reconciles a OCMDeployer object.
+// Reconciler reconciles a Deployer object.
 type Reconciler struct {
 	*ocm.BaseReconciler
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
 
-// +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmdeployers,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmdeployers/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmdeployers/finalizers,verbs=update
+// +kubebuilder:rbac:groups=delivery.ocm.software,resources=deployers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=delivery.ocm.software,resources=deployers/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=delivery.ocm.software,resources=deployers/finalizers,verbs=update
 // +kubebuilder:rbac:groups=kro.run,resources=resourcegraphdefinitions,verbs=list;watch;create;update;patch
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Create index for resource reference name from deployers
 	const fieldName = "spec.resourceRef.name"
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &deliveryv1alpha1.OCMDeployer{}, fieldName, func(obj client.Object) []string {
-		deployer, ok := obj.(*deliveryv1alpha1.OCMDeployer)
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &deliveryv1alpha1.Deployer{}, fieldName, func(obj client.Object) []string {
+		deployer, ok := obj.(*deliveryv1alpha1.Deployer)
 		if !ok {
 			return nil
 		}
@@ -57,7 +57,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&deliveryv1alpha1.OCMDeployer{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&deliveryv1alpha1.Deployer{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		// Watch for resource-events that are referenced by the deployer
 		Watches(
 			&deliveryv1alpha1.Resource{},
@@ -68,7 +68,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 				}
 
 				// Get list of deployers that reference the resource
-				list := &deliveryv1alpha1.OCMDeployerList{}
+				list := &deliveryv1alpha1.DeployerList{}
 				if err := r.List(ctx, list, client.MatchingFields{fieldName: resource.GetName()}); err != nil {
 					return []reconcile.Request{}
 				}
@@ -94,21 +94,21 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	logger := log.FromContext(ctx)
 	logger.Info("starting reconciliation")
 
-	ocmDeployer := &deliveryv1alpha1.OCMDeployer{}
-	if err := r.Get(ctx, req.NamespacedName, ocmDeployer); err != nil {
+	deployer := &deliveryv1alpha1.Deployer{}
+	if err := r.Get(ctx, req.NamespacedName, deployer); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	patchHelper := patch.NewSerialPatcher(ocmDeployer, r.Client)
+	patchHelper := patch.NewSerialPatcher(deployer, r.Client)
 	defer func(ctx context.Context) {
-		err = status.UpdateStatus(ctx, patchHelper, ocmDeployer, r.EventRecorder, ocmDeployer.GetRequeueAfter(), err)
+		err = status.UpdateStatus(ctx, patchHelper, deployer, r.EventRecorder, deployer.GetRequeueAfter(), err)
 	}(ctx)
 
-	if ocmDeployer.Spec.Suspend {
+	if deployer.Spec.Suspend {
 		return ctrl.Result{}, nil
 	}
 
-	if !ocmDeployer.GetDeletionTimestamp().IsZero() {
+	if !deployer.GetDeletionTimestamp().IsZero() {
 		return ctrl.Result{}, errors.New("ocm deployer is being deleted")
 	}
 
@@ -121,31 +121,31 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	// automatically close the session when the ocm context is closed in the above defer
 	octx.Finalizer().Close(session)
 
-	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), ocmDeployer)
+	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), deployer)
 	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), ocmDeployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
+		status.MarkNotReady(r.GetEventRecorder(), deployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to get effective config: %w", err)
 	}
 
 	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs)
 	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), ocmDeployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
+		status.MarkNotReady(r.GetEventRecorder(), deployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to configure context: %w", err)
 	}
 
-	resourceNamespace := ocmDeployer.Spec.ResourceRef.Namespace
+	resourceNamespace := deployer.Spec.ResourceRef.Namespace
 	if resourceNamespace == "" {
-		resourceNamespace = ocmDeployer.GetNamespace()
+		resourceNamespace = deployer.GetNamespace()
 	}
 
 	resource, err := util.GetReadyObject[deliveryv1alpha1.Resource, *deliveryv1alpha1.Resource](ctx, r.Client, client.ObjectKey{
 		Namespace: resourceNamespace,
-		Name:      ocmDeployer.Spec.ResourceRef.Name,
+		Name:      deployer.Spec.ResourceRef.Name,
 	})
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.ResourceIsNotAvailable, err.Error())
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.ResourceIsNotAvailable, err.Error())
 
 		if errors.Is(err, util.NotReadyError{}) || errors.Is(err, util.DeletionError{}) {
 			logger.Info("stop reconciling as the resource is not available", "error", err.Error())
@@ -166,7 +166,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		resource.Status.Component.Version,
 	)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to get component version: %w", err)
 	}
@@ -183,29 +183,29 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		&ocm.Descriptors{List: []*compdesc.ComponentDescriptor{a}},
 	)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.GetOCMResourceFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetOCMResourceFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to get resource access: %w", err)
 	}
 
 	rgdManifest, digest, err := ocm.GetResource(cv, resourceAccess)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.GetResourceFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetResourceFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to get resource graph definition manifest: %w", err)
 	}
 
 	if resource.Status.Resource.Digest != digest {
-		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.GetResourceFailedReason, "resource digest mismatch")
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetResourceFailedReason, "resource digest mismatch")
 
 		return ctrl.Result{}, fmt.Errorf("resource digest mismatch: expected %s, got %s", resource.Status.Resource.Digest, digest)
 	}
 
-	// 2. Apply RGD resource
+	// Apply, Update, or Delete RGD
 	var rgd krov1alpha1.ResourceGraphDefinition
 	// Unmarshal the manifest into the ResourceGraphDefinition object
 	if err := yaml.Unmarshal(rgdManifest, &rgd); err != nil {
-		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.MarshalFailedReason, "unmarshal failed")
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.MarshalFailedReason, "unmarshal failed")
 
 		return ctrl.Result{}, fmt.Errorf("failed to unmarshal manifest: %w", err)
 	}
@@ -213,19 +213,21 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	// TODO: Improve deployer maturity (Follow ups)
 	// Create or update the object in the cluster
 	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, &rgd, func() error {
-		if err := controllerutil.SetControllerReference(ocmDeployer, &rgd, r.Scheme); err != nil {
+		if err := controllerutil.SetControllerReference(deployer, &rgd, r.Scheme); err != nil {
 			return fmt.Errorf("failed to set controller reference on resource graph definition: %w", err)
 		}
 
 		return nil
 	})
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, ocmDeployer, deliveryv1alpha1.CreateOrUpdateFailedReason, "create or update failed")
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.CreateOrUpdateFailedReason, "create or update failed")
 
 		return ctrl.Result{}, fmt.Errorf("failed to create or update resource graph definition: %w", err)
 	}
 
-	status.MarkReady(r.EventRecorder, ocmDeployer, "Applied version %s", resourceAccess.Meta().GetVersion())
+	// TODO: Status propagation of RGD status to deployer
+	//       (see https://github.com/open-component-model/ocm-k8s-toolkit/issues/192)
+	status.MarkReady(r.EventRecorder, deployer, "Applied version %s", resourceAccess.Meta().GetVersion())
 
 	return ctrl.Result{RequeueAfter: resource.GetRequeueAfter()}, nil
 }
