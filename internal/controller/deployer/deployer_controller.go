@@ -223,7 +223,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to unmarshal manifest: %w", err)
 	}
 
-	// TODO: Improve deployer maturity (Follow ups)
+	// TODO: Improve deployer maturity (@frewilhelm)
+	//  - https://github.com/open-component-model/ocm-k8s-toolkit/issues/194 (@frewilhelm)
+	//  - https://github.com/open-component-model/ocm-k8s-toolkit/issues/195 (@frewilhelm)
+	//  - https://github.com/open-component-model/ocm-k8s-toolkit/issues/196 (@frewilhelm)
+
 	// Create or update the object in the cluster
 	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, &rgd, func() error {
 		if err := controllerutil.SetControllerReference(deployer, &rgd, r.Scheme); err != nil {
