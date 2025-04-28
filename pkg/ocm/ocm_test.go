@@ -582,9 +582,8 @@ consumers:
 
 			comp := v1alpha1.Component{
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: repo.Namespace,
-						Name:      repo.Name,
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repo.Name,
 					},
 					OCMConfig: []v1alpha1.OCMConfiguration{
 						{
@@ -650,9 +649,8 @@ consumers:
 
 			comp := v1alpha1.Component{
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: repo.Namespace,
-						Name:      repo.Name,
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repo.Name,
 					},
 					OCMConfig: []v1alpha1.OCMConfiguration{
 						{
@@ -718,9 +716,8 @@ consumers:
 
 			comp := v1alpha1.Component{
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: repo.Namespace,
-						Name:      repo.Name,
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repo.Name,
 					},
 					OCMConfig: []v1alpha1.OCMConfiguration{
 						{

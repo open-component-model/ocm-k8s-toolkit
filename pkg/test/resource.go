@@ -7,6 +7,7 @@ import (
 
 	//nolint:revive,stylecheck // dot import necessary for Ginkgo DSL
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 
 	"github.com/fluxcd/pkg/runtime/patch"
 	"k8s.io/client-go/tools/record"
@@ -47,7 +48,7 @@ func SetupMockResourceWithData(
 					Resource: v1.NewIdentity(name),
 				},
 			},
-			ComponentRef: v1alpha1.ObjectKey{
+			ComponentRef: corev1.LocalObjectReference{
 				Name: options.ComponentRef.Name,
 			},
 		},

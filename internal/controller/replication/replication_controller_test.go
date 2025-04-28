@@ -427,9 +427,8 @@ func newTestComponent(namespace, name, repoName, ocmName, ocmVersion string) *v1
 			Name:      name,
 		},
 		Spec: v1alpha1.ComponentSpec{
-			RepositoryRef: v1alpha1.ObjectKey{
-				Namespace: namespace,
-				Name:      repoName,
+			RepositoryRef: corev1.LocalObjectReference{
+				Name: repoName,
 			},
 			Component: ocmName,
 			Semver:    ocmVersion,

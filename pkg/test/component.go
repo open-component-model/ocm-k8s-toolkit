@@ -6,6 +6,7 @@ import (
 
 	//nolint:revive,stylecheck // dot import necessary for Ginkgo DSL
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 
 	"github.com/fluxcd/pkg/runtime/patch"
 	"k8s.io/client-go/tools/record"
@@ -35,8 +36,10 @@ func SetupComponentWithDescriptorList(
 			Namespace: namespace,
 		},
 		Spec: v1alpha1.ComponentSpec{
-			RepositoryRef: v1alpha1.ObjectKey{Name: options.Repository, Namespace: namespace},
-			Component:     options.Info.Component,
+			RepositoryRef: corev1.LocalObjectReference{
+				Name: options.Repository,
+			},
+			Component: options.Info.Component,
 		},
 	}
 	Expect(options.Client.Create(ctx, component)).To(Succeed())

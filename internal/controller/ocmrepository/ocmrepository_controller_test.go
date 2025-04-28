@@ -306,9 +306,8 @@ var _ = Describe("OCMRepository Controller", func() {
 						Name:      "test-component-name",
 					},
 					Spec: v1alpha1.ComponentSpec{
-						RepositoryRef: v1alpha1.ObjectKey{
-							Namespace: TestNamespaceOCMRepo,
-							Name:      ocmRepoName,
+						RepositoryRef: corev1.LocalObjectReference{
+							Name: ocmRepoName,
 						},
 						Component: componentName,
 						Semver:    "1.0.0",

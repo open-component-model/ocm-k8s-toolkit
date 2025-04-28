@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -29,7 +30,7 @@ const KindResource = "Resource"
 type ResourceSpec struct {
 	// ComponentRef is a reference to a Component.
 	// +required
-	ComponentRef ObjectKey `json:"componentRef"`
+	ComponentRef corev1.LocalObjectReference `json:"componentRef"`
 
 	// Resource identifies the ocm resource to be fetched.
 	// +required

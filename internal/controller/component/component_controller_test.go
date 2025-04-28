@@ -123,9 +123,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component: componentName,
 					Semver:    "1.0.0",
@@ -167,9 +166,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component: componentName,
 					Semver:    "1.0.0",
@@ -227,9 +225,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component: componentName,
 					Semver:    "1.0.0",
@@ -289,9 +286,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component: componentName,
 					Semver:    ">=1.0.0",
@@ -346,9 +342,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component:       componentName,
 					DowngradePolicy: v1alpha1.DowngradePolicyAllow,
@@ -398,9 +393,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component:       componentName,
 					DowngradePolicy: v1alpha1.DowngradePolicyDeny,
@@ -459,9 +453,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component:       componentName,
 					DowngradePolicy: v1alpha1.DowngradePolicyEnforce,
@@ -517,9 +510,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      componentObjName,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component: componentName,
 					Semver:    componentVersionPlus,
@@ -732,9 +724,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component: componentName,
 					Semver:    "1.0.0",

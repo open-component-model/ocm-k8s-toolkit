@@ -211,13 +211,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	logger.Info("prepare reconciling component")
-	repoNamespace := component.Spec.RepositoryRef.Namespace
-	if repoNamespace == "" {
-		repoNamespace = component.GetNamespace()
-	}
-
 	repo, err := util.GetReadyObject[v1alpha1.OCMRepository, *v1alpha1.OCMRepository](ctx, r.Client, client.ObjectKey{
-		Namespace: repoNamespace,
+		Namespace: component.GetNamespace(),
 		Name:      component.Spec.RepositoryRef.Name,
 	})
 	if err != nil {

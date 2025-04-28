@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -37,7 +38,7 @@ const KindComponent = "Component"
 type ComponentSpec struct {
 	// RepositoryRef is a reference to a OCMRepository.
 	// +required
-	RepositoryRef ObjectKey `json:"repositoryRef"`
+	RepositoryRef corev1.LocalObjectReference `json:"repositoryRef"`
 
 	// Component is the name of the ocm component.
 	// +required

@@ -156,7 +156,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 			return nil
 		}
 
-		return []string{fmt.Sprintf("%s/%s", comp.Spec.RepositoryRef.Namespace, comp.Spec.RepositoryRef.Name)}
+		return []string{fmt.Sprintf("%s/%s", comp.GetNamespace(), comp.Spec.RepositoryRef.Name)}
 	}); err != nil {
 		return fmt.Errorf("failed setting index fields: %w", err)
 	}
