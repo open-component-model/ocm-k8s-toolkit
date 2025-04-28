@@ -8,7 +8,6 @@ spec:
   interval: 2m0s
   repositoryRef:
     name: origin-repository
-    namespace: e2e-replication-controller-test
   ocmConfig:
     - apiVersion: delivery.ocm.software/v1alpha1
       kind: OCMRepository

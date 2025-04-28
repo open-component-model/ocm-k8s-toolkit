@@ -8,5 +8,4 @@ spec:
   interval: 2m0s
   repositoryRef:
     name: source-repository1
-    namespace: e2e-replication-controller-test
   semver: 6.6.2

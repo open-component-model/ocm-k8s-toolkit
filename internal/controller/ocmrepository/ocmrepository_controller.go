@@ -18,17 +18,21 @@ package ocmrepository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/fluxcd/pkg/runtime/patch"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	ocmctx "ocm.software/ocm/api/ocm"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -43,6 +47,59 @@ var repositoryKey = ".spec.repositoryRef"
 // OCMRepositoryReconciler reconciles a OCMRepository object.
 type Reconciler struct {
 	*ocm.BaseReconciler
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	// This index is required to get all components that reference an OCM repository. This is required to make sure that
+	// when deleting the OCM repository, no component exists anymore that references that OCM repository.
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Component{}, repositoryKey, func(rawObj client.Object) []string {
+		comp, ok := rawObj.(*v1alpha1.Component)
+		if !ok {
+			return nil
+		}
+
+		return []string{comp.Spec.RepositoryRef.Name}
+	}); err != nil {
+		return fmt.Errorf("failed setting index fields: %w", err)
+	}
+
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&v1alpha1.OCMRepository{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(
+			// Ensure to reconcile the OCM repository when an component changes that references this OCM repository.
+			// We want to reconcile because the OCM repository-finalizer makes sure that the OCM repository is only
+			// deleted when it is not referenced by any component anymore. So, when the OCM repository is already marked
+			// for deletion, we want to get notified about component changes (e.g. deletion) to remove the OCM
+			// repository-finalizer respectively.
+			&v1alpha1.Component{},
+			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+				component, ok := obj.(*v1alpha1.Component)
+				if !ok {
+					return []reconcile.Request{}
+				}
+
+				repo := &v1alpha1.OCMRepository{}
+				if err := r.Get(ctx, client.ObjectKey{
+					Namespace: component.GetNamespace(),
+					Name:      component.Spec.RepositoryRef.Name,
+				}, repo); err != nil {
+					return []reconcile.Request{}
+				}
+
+				// Only reconcile if the OCM repository is marked for deletion
+				if repo.GetDeletionTimestamp().IsZero() {
+					return []reconcile.Request{}
+				}
+
+				return []reconcile.Request{
+					{NamespacedName: types.NamespacedName{
+						Namespace: repo.GetNamespace(),
+						Name:      repo.GetName(),
+					}},
+				}
+			})).
+		Complete(r)
 }
 
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmrepositories,verbs=get;list;watch;create;update;patch;delete
@@ -68,7 +125,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 			return ctrl.Result{}, nil
 		}
 
-		return r.reconcileDeleteRepository(ctx, ocmRepo)
+		if err := r.deleteRepository(ctx, ocmRepo); err != nil {
+			status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.DeletionFailedReason, err.Error())
+
+			return ctrl.Result{}, fmt.Errorf("failed to delete OCM repository: %w", err)
+		}
+
+		return ctrl.Result{}, nil
 	}
 
 	// AddFinalizer if not present already.
@@ -148,31 +211,14 @@ func (r *Reconciler) fillRepoStatusFromSpec(ocmRepo *v1alpha1.OCMRepository,
 	ocmRepo.Status.EffectiveOCMConfig = configs
 }
 
-// SetupWithManager sets up the controller with the Manager.
-func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Component{}, repositoryKey, func(rawObj client.Object) []string {
-		comp, ok := rawObj.(*v1alpha1.Component)
-		if !ok {
-			return nil
-		}
-
-		return []string{fmt.Sprintf("%s/%s", comp.GetNamespace(), comp.Spec.RepositoryRef.Name)}
-	}); err != nil {
-		return fmt.Errorf("failed setting index fields: %w", err)
-	}
-
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.OCMRepository{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Complete(r)
-}
-
-func (r *Reconciler) reconcileDeleteRepository(ctx context.Context, obj *v1alpha1.OCMRepository) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
+func (r *Reconciler) deleteRepository(ctx context.Context, obj *v1alpha1.OCMRepository) error {
 	componentList := &v1alpha1.ComponentList{}
 	if err := r.List(ctx, componentList, &client.ListOptions{
-		FieldSelector: fields.OneTermEqualSelector(repositoryKey, client.ObjectKeyFromObject(obj).String()),
+		FieldSelector: fields.OneTermEqualSelector(repositoryKey, client.ObjectKeyFromObject(obj).Name),
 	}); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to list components: %w", err)
+		status.MarkNotReady(r.EventRecorder, obj, v1alpha1.DeletionFailedReason, err.Error())
+
+		return fmt.Errorf("failed to list components: %w", err)
 	}
 
 	if len(componentList.Items) > 0 {
@@ -181,20 +227,31 @@ func (r *Reconciler) reconcileDeleteRepository(ctx context.Context, obj *v1alpha
 			names = append(names, fmt.Sprintf("%s/%s", comp.Namespace, comp.Name))
 		}
 
-		logger.Info("repository is being deleted, please remove the following components referencing it", "names", names)
+		msg := fmt.Sprintf(
+			"OCM repository cannot be removed as components are still referencing it: %s",
+			strings.Join(names, ","),
+		)
+		status.MarkNotReady(r.EventRecorder, obj, v1alpha1.DeletionFailedReason, msg)
 
-		return ctrl.Result{}, fmt.Errorf("failed to remove repository referencing components: %s", strings.Join(names, ","))
+		return errors.New(msg)
 	}
 
 	if updated := controllerutil.RemoveFinalizer(obj, v1alpha1.OCMRepositoryFinalizer); updated {
 		if err := r.Update(ctx, obj); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
+			status.MarkNotReady(r.EventRecorder, obj, v1alpha1.DeletionFailedReason, err.Error())
+
+			return fmt.Errorf("failed to remove finalizer: %w", err)
 		}
 
-		return ctrl.Result{}, nil
+		return nil
 	}
 
-	logger.Info("ocm repository is being deleted and still has existing finalizers", "name", obj.GetName())
+	status.MarkNotReady(
+		r.EventRecorder,
+		obj,
+		v1alpha1.DeletionFailedReason,
+		"OCM repository is being deleted and still has existing finalizers",
+	)
 
-	return ctrl.Result{Requeue: true}, nil
+	return nil
 }

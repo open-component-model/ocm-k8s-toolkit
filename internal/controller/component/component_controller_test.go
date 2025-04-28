@@ -527,6 +527,75 @@ var _ = Describe("Component Controller", func() {
 			By("delete resources manually")
 			deleteComponent(ctx, component)
 		})
+		It("blocks deletion of a component when a resource is referencing it", func(ctx SpecContext) {
+			By("creating a component version")
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(Version1)
+				})
+			})
+
+			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
+			specData := Must(spec.MarshalJSON())
+
+			By("mocking an ocm repository")
+			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+
+			By("creating a component")
+			component := &v1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace.GetName(),
+					Name:      ComponentObj,
+				},
+				Spec: v1alpha1.ComponentSpec{
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
+					},
+					Component: componentName,
+					Semver:    "1.0.0",
+					Interval:  metav1.Duration{Duration: time.Minute * 10},
+				},
+				Status: v1alpha1.ComponentStatus{},
+			}
+			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+
+			By("checking that the component has been reconciled successfully")
+			waitUntilComponentIsReady(ctx, component, "1.0.0")
+
+			By("creating a resource that references the component")
+			resource := test.SetupMockResource(ctx, "test-resource", component.GetNamespace(), &test.MockResourceOptions{
+				ComponentRef: corev1.LocalObjectReference{
+					Name: component.GetName(),
+				},
+				Clnt:     k8sClient,
+				Recorder: recorder,
+			})
+
+			By("Deleting the component and checking for ready condition")
+			Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+			Eventually(func(ctx context.Context) error {
+				comp := &v1alpha1.Component{}
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), comp)
+				if err != nil {
+					return err
+				}
+
+				reason := conditions.GetReason(comp, "Ready")
+				if reason != v1alpha1.DeletionFailedReason {
+					return fmt.Errorf(
+						"expected component ready-condition reason to be %s, but it was %s",
+						v1alpha1.DeletionFailedReason,
+						reason,
+					)
+				}
+
+				return nil
+			}, "15s").WithContext(ctx).Should(Succeed())
+
+			By("delete resources manually")
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			deleteComponent(ctx, component)
+		})
 	})
 
 	Context("ocm config handling", func() {

@@ -2,17 +2,16 @@ package test
 
 import (
 	"context"
-	"io"
 	"time"
 
 	//nolint:revive,stylecheck // dot import necessary for Ginkgo DSL
 	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
 
 	"github.com/fluxcd/pkg/runtime/patch"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 
@@ -21,18 +20,13 @@ import (
 )
 
 type MockResourceOptions struct {
-	// option one to create a resource: directly pass the Data
-	Data io.Reader
-	// option two to create a resource: pass the path to the Data
-	DataPath string
-
-	ComponentRef v1alpha1.ObjectKey
+	ComponentRef corev1.LocalObjectReference
 
 	Clnt     client.Client
 	Recorder record.EventRecorder
 }
 
-func SetupMockResourceWithData(
+func SetupMockResource(
 	ctx context.Context,
 	name, namespace string,
 	options *MockResourceOptions,
@@ -48,9 +42,7 @@ func SetupMockResourceWithData(
 					Resource: v1.NewIdentity(name),
 				},
 			},
-			ComponentRef: corev1.LocalObjectReference{
-				Name: options.ComponentRef.Name,
-			},
+			ComponentRef: options.ComponentRef,
 		},
 	}
 	Expect(options.Clnt.Create(ctx, resource)).To(Succeed())

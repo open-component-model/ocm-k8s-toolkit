@@ -52,7 +52,7 @@ type Reconciler struct {
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
 
-var resourceKey = ".spec.componentRef"
+var resourceIndex = ".spec.componentRef.Name"
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
@@ -70,14 +70,15 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 		return fmt.Errorf("failed setting index fields: %w", err)
 	}
 
-	// Create index for resources to check if any resource references the component before deleting the component.
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Resource{}, resourceKey, func(rawObj client.Object) []string {
-		res, ok := rawObj.(*v1alpha1.Resource)
+	// This index is required to get all resources that reference a component. This is required to make sure that when
+	// deleting the component, no resource exists anymore that references that component.
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Resource{}, resourceIndex, func(obj client.Object) []string {
+		resource, ok := obj.(*v1alpha1.Resource)
 		if !ok {
 			return nil
 		}
 
-		return []string{res.Spec.ComponentRef.Name}
+		return []string{resource.Spec.ComponentRef.Name}
 	}); err != nil {
 		return fmt.Errorf("failed setting index fields: %w", err)
 	}
@@ -113,6 +114,11 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 				return requests
 			})).
 		Watches(
+			// Ensure to reconcile the component when an OCM resource changes that references this component.
+			// We want to reconcile because the component-finalizer makes sure that the component is only deleted when
+			// it is not referenced by any resource anymore. So, when the component is already marked for deletion, we
+			// want to get notified about resource changes (e.g. deletion) to remove the component-finalizer
+			// respectively.
 			&v1alpha1.Resource{},
 			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 				resource, ok := obj.(*v1alpha1.Resource)
@@ -120,25 +126,25 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 					return []reconcile.Request{}
 				}
 
-				// Get list of components that reference the resource
-				list := &v1alpha1.ComponentList{}
-				if err := r.List(ctx, list, client.MatchingFields{fieldName: resource.GetName()}); err != nil {
+				component := &v1alpha1.Component{}
+				if err := r.Get(ctx, client.ObjectKey{
+					Namespace: resource.GetNamespace(),
+					Name:      resource.Spec.ComponentRef.Name,
+				}, component); err != nil {
 					return []reconcile.Request{}
 				}
 
-				// For every component that references the resource create a reconciliation request for that
-				// component
-				requests := make([]reconcile.Request, 0, len(list.Items))
-				for _, component := range list.Items {
-					requests = append(requests, reconcile.Request{
-						NamespacedName: types.NamespacedName{
-							Namespace: component.GetNamespace(),
-							Name:      component.GetName(),
-						},
-					})
+				// Only reconcile if the component is marked for deletion
+				if component.GetDeletionTimestamp().IsZero() {
+					return []reconcile.Request{}
 				}
 
-				return requests
+				return []reconcile.Request{
+					{NamespacedName: types.NamespacedName{
+						Namespace: component.GetNamespace(),
+						Name:      component.GetName(),
+					}},
+				}
 			})).
 		Complete(r)
 }
@@ -167,10 +173,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}(ctx)
 
 	if !component.GetDeletionTimestamp().IsZero() {
+		// The component should only be deleted if no resource exists that references that component.
 		resourceList := &v1alpha1.ResourceList{}
 		if err := r.List(ctx, resourceList, &client.ListOptions{
-			FieldSelector: fields.OneTermEqualSelector(resourceKey, client.ObjectKeyFromObject(component).String()),
+			FieldSelector: fields.OneTermEqualSelector(
+				resourceIndex,
+				client.ObjectKeyFromObject(component).Name,
+			),
 		}); err != nil {
+			status.MarkNotReady(r.EventRecorder, component, v1alpha1.DeletionFailedReason, err.Error())
+
 			return ctrl.Result{}, fmt.Errorf("failed to list resource: %w", err)
 		}
 
@@ -180,18 +192,31 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 				names = append(names, fmt.Sprintf("%s/%s", res.Namespace, res.Name))
 			}
 
-			return ctrl.Result{}, fmt.Errorf("failed to remove component referencing resource: %s", strings.Join(names, ","))
+			msg := fmt.Sprintf(
+				"component cannot be removed as resources are still referencing it: %s",
+				strings.Join(names, ","),
+			)
+			status.MarkNotReady(r.EventRecorder, component, v1alpha1.DeletionFailedReason, msg)
+
+			return ctrl.Result{}, errors.New(msg)
 		}
 
 		if updated := controllerutil.RemoveFinalizer(component, v1alpha1.ComponentFinalizer); updated {
 			if err := r.Update(ctx, component); err != nil {
+				status.MarkNotReady(r.EventRecorder, component, v1alpha1.DeletionFailedReason, err.Error())
+
 				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
 			}
 
 			return ctrl.Result{}, nil
 		}
 
-		logger.Info("component is being deleted and still has existing finalizers", "name", component.GetName())
+		status.MarkNotReady(
+			r.EventRecorder,
+			component,
+			v1alpha1.DeletionFailedReason,
+			"component is being deleted and still has existing finalizers",
+		)
 
 		return ctrl.Result{}, nil
 	}

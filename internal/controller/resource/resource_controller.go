@@ -27,6 +27,7 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/mandelsoft/goutils/sliceutils"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/git"
@@ -36,6 +37,7 @@ import (
 	"ocm.software/ocm/api/ocm/resolvers"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -59,6 +61,8 @@ type Reconciler struct {
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
 
+var deployerIndex = "spec.resourceRef"
+
 func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Create index for component reference name from resources
 	const fieldName = "spec.componentRef.name"
@@ -71,6 +75,28 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 		return []string{resource.Spec.ComponentRef.Name}
 	}); err != nil {
 		return err
+	}
+
+	// This index is required to get all deployers that reference a resource. This is required to make sure that when
+	// deleting the resource, no deployer exists anymore that references that resource.
+	if err := mgr.GetFieldIndexer().IndexField(
+		ctx,
+		&v1alpha1.Deployer{},
+		deployerIndex,
+		func(obj client.Object) []string {
+			deployer, ok := obj.(*v1alpha1.Deployer)
+			if !ok {
+				return nil
+			}
+
+			return []string{fmt.Sprintf(
+				"%s:%s",
+				deployer.Spec.ResourceRef.Namespace,
+				deployer.Spec.ResourceRef.Name,
+			)}
+		},
+	); err != nil {
+		return fmt.Errorf("failed setting index fields: %w", err)
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
@@ -103,13 +129,46 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 
 				return requests
 			})).
+		Watches(
+			// Ensure to reconcile the resource when a deployer changes that references this resource. We want to
+			// reconcile because the resource-finalizer makes sure that the resource is only deleted when
+			// it is not referenced by any deployer anymore. So, when the resource is already marked for deletion, we
+			// want to get notified about deployer changes (e.g. deletion) to remove the resource-finalizer
+			// respectively.
+			&v1alpha1.Deployer{},
+			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+				deployer, ok := obj.(*v1alpha1.Deployer)
+				if !ok {
+					return []reconcile.Request{}
+				}
+
+				resource := &v1alpha1.Resource{}
+				if err := r.Get(ctx, client.ObjectKey{
+					Namespace: deployer.Spec.ResourceRef.Namespace,
+					Name:      deployer.Spec.ResourceRef.Name,
+				}, resource); err != nil {
+					return []reconcile.Request{}
+				}
+
+				// Only reconcile if the resource is marked for deletion
+				if resource.GetDeletionTimestamp().IsZero() {
+					return []reconcile.Request{}
+				}
+
+				return []reconcile.Request{
+					{NamespacedName: types.NamespacedName{
+						Namespace: resource.GetNamespace(),
+						Name:      resource.GetName(),
+					}},
+				}
+			})).
 		Complete(r)
 }
 
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=resources,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=resources/status,verbs=get;update;patch
 
-//nolint:cyclop,funlen,gocognit,maintidx // we do not want to cut the function at arbitrary points
+//nolint:gocyclo,cyclop,funlen,gocognit,maintidx // we do not want to cut the function at arbitrary points
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("starting reconciliation")
@@ -130,7 +189,60 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	if !resource.GetDeletionTimestamp().IsZero() {
-		return ctrl.Result{}, errors.New("resource is being deleted")
+		// The resource should only be deleted if no deployer exists that references that resource.
+		deployerList := &v1alpha1.DeployerList{}
+		if err := r.List(ctx, deployerList, &client.ListOptions{
+			FieldSelector: fields.OneTermEqualSelector(
+				deployerIndex,
+				client.ObjectKeyFromObject(resource).String(),
+			),
+		}); err != nil {
+			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.DeletionFailedReason, err.Error())
+
+			return ctrl.Result{}, fmt.Errorf("failed to list deployers: %w", err)
+		}
+
+		if len(deployerList.Items) > 0 {
+			var names []string
+			for _, deployer := range deployerList.Items {
+				names = append(names, deployer.Name)
+			}
+
+			msg := fmt.Sprintf(
+				"resource cannot be removed as deployers are still referencing it: %s",
+				strings.Join(names, ","),
+			)
+			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.DeletionFailedReason, msg)
+
+			return ctrl.Result{}, errors.New(msg)
+		}
+
+		if updated := controllerutil.RemoveFinalizer(resource, v1alpha1.ComponentFinalizer); updated {
+			if err := r.Update(ctx, resource); err != nil {
+				status.MarkNotReady(r.EventRecorder, resource, v1alpha1.DeletionFailedReason, err.Error())
+
+				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
+			}
+
+			return ctrl.Result{}, nil
+		}
+
+		status.MarkNotReady(
+			r.EventRecorder,
+			resource,
+			v1alpha1.DeletionFailedReason,
+			"resource is being deleted and still has existing finalizers",
+		)
+
+		return ctrl.Result{}, nil
+	}
+
+	if updated := controllerutil.AddFinalizer(resource, v1alpha1.ComponentFinalizer); updated {
+		if err := r.Update(ctx, resource); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
+		}
+
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	component, err := util.GetReadyObject[v1alpha1.Component, *v1alpha1.Component](ctx, r.Client, client.ObjectKey{
