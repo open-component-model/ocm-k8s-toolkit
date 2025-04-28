@@ -299,15 +299,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	// Get repository spec of actual component descriptor of the referenced resource
 	resolver := resolvers.NewCompoundResolver(repo, octx.GetResolver())
-	resourceCV, err := session.LookupComponentVersion(resolver, resourceCompDesc.GetName(), resourceCompDesc.GetVersion())
+	resCompVers, err := session.LookupComponentVersion(resolver, resourceCompDesc.GetName(), resourceCompDesc.GetVersion())
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentVersionFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to get component version of resource: %w", err)
 	}
-	resourceSpec := resourceCV.Repository().GetSpecification()
+	resCompVersRepoSpec := resCompVers.Repository().GetSpecification()
 
-	resourceSpecData, err := json.Marshal(resourceSpec)
+	resCompVersRepoSpecData, err := json.Marshal(resCompVersRepoSpec)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.MarshalFailedReason, err.Error())
 
@@ -316,7 +316,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	// Update status
 	if err = setResourceStatus(ctx, configs, resource, resourceAccess, sourceRef, &v1alpha1.ComponentInfo{
-		RepositorySpec: &apiextensionsv1.JSON{Raw: resourceSpecData},
+		RepositorySpec: &apiextensionsv1.JSON{Raw: resCompVersRepoSpecData},
 		Component:      resourceCompDesc.GetName(),
 		Version:        resourceCompDesc.GetVersion(),
 	}); err != nil {
