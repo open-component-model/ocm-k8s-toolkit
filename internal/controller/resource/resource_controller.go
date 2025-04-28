@@ -61,7 +61,7 @@ type Reconciler struct {
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
 
-var deployerIndex = "spec.resourceRef"
+var deployerIndex = "Resource.spec.resourceRef"
 
 func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Create index for component reference name from resources
@@ -90,7 +90,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 			}
 
 			return []string{fmt.Sprintf(
-				"%s:%s",
+				"%s/%s",
 				deployer.Spec.ResourceRef.Namespace,
 				deployer.Spec.ResourceRef.Name,
 			)}

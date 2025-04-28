@@ -43,16 +43,25 @@ var _ ocm.Reconciler = (*Reconciler)(nil)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	// Create index for resource reference name from deployers
-	const fieldName = "spec.resourceRef.name"
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &deliveryv1alpha1.Deployer{}, fieldName, func(obj client.Object) []string {
-		deployer, ok := obj.(*deliveryv1alpha1.Deployer)
-		if !ok {
-			return nil
-		}
+	// Create index for the deployer
+	const fieldName = "Deployer.spec.resourceRef"
+	if err := mgr.GetFieldIndexer().IndexField(
+		ctx,
+		&deliveryv1alpha1.Deployer{},
+		fieldName,
+		func(obj client.Object) []string {
+			deployer, ok := obj.(*deliveryv1alpha1.Deployer)
+			if !ok {
+				return nil
+			}
 
-		return []string{deployer.Spec.ResourceRef.Name}
-	}); err != nil {
+			return []string{fmt.Sprintf(
+				"%s/%s",
+				deployer.Spec.ResourceRef.Namespace,
+				deployer.Spec.ResourceRef.Name,
+			)}
+		},
+	); err != nil {
 		return err
 	}
 
@@ -69,7 +78,11 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 
 				// Get list of deployers that reference the resource
 				list := &deliveryv1alpha1.DeployerList{}
-				if err := r.List(ctx, list, client.MatchingFields{fieldName: resource.GetName()}); err != nil {
+				if err := r.List(
+					ctx,
+					list,
+					client.MatchingFields{fieldName: client.ObjectKeyFromObject(resource).String()},
+				); err != nil {
 					return []reconcile.Request{}
 				}
 
