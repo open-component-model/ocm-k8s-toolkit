@@ -39,6 +39,8 @@ var _ = Describe("Deployer Controller", func() {
 			}
 		})
 
+		// TODO: Add tests (@frewilhelm)
+
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 			resource := &deliveryv1alpha1.Deployer{}

@@ -11,10 +11,10 @@ components:
            type: ociArtifact
            imageReference: ghcr.io/stefanprodan/charts/podinfo:6.7.1
       - name: image-resource
-        type: ociArtifact
+        type: ociImage
         version: "1.0.0"
         access:
-          type: ociArtifact
+          type: ociRegistry
           imageReference: ghcr.io/stefanprodan/podinfo:6.7.1
       - name: kro-rgd
         type: blob

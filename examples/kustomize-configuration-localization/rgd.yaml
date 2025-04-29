@@ -70,7 +70,7 @@ spec:
             - patch: |
                 - op: replace
                   path: /spec/template/spec/containers/0/image
-                  value: ${resourceImage.status.reference.registry}/${resourceImage.status.reference.repository}:${resourceImage.status.reference.reference}
+                  value: ${resourceImage.status.reference.registry}/${resourceImage.status.reference.repository}:${resourceImage.status.reference.tag}
               target:
                 kind: Deployment
                 name: .*

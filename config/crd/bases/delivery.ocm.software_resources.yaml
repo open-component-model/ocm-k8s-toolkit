@@ -278,16 +278,22 @@ spec:
               reference:
                 description: SourceReference references the source of the resource.
                 properties:
+                  digest:
+                    type: string
                   reference:
                     type: string
                   registry:
                     type: string
                   repository:
                     type: string
+                  tag:
+                    type: string
                 required:
+                - digest
                 - reference
                 - registry
                 - repository
+                - tag
                 type: object
               resource:
                 properties:

@@ -21,15 +21,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/fluxcd/pkg/runtime/patch"
-	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/mandelsoft/goutils/sliceutils"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
+	"ocm.software/ocm/api/oci"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/git"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/github"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/helm"
@@ -348,6 +347,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	sourceRef := &v1alpha1.SourceReference{}
 
+	// TODO: Move to a separate function (@frewilhelm)
 	switch access := accSpec.(type) {
 	case *ociartifact.AccessSpec:
 		ociURLDigest, err := access.GetOCIReference(cv)
@@ -357,30 +357,25 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 			return ctrl.Result{}, fmt.Errorf("failed to get OCI reference: %w", err)
 		}
 
-		ociURL, err := url.Parse(strings.Split(ociURLDigest, "@")[0])
-		if err != nil {
-			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetReferenceFailedReason, err.Error())
-
-			return ctrl.Result{}, fmt.Errorf("failed to parse OCI reference URL: %w", err)
-		}
-
-		// gitHubURL.Parse will not acknowledge a hostname if a scheme is missing. But we cannot make sure that the reference
-		// has a scheme.
-		if ociURL.Host == "" {
-			ociURL.Host = strings.Split(ociURL.Path, "/")[0]
-			ociURL.Path = strings.TrimLeft(ociURL.Path, ociURL.Host+"/")
-		}
-
-		reference, err := name.ParseReference(fmt.Sprintf("%s/%s", ociURL.Host, ociURL.Path))
+		// TODO: Replace with another reference parser that is not ocm v1 lib (@frewilhelm)
+		//   Why is it needed in the first place?
+		//   Because if a reference consists of a tag and a digest, we need to store both of them.
+		//   Additionally, consuming resources, as a HelmRelease or OCIRepository, might need the tag, the digest, or
+		//   both of them. Thus, we have to offer some flexibility here.
+		ref, err := oci.ParseRef(ociURLDigest)
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetReferenceFailedReason, err.Error())
 
 			return ctrl.Result{}, fmt.Errorf("failed to parse OCI reference: %w", err)
 		}
 
-		sourceRef.Registry = reference.Context().RegistryStr()
-		sourceRef.Repository = strings.TrimLeft(reference.Context().RepositoryStr(), "/")
-		sourceRef.Reference = reference.Identifier()
+		sourceRef.Registry = ref.Host
+		sourceRef.Repository = strings.TrimLeft(ref.Repository, "/")
+		if *ref.Tag != "" && *ref.Digest != "" {
+			sourceRef.Reference = fmt.Sprintf("%s@%s", *ref.Tag, *ref.Digest)
+		}
+		sourceRef.Tag = *ref.Tag
+		sourceRef.Digest = ref.Digest.String()
 	case *helm.AccessSpec:
 		sourceRef.Registry = access.HelmRepository
 		sourceRef.Repository = access.HelmChart

@@ -82,7 +82,7 @@ var _ = Describe("Resource Controller", func() {
 		})
 
 		Context("resource controller", func() {
-			// TODO: Add tests
+			// TODO: Add tests (@frewilhelm)
 		})
 	})
 })

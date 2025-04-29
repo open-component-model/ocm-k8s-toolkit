@@ -118,4 +118,6 @@ type SourceReference struct {
 	Registry   string `json:"registry"`
 	Repository string `json:"repository"`
 	Reference  string `json:"reference"`
+	Digest     string `json:"digest"`
+	Tag        string `json:"tag"`
 }
