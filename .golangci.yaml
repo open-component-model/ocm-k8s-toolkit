@@ -1,106 +1,16 @@
+version: "2"
 run:
   go: "1.24"
-  timeout: 10m
   tests: false
   allow-parallel-runners: true
-linters-settings:
-  funlen:
-    lines: 200
-    statements: 60
-  cyclop:
-    max-complexity: 20
-    skip-tests: true
-  gosec:
-    exclude-generated: true
-  lll:
-    line-length: 200
-  misspell:
-    locale: US
-  nolintlint:
-    allow-unused: false
-    require-explanation: true
-    require-specific: false
-  nestif:
-    min-complexity: 7
-  varnamelen:
-    ignore-names:
-      - err
-      - wg
-      - fs
-      - id
-      - vm
-      - ns
-      - ip
-  mnd:
-    ignored-functions:
-      - "os.WriteFile" # File Permissions are self-explanatory bitsets
-      - "os.OpenFile" # File Permissions are self-explanatory bitsets
-  gci:
-    sections:
-      - standard
-      - blank
-      - dot
-      - default
-      - alias
-      - localmodule
-    custom-order: true
-
-issues:
-  # exclude-dirs:
-  # exclude-files:
-  max-same-issues: 0
-  max-issues-per-linter: 0
-  exclude-rules:
-    - text: "should not use dot imports|don't use an underscore in package name"
-      linters:
-        - golint
-    - source: "https://"
-      linters:
-        - lll
-    - source: "^// \\+kubebuilder:*"
-      linters:
-        - lll
-    - path: pkg/defaults/
-      linters:
-        - lll
-    - path: _test\.go
-      linters:
-        - gocyclo
-        - err113
-        - errcheck
-        - gosec
-        - dupl
-        - funlen
-        - scopelint
-        - testpackage
-        - goconst
-        - godox
-    - path: internal/version/
-      linters:
-        - gochecknoglobals
-    - path: internal/command/
-      linters:
-        - lll
-        - wrapcheck
-    - source: "// .* #\\d+"
-      linters:
-        - godox
-    - path: test/e2e/
-      linters:
-        - err113
-        - mnd
-    # remove this once https://github.com/golangci/golangci-lint/issues/2649 is closed
-    - path: /
-      linters:
-        - typecheck
-
 linters:
-  enable-all: true
+  default: all
   disable:
     - depguard
     - err113
     - exhaustruct
     - forbidigo
+    - funcorder
     - gochecknoglobals
     - gochecknoinits
     - godox
@@ -118,3 +28,110 @@ linters:
     - varnamelen
     - wrapcheck
     - wsl
+  settings:
+    cyclop:
+      max-complexity: 20
+    funlen:
+      lines: 200
+      statements: 60
+    lll:
+      line-length: 200
+    misspell:
+      locale: US
+    mnd:
+      ignored-functions:
+        - os.WriteFile
+        - os.OpenFile
+    nestif:
+      min-complexity: 7
+    nolintlint:
+      require-explanation: true
+      require-specific: false
+      allow-unused: false
+    varnamelen:
+      ignore-names:
+        - err
+        - wg
+        - fs
+        - id
+        - vm
+        - ns
+        - ip
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - golint
+        text: should not use dot imports|don't use an underscore in package name
+      - linters:
+          - lll
+        source: https://
+      - linters:
+          - lll
+        source: ^// \+kubebuilder:*
+      - linters:
+          - lll
+        path: pkg/defaults/
+      - linters:
+          - dupl
+          - err113
+          - errcheck
+          - funlen
+          - goconst
+          - gocyclo
+          - godox
+          - gosec
+          - scopelint
+          - testpackage
+        path: _test\.go
+      - linters:
+          - gochecknoglobals
+        path: internal/version/
+      - linters:
+          - lll
+          - wrapcheck
+        path: internal/command/
+      - linters:
+          - godox
+        source: '// .* #\d+'
+      - linters:
+          - err113
+          - mnd
+        path: test/e2e/
+      - linters:
+          - cyclop
+        path: (.+)_test\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - blank
+        - dot
+        - default
+        - alias
+        - localmodule
+      custom-order: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
