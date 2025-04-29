@@ -43,7 +43,7 @@ var _ ocm.Reconciler = (*Reconciler)(nil)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	// Create index for the deployer
+	// Build index for deployers that reference a resource to get notified about resource changes.
 	const fieldName = "Deployer.spec.resourceRef"
 	if err := mgr.GetFieldIndexer().IndexField(
 		ctx,
@@ -67,7 +67,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&deliveryv1alpha1.Deployer{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// Watch for resource-events that are referenced by the deployer
+		// Watch for events from OCM resources that are referenced by the deployer
 		Watches(
 			&deliveryv1alpha1.Resource{},
 			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
@@ -122,7 +122,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	if !deployer.GetDeletionTimestamp().IsZero() {
-		return ctrl.Result{}, errors.New("ocm deployer is being deleted")
+		return ctrl.Result{}, errors.New("deployer is being deleted")
 	}
 
 	octx := ocmctx.New(datacontext.MODE_EXTENDED)

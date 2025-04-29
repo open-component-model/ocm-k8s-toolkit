@@ -64,7 +64,7 @@ var _ ocm.Reconciler = (*Reconciler)(nil)
 var deployerIndex = "Resource.spec.resourceRef"
 
 func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	// Create index for component reference name from resources
+	// Build index for resources that reference a component to make sure that we get notified when a component changes.
 	const fieldName = "spec.componentRef.name"
 	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Resource{}, fieldName, func(obj client.Object) []string {
 		resource, ok := obj.(*v1alpha1.Resource)
@@ -103,6 +103,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 		For(&v1alpha1.Resource{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		// Watch for component-events that are referenced by resources
 		Watches(
+			// Watch for changes to components that are referenced by a resource.
 			&v1alpha1.Component{},
 			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
 				component, ok := obj.(*v1alpha1.Component)
@@ -217,7 +218,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 			return ctrl.Result{}, errors.New(msg)
 		}
 
-		if updated := controllerutil.RemoveFinalizer(resource, v1alpha1.ComponentFinalizer); updated {
+		if updated := controllerutil.RemoveFinalizer(resource, v1alpha1.ResourceFinalizer); updated {
 			if err := r.Update(ctx, resource); err != nil {
 				status.MarkNotReady(r.EventRecorder, resource, v1alpha1.DeletionFailedReason, err.Error())
 
@@ -237,7 +238,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, nil
 	}
 
-	if updated := controllerutil.AddFinalizer(resource, v1alpha1.ComponentFinalizer); updated {
+	if updated := controllerutil.AddFinalizer(resource, v1alpha1.ResourceFinalizer); updated {
 		if err := r.Update(ctx, resource); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
 		}

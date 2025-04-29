@@ -34,6 +34,9 @@ const (
 
 // Finalizers for the controllers.
 const (
+	// ResourceFinalizer makes sure that the resource is only deleted when it is no longer referenced by any other
+	// deployer.
+	ResourceFinalizer = "finalizers.ocm.software/resource"
 	// ComponentFinalizer makes sure that the component is only deleted when it is no longer referenced by any other
 	// resource.
 	ComponentFinalizer = "finalizers.ocm.software/component"
