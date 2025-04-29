@@ -348,6 +348,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	sourceRef := &v1alpha1.SourceReference{}
 
 	// TODO: Move to a separate function (@frewilhelm)
+	// TODO: Must be adjusted when Kro supports CEL optionals (@frewilhelm)
+	//   (see https://github.com/open-component-model/ocm-project/issues/455)
 	switch access := accSpec.(type) {
 	case *ociartifact.AccessSpec:
 		ociURLDigest, err := access.GetOCIReference(cv)
