@@ -76,7 +76,8 @@ func VerifyComponentVersion(ctx context.Context, cv ocm.ComponentVersionAccess, 
 	resolver := resolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver())
 	opts := signing.NewOptions(
 		signing.Resolver(resolver),
-		// TODO: Consider configurable options for digest verification
+		// TODO: Consider configurable options for digest verification (@frewilhelm @fabianburth)
+		//   https://github.com/open-component-model/ocm-k8s-toolkit/issues/208
 		// do we really want to verify the digests here? isn't it sufficient to verify the signatures since
 		// the digest verification can and has to be done anyways by the resource controller?
 		// signing.VerifyDigests(),
