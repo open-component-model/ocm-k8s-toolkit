@@ -168,7 +168,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=resources,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=resources/status,verbs=get;update;patch
 
-//nolint:gocyclo,cyclop,funlen,gocognit,maintidx // we do not want to cut the function at arbitrary points
+//nolint:cyclop,funlen,gocognit,maintidx // we do not want to cut the function at arbitrary points
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("starting reconciliation")
@@ -431,7 +431,6 @@ func getSourceRefForAccessSpec(ctx context.Context, accSpec any, cv ocmctx.Compo
 	case *github.AccessSpec:
 		gitHubURL, err := giturls.Parse(access.RepoURL)
 		if err != nil {
-
 			return nil, fmt.Errorf("failed to parse GitHub URL: %w", err)
 		}
 
@@ -443,7 +442,6 @@ func getSourceRefForAccessSpec(ctx context.Context, accSpec any, cv ocmctx.Compo
 	case *git.AccessSpec:
 		gitURL, err := giturls.Parse(access.Repository)
 		if err != nil {
-
 			return nil, fmt.Errorf("failed to parse Git URL: %w", err)
 		}
 
@@ -454,6 +452,7 @@ func getSourceRefForAccessSpec(ctx context.Context, accSpec any, cv ocmctx.Compo
 		}, nil
 	default:
 		logger.Info("skip setting reference for resource as no source reference is available for this access type", "access type", access)
+
 		return nil, nil
 	}
 }

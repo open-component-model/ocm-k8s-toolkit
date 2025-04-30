@@ -25,7 +25,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive,stylecheck // ginkgo...
+	. "github.com/onsi/ginkgo/v2" //nolint:revive // ginkgo...
 )
 
 // Run executes the provided command within this context.
