@@ -99,7 +99,7 @@ jobs:
         uses: open-component-model/ocm-setup-action@9bb4321df9c9eb033b54ef3563101b299a754336
 
       - name: Setup Flux CLI
-        uses: fluxcd/flux2/action@8738712cfab5b5ddcfede4d1e0704609fa4ed665
+        uses: fluxcd/flux2/action@a6b5013649298e7eee23e47c376de0c90a4eb6e6
 
       - name: Run e2e test
         run: |
