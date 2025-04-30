@@ -199,9 +199,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	a := cv.GetDescriptor()
 	resourceAccess, _, err := ocm.GetResourceAccessForComponentVersion(
+		ctx,
 		cv,
 		resourceReference,
 		&ocm.Descriptors{List: []*compdesc.ComponentDescriptor{a}},
+		resource.Spec.SkipVerify,
 	)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetOCMResourceFailedReason, err.Error())

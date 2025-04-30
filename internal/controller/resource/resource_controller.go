@@ -329,7 +329,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
 	}
 
-	resourceAccess, resourceCompDesc, err := ocm.GetResourceAccessForComponentVersion(cv, resourceReference, cds)
+	resourceAccess, resourceCompDesc, err := ocm.GetResourceAccessForComponentVersion(
+		ctx,
+		cv,
+		resourceReference,
+		cds,
+		resource.Spec.SkipVerify,
+	)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetOCMResourceFailedReason, err.Error())
 

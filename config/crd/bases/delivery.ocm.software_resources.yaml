@@ -136,6 +136,12 @@ spec:
                 required:
                 - byReference
                 type: object
+              skipVerify:
+                description: |-
+                  SkipVerify indicates whether the resource should be verified or not.
+                  A verification requires the resource to be downloaded, which can be
+                  expensive for large resources.
+                type: boolean
               suspend:
                 description: |-
                   Suspend tells the controller to suspend the reconciliation of this

@@ -41,6 +41,11 @@ type ResourceSpec struct {
 	// +optional
 	OCMConfig []OCMConfiguration `json:"ocmConfig,omitempty"`
 
+	// SkipVerify indicates whether the resource should be verified or not.
+	// A verification requires the resource to be downloaded, which can be
+	// expensive for large resources.
+	SkipVerify bool `json:"skipVerify,omitempty"`
+
 	// Interval at which the resource is checked for updates.
 	// +required
 	Interval metav1.Duration `json:"interval"`

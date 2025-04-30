@@ -1,6 +1,7 @@
 package ocm
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -8,16 +9,20 @@ import (
 	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
 	"ocm.software/ocm/api/ocm/selectors"
 	"ocm.software/ocm/api/ocm/tools/signing"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	ocmctx "ocm.software/ocm/api/ocm"
 	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 )
 
 func GetResourceAccessForComponentVersion(
+	ctx context.Context,
 	cv ocmctx.ComponentVersionAccess,
 	reference v1.ResourceReference,
 	cdSet *Descriptors,
+	skipVerification bool,
 ) (ocmctx.ResourceAccess, *compdesc.ComponentDescriptor, error) {
+	logger := log.FromContext(ctx)
 	// Resolve resource resourceReference to get resource and its component descriptor
 	resourceDesc, resourceCompDesc, err := compdesc.ResolveResourceReference(cv.GetDescriptor(), reference, compdesc.NewComponentVersionSet(cdSet.List...))
 	if err != nil {
@@ -39,9 +44,12 @@ func GetResourceAccessForComponentVersion(
 		return nil, nil, errors.New("cannot determine the resource access unambiguously")
 	}
 
-	// Consider option to omit verification (= resource download) if the resource is large
-	if err := verifyResource(resourceAccess, cv, cv.GetDescriptor()); err != nil {
-		return nil, nil, err
+	if !skipVerification {
+		if err := verifyResource(resourceAccess, cv, cv.GetDescriptor()); err != nil {
+			return nil, nil, err
+		}
+	} else {
+		logger.V(1).Info("skipping resource verification")
 	}
 
 	return resourceAccess, resourceCompDesc, nil
@@ -49,16 +57,6 @@ func GetResourceAccessForComponentVersion(
 
 // verifyResource verifies the resource digest with the digest from the component version access and component descriptor.
 func verifyResource(access ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAccess, cd *compdesc.ComponentDescriptor) error {
-	// TODO: https://github.com/open-component-model/ocm-k8s-toolkit/issues/71
-	index := cd.GetResourceIndex(access.Meta())
-	if index < 0 {
-		return errors.New("resource not found in access spec")
-	}
-	raw := &cd.Resources[index]
-	if raw.Digest == nil {
-		return nil
-	}
-
 	// Create data access
 	accessMethod, err := access.AccessMethod()
 	if err != nil {
