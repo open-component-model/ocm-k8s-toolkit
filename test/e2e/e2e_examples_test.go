@@ -113,15 +113,15 @@ var _ = Describe("controller", func() {
 				if strings.HasSuffix(example.Name(), "-configuration-localization") {
 					By("validating the localization")
 					Expect(utils.CompareResourceField(
+						"pod -l app.kubernetes.io/name="+example.Name()+"-podinfo",
 						"'{.items[0].spec.containers[0].image}'",
 						strings.TrimLeft(imageRegistry, "http://")+"/stefanprodan/podinfo:6.7.1",
-						"pod", "-l", "app.kubernetes.io/name="+example.Name()+"-podinfo",
 					)).To(Succeed())
 					By("validating the configuration")
 					Expect(utils.CompareResourceField(
+						"pod -l app.kubernetes.io/name="+example.Name()+"-podinfo",
 						"'{.items[0].spec.containers[0].env[?(@.name==\"PODINFO_UI_MESSAGE\")].value}'",
 						example.Name(),
-						"pod", "-l", "app.kubernetes.io/name="+example.Name()+"-podinfo",
 					)).To(Succeed())
 				}
 			})

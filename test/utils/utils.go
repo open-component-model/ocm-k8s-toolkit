@@ -90,7 +90,7 @@ func WaitForResource(condition, timeout string, resource ...string) error {
 
 // PrepareOCMComponent creates an OCM component from a component-constructor file.
 // After creating the OCM component, the component is transferred to imageRegistry.
-func PrepareOCMComponent(name, ccPath, imageRegistry, signingKey string) error {
+func PrepareOCMComponent(name, componentConstructorPath, imageRegistry, signingKey string) error {
 	By("creating ocm component for " + name)
 	tmpDir := GinkgoT().TempDir()
 
@@ -100,7 +100,7 @@ func PrepareOCMComponent(name, ccPath, imageRegistry, signingKey string) error {
 		"componentversions",
 		"--create",
 		"--file", ctfDir,
-		ccPath,
+		componentConstructorPath,
 	}
 
 	cmd := exec.Command("ocm", cmdArgs...)
@@ -251,8 +251,19 @@ func DeleteNamespace(ns string) error {
 	return err
 }
 
-func CompareResourceField(fieldSelector, expected string, resource ...string) error {
-	args := append([]string{"get"}, resource...)
+// CompareResourceField compares the value of a specific field in a Kubernetes resource
+// with an expected value.
+//
+// Parameters:
+// - resource: The Kubernetes resource to query (e.g., "pod my-pod").
+// - fieldSelector: A JSONPath expression to select the field to compare.
+// - expected: The expected value of the field.
+//
+// Returns:
+// - An error if the field value does not match the expected value or if the command fails.
+func CompareResourceField(resource, fieldSelector, expected string) error {
+	args := []string{"get"}
+	args = append(args, strings.Split(resource, " ")...)
 	args = append(args, "-o", "jsonpath="+fieldSelector)
 	cmd := exec.Command("kubectl", args...)
 	output, err := Run(cmd)
