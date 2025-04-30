@@ -171,13 +171,21 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	// Download the resource
-	cv, err := ocm.GetComponentVersion(
-		octx,
-		session,
-		resource.Status.Component.RepositorySpec.Raw,
-		resource.Status.Component.Component,
-		resource.Status.Component.Version,
-	)
+	spec, err := octx.RepositorySpecForConfig(resource.Status.Component.RepositorySpec.Raw, nil)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to get repository spec: %w", err)
+	}
+
+	repo, err := session.LookupRepository(octx, spec)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("invalid repository spec: %w", err)
+	}
+
+	cv, err := session.LookupComponentVersion(repo, resource.Status.Component.Component, resource.Status.Component.Version)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
 
