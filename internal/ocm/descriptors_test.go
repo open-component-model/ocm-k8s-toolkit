@@ -15,7 +15,7 @@ import (
 	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	resourcetypes "ocm.software/ocm/api/ocm/extensions/artifacttypes"
 
-	k8socm "github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
+	k8socm "github.com/open-component-model/ocm-k8s-toolkit/internal/ocm"
 )
 
 var _ = Describe("types test", func() {

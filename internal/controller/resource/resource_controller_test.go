@@ -34,7 +34,7 @@ import (
 	environment "ocm.software/ocm/api/helper/env"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/test"
 )
 
 const (

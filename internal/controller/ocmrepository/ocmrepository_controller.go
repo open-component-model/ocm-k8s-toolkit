@@ -38,8 +38,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/ocm"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/status"
 )
 
 var repositoryKey = ".spec.repositoryRef"

@@ -40,7 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/test"
 )
 
 const (

@@ -16,7 +16,7 @@ import (
 	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/status"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/status"
 )
 
 type MockResourceOptions struct {

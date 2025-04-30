@@ -7,7 +7,7 @@ import (
 	eventv1 "github.com/fluxcd/pkg/apis/event/v1beta1"
 	kuberecorder "k8s.io/client-go/tools/record"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/event"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/event"
 )
 
 // MarkNotReady sets the condition status of an Object to `Not Ready`.
