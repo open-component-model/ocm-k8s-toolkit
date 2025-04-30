@@ -315,8 +315,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to lookup component version: %w", err)
 	}
 
-	// Assuming the component descriptors are cached by the verification in the component controller, the verification
-	// is the only thing we do twice. Or is this omitted when the component is pulled from the ocm cache?
 	cds, err := ocm.VerifyComponentVersionAndListDescriptors(ctx, octx, cv, sliceutils.Transform(component.Spec.Verify, func(verify v1alpha1.Verification) string {
 		return verify.Signature
 	}))
