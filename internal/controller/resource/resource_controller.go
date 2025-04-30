@@ -362,6 +362,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		//   Because if a reference consists of a tag and a digest, we need to store both of them.
 		//   Additionally, consuming resources, as a HelmRelease or OCIRepository, might need the tag, the digest, or
 		//   both of them. Thus, we have to offer some flexibility here.
+		//   ocm v2 lib offers a LooseReference that is able to parse a reference with a tag and a digest. However, the
+		//   functionality is placed in an internal package and not available for us (yet).
 		ref, err := oci.ParseRef(ociURLDigest)
 		if err != nil {
 			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetReferenceFailedReason, err.Error())
