@@ -343,68 +343,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to get resource access spec: %w", err)
 	}
 
-	sourceRef := &v1alpha1.SourceReference{}
-
-	// TODO: Move to a separate function (@frewilhelm)
 	// TODO: Must be adjusted when Kro supports CEL optionals (@frewilhelm)
 	//   (see https://github.com/open-component-model/ocm-project/issues/455)
-	switch access := accSpec.(type) {
-	case *ociartifact.AccessSpec:
-		ociURLDigest, err := access.GetOCIReference(cv)
-		if err != nil {
-			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetReferenceFailedReason, err.Error())
+	sourceRef, err := getSourceRefForAccessSpec(ctx, accSpec, cv)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetReferenceFailedReason, err.Error())
 
-			return ctrl.Result{}, fmt.Errorf("failed to get OCI reference: %w", err)
-		}
-
-		// TODO: Replace with another reference parser that is not ocm v1 lib (@frewilhelm)
-		//   Why is it needed in the first place?
-		//   Because if a reference consists of a tag and a digest, we need to store both of them.
-		//   Additionally, consuming resources, as a HelmRelease or OCIRepository, might need the tag, the digest, or
-		//   both of them. Thus, we have to offer some flexibility here.
-		//   ocm v2 lib offers a LooseReference that is able to parse a reference with a tag and a digest. However, the
-		//   functionality is placed in an internal package and not available for us (yet).
-		ref, err := oci.ParseRef(ociURLDigest)
-		if err != nil {
-			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetReferenceFailedReason, err.Error())
-
-			return ctrl.Result{}, fmt.Errorf("failed to parse OCI reference: %w", err)
-		}
-
-		sourceRef.Registry = ref.Host
-		sourceRef.Repository = strings.TrimLeft(ref.Repository, "/")
-		if *ref.Tag != "" && *ref.Digest != "" {
-			sourceRef.Reference = fmt.Sprintf("%s@%s", *ref.Tag, *ref.Digest)
-		}
-		sourceRef.Tag = *ref.Tag
-		sourceRef.Digest = ref.Digest.String()
-	case *helm.AccessSpec:
-		sourceRef.Registry = access.HelmRepository
-		sourceRef.Repository = access.HelmChart
-		sourceRef.Reference = access.GetVersion()
-	case *github.AccessSpec:
-		gitHubURL, err := giturls.Parse(access.RepoURL)
-		if err != nil {
-			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetReferenceFailedReason, err.Error())
-
-			return ctrl.Result{}, fmt.Errorf("failed to parse GitHub URL: %w", err)
-		}
-		sourceRef.Registry = fmt.Sprintf("%s://%s", gitHubURL.Scheme, gitHubURL.Host)
-		sourceRef.Repository = gitHubURL.Path
-		sourceRef.Reference = access.Commit
-	case *git.AccessSpec:
-		gitURL, err := giturls.Parse(access.Repository)
-		if err != nil {
-			status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetReferenceFailedReason, err.Error())
-
-			return ctrl.Result{}, fmt.Errorf("failed to parse Git URL: %w", err)
-		}
-
-		sourceRef.Registry = fmt.Sprintf("%s://%s", gitURL.Scheme, gitURL.Host)
-		sourceRef.Repository = gitURL.Path
-		sourceRef.Reference = access.Ref
-	default:
-		logger.Info("skip setting reference for resource as no source reference is available for this access type", "access type", access)
+		return ctrl.Result{}, fmt.Errorf("failed to get source reference: %w", err)
 	}
 
 	// Get repository spec of actual component descriptor of the referenced resource
@@ -438,6 +383,79 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	status.MarkReady(r.EventRecorder, resource, "Applied version %s", resourceAccess.Meta().GetVersion())
 
 	return ctrl.Result{RequeueAfter: resource.GetRequeueAfter()}, nil
+}
+
+// getSourceRefForAccessSpec determines the source reference for a given access specification.
+// It supports multiple access types (e.g., OCI, Helm, GitHub, Git) and extracts relevant
+// information such as registry, repository, and reference details.
+func getSourceRefForAccessSpec(ctx context.Context, accSpec any, cv ocmctx.ComponentVersionAccess) (*v1alpha1.SourceReference, error) {
+	logger := log.FromContext(ctx)
+
+	switch access := accSpec.(type) {
+	case *ociartifact.AccessSpec:
+		ociURLDigest, err := access.GetOCIReference(cv)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get OCI reference: %w", err)
+		}
+
+		// TODO: Replace with another reference parser that is not ocm v1 lib (@frewilhelm)
+		//   Why is it needed in the first place?
+		//   Because if a reference consists of a tag and a digest, we need to store both of them.
+		//   Additionally, consuming resources, as a HelmRelease or OCIRepository, might need the tag, the digest, or
+		//   both of them. Thus, we have to offer some flexibility here.
+		//   ocm v2 lib offers a LooseReference that is able to parse a reference with a tag and a digest. However, the
+		//   functionality is placed in an internal package and not available for us (yet).
+		ref, err := oci.ParseRef(ociURLDigest)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse OCI reference: %w", err)
+		}
+
+		var reference string
+		if *ref.Tag != "" && ref.Digest.String() != "" {
+			reference = fmt.Sprintf("%s@%s", *ref.Tag, *ref.Digest)
+		}
+
+		return &v1alpha1.SourceReference{
+			Registry:   ref.Host,
+			Repository: strings.TrimLeft(ref.Repository, "/"),
+			Reference:  reference,
+			Tag:        *ref.Tag,
+			Digest:     ref.Digest.String(),
+		}, nil
+	case *helm.AccessSpec:
+		return &v1alpha1.SourceReference{
+			Registry:   access.HelmRepository,
+			Repository: access.HelmChart,
+			Reference:  access.GetVersion(),
+		}, nil
+	case *github.AccessSpec:
+		gitHubURL, err := giturls.Parse(access.RepoURL)
+		if err != nil {
+
+			return nil, fmt.Errorf("failed to parse GitHub URL: %w", err)
+		}
+
+		return &v1alpha1.SourceReference{
+			Registry:   fmt.Sprintf("%s://%s", gitHubURL.Scheme, gitHubURL.Host),
+			Repository: gitHubURL.Path,
+			Reference:  access.Commit,
+		}, nil
+	case *git.AccessSpec:
+		gitURL, err := giturls.Parse(access.Repository)
+		if err != nil {
+
+			return nil, fmt.Errorf("failed to parse Git URL: %w", err)
+		}
+
+		return &v1alpha1.SourceReference{
+			Registry:   fmt.Sprintf("%s://%s", gitURL.Scheme, gitURL.Host),
+			Repository: gitURL.Path,
+			Reference:  access.Ref,
+		}, nil
+	default:
+		logger.Info("skip setting reference for resource as no source reference is available for this access type", "access type", access)
+		return nil, nil
+	}
 }
 
 // setResourceStatus updates the resource status with the all required information.
