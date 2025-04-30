@@ -215,26 +215,6 @@ func GetOCMResourceImageRef(componentReference, resourceName, ocmConfigPath stri
 	return r.Items[0].Element.Access.ImageReference, nil
 }
 
-// GetVerifyPodFieldFunc is a helper function to return a function which checks for a pod with the passed label
-// selector. It returns the result from a comparison of the query on a specified pod-field with the expected string.
-func GetVerifyPodFieldFunc(labelSelector, fieldQuery, expect string) error {
-	return func() error {
-		cmd := exec.Command("kubectl", "get", "pod", "-l", labelSelector, "-o", fieldQuery)
-		output, err := Run(cmd)
-		if err != nil {
-			return fmt.Errorf("failed to get podinfo: %w", err)
-		}
-
-		podField := strings.ReplaceAll(string(output), "\"", "")
-
-		if podField != expect {
-			return fmt.Errorf("expected pod field: %s, got: %s", expect, podField)
-		}
-
-		return nil
-	}()
-}
-
 // Create Kubernetes namespace.
 func CreateNamespace(ns string) error {
 	cmd := exec.Command("kubectl", "create", "ns", ns)
