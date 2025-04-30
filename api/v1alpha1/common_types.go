@@ -115,9 +115,14 @@ type ResourceInfo struct {
 }
 
 type SourceReference struct {
-	Registry   string `json:"registry"`
+	// +required
+	Registry string `json:"registry"`
+	// +required
 	Repository string `json:"repository"`
-	Reference  string `json:"reference"`
-	Digest     string `json:"digest"`
-	Tag        string `json:"tag"`
+	// +optional
+	Reference string `json:"reference"`
+	// +optional
+	Digest string `json:"digest"`
+	// +optional
+	Tag string `json:"tag"`
 }

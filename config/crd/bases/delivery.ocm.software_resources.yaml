@@ -295,11 +295,8 @@ spec:
                   tag:
                     type: string
                 required:
-                - digest
-                - reference
                 - registry
                 - repository
-                - tag
                 type: object
               resource:
                 properties:
