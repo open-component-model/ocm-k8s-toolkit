@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"ocm.software/ocm/api/ocm/compdesc"
-	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
 	"ocm.software/ocm/api/ocm/selectors"
 	"ocm.software/ocm/api/ocm/tools/signing"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -81,57 +80,4 @@ func verifyResource(access ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAcce
 	}
 
 	return nil
-}
-
-func GetResource(
-	cv ocmctx.ComponentVersionAccess,
-	resourceAccess ocmctx.ResourceAccess,
-) (_ []byte, _ string, retErr error) {
-	octx := cv.GetContext()
-	cd := cv.GetDescriptor()
-	raw := &cd.Resources[cd.GetResourceIndex(resourceAccess.Meta())]
-
-	if raw.Digest == nil {
-		return nil, "", errors.New("digest not found in resource access")
-	}
-
-	// Check if the resource is signature relevant
-	acc, err := octx.AccessSpecForSpec(raw.Access)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed getting access for resource: %w", err)
-	}
-
-	// What is the difference to resourceAccess.AccessMethod()?
-	meth, err := acc.AccessMethod(cv)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed getting access method: %w", err)
-	}
-
-	// What is the difference to acc.AccessMethod(cv)?
-	accessMethod, err := resourceAccess.AccessMethod()
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to create access method: %w", err)
-	}
-
-	bAcc := accessMethod.AsBlobAccess()
-
-	meth = signing.NewRedirectedAccessMethod(meth, bAcc)
-	resAccDigest := raw.Digest
-	resAccDigestType := signing.DigesterType(resAccDigest)
-	req := []ocmctx.DigesterType{resAccDigestType} // ????
-
-	registry := signingattr.Get(octx).HandlerRegistry()
-	hasher := registry.GetHasher(resAccDigestType.HashAlgorithm)
-	digest, err := octx.BlobDigesters().DetermineDigests(raw.Type, hasher, registry, meth, req...)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed determining digest for resource: %w", err)
-	}
-
-	// Get actual resource data
-	data, err := bAcc.Get()
-	if err != nil {
-		return nil, "", fmt.Errorf("failed getting resource data: %w", err)
-	}
-
-	return data, digest[0].String(), nil
 }

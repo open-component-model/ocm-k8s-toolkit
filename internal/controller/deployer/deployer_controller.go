@@ -9,6 +9,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/compdesc"
+	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
+	"ocm.software/ocm/api/ocm/tools/signing"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -211,15 +213,17 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to get resource access: %w", err)
 	}
 
-	rgdManifest, digest, err := ocm.GetResource(cv, resourceAccess)
+	// Get the resource graph definition manifest and its digest. Compare the digest to the one in the resource to make
+	// sure the resource is up to date.
+	rgdManifest, digest, err := getResource(cv, resourceAccess)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetResourceFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetOCMResourceFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to get resource graph definition manifest: %w", err)
 	}
 
 	if resource.Status.Resource.Digest != digest {
-		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetResourceFailedReason, "resource digest mismatch")
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetOCMResourceFailedReason, "resource digest mismatch")
 
 		return ctrl.Result{}, fmt.Errorf("resource digest mismatch: expected %s, got %s", resource.Status.Resource.Digest, digest)
 	}
@@ -257,4 +261,53 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	status.MarkReady(r.EventRecorder, deployer, "Applied version %s", resourceAccess.Meta().GetVersion())
 
 	return ctrl.Result{RequeueAfter: resource.GetRequeueAfter()}, nil
+}
+
+// getResource returns the resource data as byte-slice and its digest.
+func getResource(cv ocmctx.ComponentVersionAccess, resourceAccess ocmctx.ResourceAccess) ([]byte, string, error) {
+	octx := cv.GetContext()
+	cd := cv.GetDescriptor()
+	raw := &cd.Resources[cd.GetResourceIndex(resourceAccess.Meta())]
+
+	if raw.Digest == nil {
+		return nil, "", errors.New("digest not found in resource access")
+	}
+
+	// Check if the resource is signature relevant and calculate digest of resource
+	acc, err := octx.AccessSpecForSpec(raw.Access)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed getting access for resource: %w", err)
+	}
+
+	meth, err := acc.AccessMethod(cv)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed getting access method: %w", err)
+	}
+
+	accessMethod, err := resourceAccess.AccessMethod()
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create access method: %w", err)
+	}
+
+	bAcc := accessMethod.AsBlobAccess()
+
+	meth = signing.NewRedirectedAccessMethod(meth, bAcc)
+	resAccDigest := raw.Digest
+	resAccDigestType := signing.DigesterType(resAccDigest)
+	req := []ocmctx.DigesterType{resAccDigestType}
+
+	registry := signingattr.Get(octx).HandlerRegistry()
+	hasher := registry.GetHasher(resAccDigestType.HashAlgorithm)
+	digest, err := octx.BlobDigesters().DetermineDigests(raw.Type, hasher, registry, meth, req...)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed determining digest for resource: %w", err)
+	}
+
+	// Get actual resource data
+	data, err := bAcc.Get()
+	if err != nil {
+		return nil, "", fmt.Errorf("failed getting resource data: %w", err)
+	}
+
+	return data, digest[0].String(), nil
 }
