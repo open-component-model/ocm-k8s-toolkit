@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/fluxcd/pkg/runtime/patch"
 	"k8s.io/apimachinery/pkg/types"
@@ -116,7 +117,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	patchHelper := patch.NewSerialPatcher(deployer, r.Client)
 	defer func(ctx context.Context) {
-		err = status.UpdateStatus(ctx, patchHelper, deployer, r.EventRecorder, deployer.GetRequeueAfter(), err)
+		err = status.UpdateStatus(ctx, patchHelper, deployer, r.EventRecorder, time.Second, err)
 	}(ctx)
 
 	if deployer.Spec.Suspend {
@@ -260,7 +261,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	//       (see https://github.com/open-component-model/ocm-k8s-toolkit/issues/192)
 	status.MarkReady(r.EventRecorder, deployer, "Applied version %s", resourceAccess.Meta().GetVersion())
 
-	return ctrl.Result{RequeueAfter: resource.GetRequeueAfter()}, nil
+	return ctrl.Result{}, nil
 }
 
 // getResource returns the resource data as byte-slice and its digest.

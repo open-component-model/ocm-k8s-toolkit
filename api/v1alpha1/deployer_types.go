@@ -2,7 +2,6 @@ package v1alpha1
 
 import (
 	"fmt"
-	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -19,10 +18,6 @@ type DeployerSpec struct {
 	// objects providing configuration data including credentials.
 	// +optional
 	OCMConfig []OCMConfiguration `json:"ocmConfig,omitempty"`
-
-	// Interval at which the resource is checked for updates.
-	// +required
-	Interval metav1.Duration `json:"interval"`
 
 	// Suspend tells the controller to suspend the reconciliation of this
 	// Resource.
@@ -74,12 +69,6 @@ func (in *Deployer) GetObjectMeta() *metav1.ObjectMeta {
 
 func (in *Deployer) GetKind() string {
 	return KindDeployer
-}
-
-// GetRequeueAfter returns the duration after which the Deployer must be
-// reconciled again.
-func (in Deployer) GetRequeueAfter() time.Duration {
-	return in.Spec.Interval.Duration
 }
 
 func (in *Deployer) GetSpecifiedOCMConfig() []OCMConfiguration {
