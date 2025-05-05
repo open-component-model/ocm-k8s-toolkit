@@ -19,7 +19,7 @@ jobs:
     runs-on: large_runner
     steps:
       - name: Self Hosted Runner Post Job Cleanup Action
-        uses: TooMuch4U/actions-clean@9b358e33df99574ac0bdf2e92fa3db1ae1415563
+        uses: TooMuch4U/actions-clean@3f61bacac66e425c632b77a19065e4ba2f43a04e # v2.1
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Setup Go
@@ -68,7 +68,7 @@ jobs:
     runs-on: large_runner
     steps:
       - name: Self Hosted Runner Post Job Cleanup Action
-        uses: TooMuch4U/actions-clean@9b358e33df99574ac0bdf2e92fa3db1ae1415563 # v2.2
+        uses: TooMuch4U/actions-clean@3f61bacac66e425c632b77a19065e4ba2f43a04e # v2.1
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Setup Go
@@ -96,10 +96,10 @@ jobs:
           cache_name: integration-test
 
       - name: Setup ocm
-        uses: open-component-model/ocm-setup-action@9bb4321df9c9eb033b54ef3563101b299a754336
+        uses: open-component-model/ocm-setup-action@655f3525fd283ca7d22e6b2ceec42324331df401 # v1.0.0
 
       - name: Setup Flux CLI
-        uses: fluxcd/flux2/action@a6b5013649298e7eee23e47c376de0c90a4eb6e6
+        uses: fluxcd/flux2/action@ae3279e3d853ac3b677500ede4f38eda79846834 # v2.5.1
 
       - name: Run e2e test
         run: |

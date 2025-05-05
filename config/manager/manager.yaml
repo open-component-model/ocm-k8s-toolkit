@@ -36,7 +36,6 @@ spec:
           # - --leader-elect We dont need it for testing
           - --health-probe-bind-address=:8081
           - --zap-log-level=4
-          - --registry-insecure-skip-verify=true
         image: controller:latest
         name: manager
         imagePullPolicy: Always
