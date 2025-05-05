@@ -19,11 +19,11 @@ jobs:
     runs-on: large_runner
     steps:
       - name: Self Hosted Runner Post Job Cleanup Action
-        uses: TooMuch4U/actions-clean@9b358e33df99574ac0bdf2e92fa3db1ae1415563
+        uses: TooMuch4U/actions-clean@3f61bacac66e425c632b77a19065e4ba2f43a04e # v2.1
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.4.0
         with:
           go-version-file: '${{ github.workspace }}/go.mod'
           cache: false
@@ -34,7 +34,7 @@ jobs:
           echo "go_modcache=$(go env GOMODCACHE)" >> $GITHUB_ENV
       - name: Set up cache
         # https://github.com/actions/setup-go/issues/358 - cache is not working with setup-go for multiple jobs
-        uses: actions/cache@v4
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
             ${{ env.go_cache }}
@@ -47,7 +47,7 @@ jobs:
 
       - name: Restore K8s Cache
         id: cache-k8s-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
             bin/k8s
@@ -58,7 +58,7 @@ jobs:
 
       - name: Save K8s Cache
         id: cache-k8s-save
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
             bin/k8s
@@ -68,11 +68,11 @@ jobs:
     runs-on: large_runner
     steps:
       - name: Self Hosted Runner Post Job Cleanup Action
-        uses: TooMuch4U/actions-clean@9b358e33df99574ac0bdf2e92fa3db1ae1415563 # v2.2
+        uses: TooMuch4U/actions-clean@3f61bacac66e425c632b77a19065e4ba2f43a04e # v2.1
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.4.0
         with:
           go-version-file: '${{ github.workspace }}/go.mod'
           cache: false
@@ -83,7 +83,7 @@ jobs:
           echo "go_modcache=$(go env GOMODCACHE)" >> $GITHUB_ENV
       - name: Set up cache
         # https://github.com/actions/setup-go/issues/358 - cache is not working with setup-go for multiple jobs
-        uses: actions/cache@v4
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
             ${{ env.go_cache }}
@@ -96,10 +96,10 @@ jobs:
           cache_name: integration-test
 
       - name: Setup ocm
-        uses: open-component-model/ocm-setup-action@9bb4321df9c9eb033b54ef3563101b299a754336
+        uses: open-component-model/ocm-setup-action@655f3525fd283ca7d22e6b2ceec42324331df401 # v1.0.0
 
       - name: Setup Flux CLI
-        uses: fluxcd/flux2/action@a6b5013649298e7eee23e47c376de0c90a4eb6e6
+        uses: fluxcd/flux2/action@ae3279e3d853ac3b677500ede4f38eda79846834 # v2.5.1
 
       - name: Run e2e test
         run: |
@@ -109,7 +109,7 @@ jobs:
 
       - name: Publish logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         env:
           CONTROLLER_LOG_PATH: ocm-k8s-toolkit-controller.log
         with:
