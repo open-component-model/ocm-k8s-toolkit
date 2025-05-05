@@ -95,47 +95,27 @@ jobs:
         env:
           cache_name: integration-test
 
-      - name: Create k8s Kind Cluster
-        uses: helm/kind-action@a1b0e391336a6ee6713a0583f8c6240d70863de3 # v1
-        with:
-          config: test/e2e/config/kind-config.yaml
-
-      - name: Install internal image registry
-        run: |
-          kubectl apply -f test/e2e/config/image-registry.yaml
-          kubectl wait pod -l app=registry --for condition=Ready --timeout 5m
-          kubectl wait pod -l app=protected-registry1 --for condition=Ready --timeout 5m
-          kubectl wait pod -l app=protected-registry2 --for condition=Ready --timeout 5m
+      - name: Setup ocm
+        uses: open-component-model/ocm-setup-action@9bb4321df9c9eb033b54ef3563101b299a754336
 
       - name: Setup Flux CLI
         uses: fluxcd/flux2/action@a6b5013649298e7eee23e47c376de0c90a4eb6e6
 
-      - name: Install Flux in Kind
-        run: flux install
-
-      - name: Setup ocm
-        uses: open-component-model/ocm-setup-action@9bb4321df9c9eb033b54ef3563101b299a754336
-
       - name: Run e2e test
-        env:
-          RESOURCE_TIMEOUT: 5m
-          IMAGE_REFERENCE: ghcr.io/stefanprodan/podinfo:6.7.1
-          CONTROLLER_LOG_PATH: ./ocm-k8s-toolkit-controller.log
-          PROTECTED_REGISTRY_URL: http://localhost:31002
-          INTERNAL_PROTECTED_REGISTRY_URL: http://protected-registry1-internal.default.svc.cluster.local:5002
-          PROTECTED_REGISTRY_URL2: http://localhost:31003
-          INTERNAL_PROTECTED_REGISTRY_URL2: http://protected-registry2-internal.default.svc.cluster.local:5003
-        run: make test-e2e
+        run: |
+          ./test/e2e/hacks/setup.sh
+          source ./test/e2e/hacks/.env
+          make test-e2e 
 
       - name: Publish logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
+        env:
+          CONTROLLER_LOG_PATH: ocm-k8s-toolkit-controller.log
         with:
           name: controller-logs
           # Currently, it is planned that the integration tests runs on every commit on a PR. Therefore, we could
           # produce a lot of logs. To not clutter the storage, the retention-days are reduced to 1.
           retention-days: 1
           path: |
-            helm-controller.log
-            kustomize-controller.log
             ocm-k8s-toolkit-controller.log

@@ -136,6 +136,12 @@ spec:
                 required:
                 - byReference
                 type: object
+              skipVerify:
+                description: |-
+                  SkipVerify indicates whether the resource should be verified or not.
+                  A verification requires the resource to be downloaded, which can be
+                  expensive for large resources.
+                type: boolean
               suspend:
                 description: |-
                   Suspend tells the controller to suspend the reconciliation of this
@@ -149,6 +155,19 @@ spec:
           status:
             description: ResourceStatus defines the observed state of Resource.
             properties:
+              component:
+                properties:
+                  component:
+                    type: string
+                  repositorySpec:
+                    x-kubernetes-preserve-unknown-fields: true
+                  version:
+                    type: string
+                required:
+                - component
+                - repositorySpec
+                - version
+                type: object
               conditions:
                 description: Conditions holds the conditions for the Resource.
                 items:
@@ -262,44 +281,21 @@ spec:
                   object.
                 format: int64
                 type: integer
-              ociArtifact:
-                description: |-
-                  OCIArtifact points to the OCI artifact which represents the output of the
-                  last successful Resource sync.
+              reference:
+                description: SourceReference references the source of the resource.
                 properties:
-                  blob:
-                    description: Blob
-                    properties:
-                      digest:
-                        description: Digest is the digest of the blob.
-                        type: string
-                      size:
-                        description: |-
-                          Size is the number of bytes of the blob.
-                          Can be used to determine how to file should be handled when downloaded (memory/disk).
-                        format: int64
-                        type: integer
-                      tag:
-                        description: |-
-                          Tag/Version of the blob.
-                          Corresponds to the tag the blob is available in the OCI registry.
-                        type: string
-                    required:
-                    - digest
-                    - size
-                    - tag
-                    type: object
                   digest:
-                    description: |-
-                      Manifest digest
-                      Used to fetch single layer OCI artifact and remove manifests
+                    type: string
+                  reference:
+                    type: string
+                  registry:
                     type: string
                   repository:
-                    description: OCI repository name
+                    type: string
+                  tag:
                     type: string
                 required:
-                - blob
-                - digest
+                - registry
                 - repository
                 type: object
               resource:

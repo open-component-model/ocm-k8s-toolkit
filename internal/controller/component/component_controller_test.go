@@ -22,21 +22,17 @@ import (
 	"time"
 
 	"github.com/fluxcd/pkg/apis/meta"
+	"github.com/fluxcd/pkg/runtime/conditions"
 	. "github.com/mandelsoft/goutils/testutils"
-	"github.com/mandelsoft/vfs/pkg/vfs"
+	"github.com/mandelsoft/vfs/pkg/osfs"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
-	. "ocm.software/ocm/api/helper/builder"
-	"ocm.software/ocm/api/utils/accessobj"
-	"sigs.k8s.io/yaml"
-
-	"github.com/fluxcd/pkg/runtime/conditions"
-	"github.com/mandelsoft/vfs/pkg/osfs"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	. "ocm.software/ocm/api/helper/builder"
 	environment "ocm.software/ocm/api/helper/env"
 	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
 	"ocm.software/ocm/api/utils/accessio"
@@ -44,8 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/ocm"
-	"github.com/open-component-model/ocm-k8s-toolkit/pkg/test"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/test"
 )
 
 const (
@@ -128,9 +123,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component: componentName,
 					Semver:    "1.0.0",
@@ -142,7 +136,6 @@ var _ = Describe("Component Controller", func() {
 
 			By("checking that the component has been reconciled successfully")
 			waitUntilComponentIsReady(ctx, component, "1.0.0")
-			validateArtifact(ctx, component, env, ctfpath)
 
 			By("delete resources manually")
 			deleteComponent(ctx, component)
@@ -173,9 +166,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component: componentName,
 					Semver:    "1.0.0",
@@ -197,15 +189,12 @@ var _ = Describe("Component Controller", func() {
 				}
 
 				reason := conditions.GetReason(component, "Ready")
-				if reason != v1alpha1.RepositoryIsNotReadyReason {
-					return fmt.Errorf("expected component ready-condition reason to be %s, but it was %s", v1alpha1.RepositoryIsNotReadyReason, reason)
+				if reason != v1alpha1.GetResourceFailedReason {
+					return fmt.Errorf("expected component ready-condition reason to be %s, but it was %s", v1alpha1.GetResourceFailedReason, reason)
 				}
 
 				return nil
 			}, "15s").WithContext(ctx).Should(Succeed())
-
-			By("checking that reference to OCI artifact has not been created")
-			Expect(component).To(HaveField("Status.OCIArtifact", BeNil()))
 
 			By("deleting the resources manually")
 			deleteComponent(ctx, component)
@@ -236,9 +225,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component: componentName,
 					Semver:    "1.0.0",
@@ -260,15 +248,12 @@ var _ = Describe("Component Controller", func() {
 				}
 
 				reason := conditions.GetReason(component, "Ready")
-				if reason != v1alpha1.RepositoryIsNotReadyReason {
-					return fmt.Errorf("expected component ready-condition reason to be %s, but it was %s", v1alpha1.RepositoryIsNotReadyReason, reason)
+				if reason != v1alpha1.GetResourceFailedReason {
+					return fmt.Errorf("expected component ready-condition reason to be %s, but it was %s", v1alpha1.GetResourceFailedReason, reason)
 				}
 
 				return nil
 			}, "15s").WithContext(ctx).Should(Succeed())
-
-			By("checking that reference to OCI artifact has not been created")
-			Expect(component).To(HaveField("Status.OCIArtifact", BeNil()))
 
 			By("marking the repository as ready")
 			conditions.MarkTrue(repositoryObj, "Ready", "ready", "message")
@@ -276,7 +261,6 @@ var _ = Describe("Component Controller", func() {
 
 			By("checking that the component has been reconciled successfully")
 			waitUntilComponentIsReady(ctx, component, Version1)
-			validateArtifact(ctx, component, env, ctfpath)
 
 			By("deleting the resources manually")
 			deleteComponent(ctx, component)
@@ -302,9 +286,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component: componentName,
 					Semver:    ">=1.0.0",
@@ -316,10 +299,6 @@ var _ = Describe("Component Controller", func() {
 
 			By("checking that the component has been reconciled successfully")
 			waitUntilComponentIsReady(ctx, component, Version1)
-			validateArtifact(ctx, component, env, ctfpath)
-
-			// Save artifact information to check afterward, that it has been deleted as obsolete.
-			artifactBeforeUpdate := component.GetOCIArtifact().DeepCopy()
 
 			By("increasing the component version")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
@@ -333,12 +312,6 @@ var _ = Describe("Component Controller", func() {
 
 			By("checking that the increased version has been discovered successfully")
 			waitUntilComponentIsReady(ctx, component, Version2)
-
-			By("checking if the previous artifact was deleted")
-			test.ExpectArtifactToNotExist(ctx, registry, artifactBeforeUpdate)
-
-			By("checking that increased version is reflected in the OCI artifact")
-			validateArtifact(ctx, component, env, ctfpath)
 
 			By("delete resources manually")
 			deleteComponent(ctx, component)
@@ -369,9 +342,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component:       componentName,
 					DowngradePolicy: v1alpha1.DowngradePolicyAllow,
@@ -384,10 +356,6 @@ var _ = Describe("Component Controller", func() {
 
 			By("checking that the component has been reconciled successfully")
 			waitUntilComponentIsReady(ctx, component, "0.0.3")
-			validateArtifact(ctx, component, env, ctfpath)
-
-			// Save artifact information to check afterward, that it has been deleted as obsolete.
-			artifactBeforeUpdate := component.GetOCIArtifact().DeepCopy()
 
 			By("decreasing the component version")
 			component.Spec.Semver = "0.0.2"
@@ -395,12 +363,6 @@ var _ = Describe("Component Controller", func() {
 
 			By("checking that the decreased version has been discovered successfully")
 			waitUntilComponentIsReady(ctx, component, "0.0.2")
-
-			By("checking if the previous artifact was deleted")
-			test.ExpectArtifactToNotExist(ctx, registry, artifactBeforeUpdate)
-
-			By("checking that decreased version is reflected in the OCI artifact")
-			validateArtifact(ctx, component, env, ctfpath)
 
 			By("delete resources manually")
 			deleteComponent(ctx, component)
@@ -431,9 +393,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component:       componentName,
 					DowngradePolicy: v1alpha1.DowngradePolicyDeny,
@@ -445,7 +406,6 @@ var _ = Describe("Component Controller", func() {
 
 			By("checking that the component has been reconciled successfully")
 			waitUntilComponentIsReady(ctx, component, "0.0.3")
-			validateArtifact(ctx, component, env, ctfpath)
 
 			By("trying to decrease component version")
 			component.Spec.Semver = "0.0.2"
@@ -467,7 +427,6 @@ var _ = Describe("Component Controller", func() {
 				return nil
 			}, "15s").WithContext(ctx).Should(Succeed())
 			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
-			Expect(component.Status.OCIArtifact.Blob.Tag).To(Equal("0.0.3"))
 
 			By("delete resources manually")
 			deleteComponent(ctx, component)
@@ -494,9 +453,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component:       componentName,
 					DowngradePolicy: v1alpha1.DowngradePolicyEnforce,
@@ -509,10 +467,6 @@ var _ = Describe("Component Controller", func() {
 
 			By("checking that the component has been reconciled successfully")
 			waitUntilComponentIsReady(ctx, component, "0.0.3")
-			validateArtifact(ctx, component, env, ctfpath)
-
-			// Save artifact information to check afterward, that it has been deleted as obsolete.
-			artifactBeforeUpdate := component.GetOCIArtifact().DeepCopy()
 
 			By("decreasing the component version")
 			component.Spec.Semver = "0.0.2"
@@ -521,12 +475,6 @@ var _ = Describe("Component Controller", func() {
 			By("checking that the decreased version has been discovered successfully")
 			waitUntilComponentIsReady(ctx, component, "0.0.2")
 
-			By("checking if the previous artifact was deleted")
-			test.ExpectArtifactToNotExist(ctx, registry, artifactBeforeUpdate)
-
-			By("checking that decreased version is reflected in the OCI artifact")
-			validateArtifact(ctx, component, env, ctfpath)
-
 			By("delete resources manually")
 			deleteComponent(ctx, component)
 		})
@@ -534,7 +482,6 @@ var _ = Describe("Component Controller", func() {
 		It("normalizes a component version with a plus", func(ctx SpecContext) {
 			componentObjName := ComponentObj + "-with-plus"
 			componentVersionPlus := Version1 + "+componentVersionSuffix"
-			expectedBlobTag := Version1 + ".build-componentVersionSuffix"
 
 			By("creating a component version")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
@@ -563,9 +510,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      componentObjName,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component: componentName,
 					Semver:    componentVersionPlus,
@@ -577,20 +523,77 @@ var _ = Describe("Component Controller", func() {
 
 			By("checking that the component has been reconciled successfully")
 			waitUntilComponentIsReady(ctx, component, componentVersionPlus)
-			validateArtifact(ctx, component, env, ctfpath)
 
-			By("checking that artifact's blob tag is properly set")
-			Eventually(func(g Gomega, ctx context.Context) error {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
+			By("delete resources manually")
+			deleteComponent(ctx, component)
+		})
+		It("blocks deletion of a component when a resource is referencing it", func(ctx SpecContext) {
+			By("creating a component version")
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(Version1)
+				})
+			})
+
+			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
+			specData := Must(spec.MarshalJSON())
+
+			By("mocking an ocm repository")
+			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+
+			By("creating a component")
+			component := &v1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace.GetName(),
+					Name:      ComponentObj,
+				},
+				Spec: v1alpha1.ComponentSpec{
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
+					},
+					Component: componentName,
+					Semver:    "1.0.0",
+					Interval:  metav1.Duration{Duration: time.Minute * 10},
+				},
+				Status: v1alpha1.ComponentStatus{},
+			}
+			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+
+			By("checking that the component has been reconciled successfully")
+			waitUntilComponentIsReady(ctx, component, "1.0.0")
+
+			By("creating a resource that references the component")
+			resource := test.SetupMockResource(ctx, "test-resource", component.GetNamespace(), &test.MockResourceOptions{
+				ComponentRef: corev1.LocalObjectReference{
+					Name: component.GetName(),
+				},
+				Clnt:     k8sClient,
+				Recorder: recorder,
+			})
+
+			By("Deleting the component and checking for ready condition")
+			Expect(k8sClient.Delete(ctx, component)).To(Succeed())
+			Eventually(func(ctx context.Context) error {
+				comp := &v1alpha1.Component{}
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), comp)
 				if err != nil {
 					return err
 				}
-				g.Expect(component.Status.OCIArtifact.Blob.Tag).To(Equal(expectedBlobTag))
+
+				reason := conditions.GetReason(comp, "Ready")
+				if reason != v1alpha1.DeletionFailedReason {
+					return fmt.Errorf(
+						"expected component ready-condition reason to be %s, but it was %s",
+						v1alpha1.DeletionFailedReason,
+						reason,
+					)
+				}
 
 				return nil
 			}, "15s").WithContext(ctx).Should(Succeed())
 
 			By("delete resources manually")
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			deleteComponent(ctx, component)
 		})
 	})
@@ -790,9 +793,8 @@ var _ = Describe("Component Controller", func() {
 					Name:      ComponentObj,
 				},
 				Spec: v1alpha1.ComponentSpec{
-					RepositoryRef: v1alpha1.ObjectKey{
-						Namespace: namespace.GetName(),
-						Name:      repositoryObj.GetName(),
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
 					},
 					Component: componentName,
 					Semver:    "1.0.0",
@@ -815,7 +817,6 @@ var _ = Describe("Component Controller", func() {
 
 			By("checking that the component has been reconciled successfully")
 			waitUntilComponentIsReady(ctx, component, "1.0.0")
-			validateArtifact(ctx, component, env, ctfpath)
 
 			By("checking component's effective OCM config")
 			Eventually(komega.Object(component), "15s").Should(
@@ -866,25 +867,6 @@ func waitUntilComponentIsReady(ctx context.Context, component *v1alpha1.Componen
 	}, "15s").WithContext(ctx).Should(Succeed())
 }
 
-func validateArtifact(ctx context.Context, component *v1alpha1.Component, env *Builder, ctfPath string) {
-	GinkgoHelper()
-
-	By("checking that component has a reference to OCI artifact")
-	Eventually(komega.Object(component), "15s").Should(
-		HaveField("Status.OCIArtifact", Not(BeNil())))
-
-	By("checking that the OCI artifact contains the correct content")
-	ociRepo := Must(registry.NewRepository(ctx, component.GetOCIRepository()))
-	componentContent := Must(ociRepo.FetchArtifact(ctx, component.GetManifestDigest()))
-
-	descriptors := &ocm.Descriptors{}
-	MustBeSuccessful(yaml.Unmarshal(componentContent, descriptors))
-	ctfRepo := Must(ctf.Open(env, accessobj.ACC_WRITABLE, ctfPath, vfs.FileMode(vfs.O_RDWR), env))
-	cv := Must(ctfRepo.LookupComponentVersion(component.Status.Component.Component, component.Status.Component.Version))
-	expectedDescriptors := Must(ocm.ListComponentDescriptors(ctx, cv, ctfRepo))
-	Expect(descriptors).To(YAMLEqual(expectedDescriptors))
-}
-
 func deleteComponent(ctx context.Context, component *v1alpha1.Component) {
 	GinkgoHelper()
 
@@ -902,8 +884,6 @@ func deleteComponent(ctx context.Context, component *v1alpha1.Component) {
 
 		return fmt.Errorf("expected not-found error, but got none")
 	}, "15s").WithContext(ctx).Should(Succeed())
-
-	test.ExpectArtifactToNotExist(ctx, registry, component.GetOCIArtifact())
 }
 
 func createTestConfigsAndSecrets(ctx context.Context, namespace string) (configs []*corev1.ConfigMap, secrets []*corev1.Secret) {

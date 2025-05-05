@@ -18,8 +18,10 @@ package e2e
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -35,17 +37,36 @@ const namespace = "ocm-k8s-toolkit-system"
 var (
 	// image registry that is used to push and pull images.
 	imageRegistry string
-	// internal image registry represents the same image registry but is required, when using an image registry inside
-	// a cluster.
-	internalImageRegistry string
-	// image reference is used to copy the original image from the example into the image registry and test the
-	// localization and configuration.
-	imageReference string
 	// timeout for waiting for kuberentes resources
 	timeout string
 	// controllerPodName is required to access the logs after the e2e tests
 	controllerPodName string
+	examplesDir       string
+	examples          []os.DirEntry
 )
+
+// To create a test-case for every example in the examples directory, it is required to set the examples before the
+// test suite is started.
+func init() {
+	examplesDir = os.Getenv("EXAMPLES_DIR")
+	if examplesDir == "" {
+		projectDir := os.Getenv("PROJECT_DIR")
+		if projectDir == "" {
+			var err error
+			projectDir, err = os.Getwd()
+			if err != nil {
+				log.Fatal("could not get current working directory", err)
+			}
+		}
+		examplesDir = filepath.Join(projectDir, "examples")
+	}
+
+	var err error
+	examples, err = os.ReadDir(examplesDir)
+	if err != nil {
+		log.Fatal("could not read directory with examples", err)
+	}
+}
 
 // Run e2e tests using the Ginkgo runner.
 func TestE2E(t *testing.T) {
@@ -66,11 +87,11 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 
 	timeout = os.Getenv("RESOURCE_TIMEOUT")
 	if timeout == "" {
-		timeout = "1m"
+		timeout = "10m"
 	}
 
-	imageRegistry = "http://localhost:31001"
-	internalImageRegistry = "http://registry-external.default.svc.cluster.local:5001"
+	imageRegistry = os.Getenv("IMAGE_REGISTRY")
+	Expect(imageRegistry).NotTo(BeEmpty(), "IMAGE_REGISTRY must be set")
 
 	By("Starting the operator", func() {
 		// projectimage stores the name of the image used in the example
@@ -165,14 +186,17 @@ var _ = AfterSuite(func(ctx SpecContext) {
 	logPath := os.Getenv("CONTROLLER_LOG_PATH")
 	if logPath != "" {
 		By("displays logs from the controller", func() {
-			cmdArgs := []string{"logs", "-n", namespace, controllerPodName}
-			if os.Getenv("LOG_PATH") != "" {
-				cmdArgs = append(cmdArgs, "--log-path", os.Getenv("LOG_PATH"))
+			cmdArgs := []string{
+				"logs",
+				"-n",
+				namespace,
+				controllerPodName,
+				"--log-path",
+				os.Getenv("CONTROLLER_LOG_PATH"),
 			}
 			cmd := exec.Command("kubectl", cmdArgs...)
 			_, err := utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-
 		})
 	}
 })

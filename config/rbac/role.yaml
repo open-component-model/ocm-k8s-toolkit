@@ -31,8 +31,7 @@ rules:
   - delivery.ocm.software
   resources:
   - components
-  - configuredresources
-  - localizedresources
+  - deployers
   - ocmrepositories
   - replications
   - resources
@@ -48,8 +47,7 @@ rules:
   - delivery.ocm.software
   resources:
   - components/finalizers
-  - configuredresources/finalizers
-  - localizedresources/finalizers
+  - deployers/finalizers
   - ocmrepositories/finalizers
   - replications/finalizers
   verbs:
@@ -58,8 +56,7 @@ rules:
   - delivery.ocm.software
   resources:
   - components/status
-  - configuredresources/status
-  - localizedresources/status
+  - deployers/status
   - ocmrepositories/status
   - replications/status
   - resources/status
@@ -68,20 +65,11 @@ rules:
   - patch
   - update
 - apiGroups:
-  - delivery.ocm.software
+  - kro.run
   resources:
-  - localizationconfigs
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - delivery.ocm.software
-  resources:
-  - resourceconfigs
+  - resourcegraphdefinitions
   verbs:
   - create
-  - get
   - list
   - patch
   - update
