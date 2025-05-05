@@ -19,7 +19,7 @@ jobs:
     runs-on: large_runner
     steps:
       - name: Self Hosted Runner Post Job Cleanup Action
-        uses: TooMuch4U/actions-clean@3f61bacac66e425c632b77a19065e4ba2f43a04e # v2.1
+        uses: TooMuch4U/actions-clean@9b358e33df99574ac0bdf2e92fa3db1ae1415563
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Setup Go
@@ -95,47 +95,27 @@ jobs:
         env:
           cache_name: integration-test
 
-      - name: Create k8s Kind Cluster
-        uses: helm/kind-action@a1b0e391336a6ee6713a0583f8c6240d70863de3 # v1.12.0
-        with:
-          config: test/e2e/config/kind-config.yaml
-
-      - name: Install internal image registry
-        run: |
-          kubectl apply -f test/e2e/config/image-registry.yaml
-          kubectl wait pod -l app=registry --for condition=Ready --timeout 5m
-          kubectl wait pod -l app=protected-registry1 --for condition=Ready --timeout 5m
-          kubectl wait pod -l app=protected-registry2 --for condition=Ready --timeout 5m
+      - name: Setup ocm
+        uses: open-component-model/ocm-setup-action@9bb4321df9c9eb033b54ef3563101b299a754336
 
       - name: Setup Flux CLI
-        uses: fluxcd/flux2/action@ae3279e3d853ac3b677500ede4f38eda79846834 # v2.5.1
-
-      - name: Install Flux in Kind
-        run: flux install
-
-      - name: Setup ocm
-        uses: open-component-model/ocm-setup-action@655f3525fd283ca7d22e6b2ceec42324331df401 # v1.0.0
+        uses: fluxcd/flux2/action@a6b5013649298e7eee23e47c376de0c90a4eb6e6
 
       - name: Run e2e test
-        env:
-          RESOURCE_TIMEOUT: 5m
-          IMAGE_REFERENCE: ghcr.io/stefanprodan/podinfo:6.7.1
-          CONTROLLER_LOG_PATH: ./ocm-k8s-toolkit-controller.log
-          PROTECTED_REGISTRY_URL: http://localhost:31002
-          INTERNAL_PROTECTED_REGISTRY_URL: http://protected-registry1-internal.default.svc.cluster.local:5002
-          PROTECTED_REGISTRY_URL2: http://localhost:31003
-          INTERNAL_PROTECTED_REGISTRY_URL2: http://protected-registry2-internal.default.svc.cluster.local:5003
-        run: make test-e2e
+        run: |
+          ./test/e2e/hacks/setup.sh
+          source ./test/e2e/hacks/.env
+          make test-e2e 
 
       - name: Publish logs on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        env:
+          CONTROLLER_LOG_PATH: ocm-k8s-toolkit-controller.log
         with:
           name: controller-logs
           # Currently, it is planned that the integration tests runs on every commit on a PR. Therefore, we could
           # produce a lot of logs. To not clutter the storage, the retention-days are reduced to 1.
           retention-days: 1
           path: |
-            helm-controller.log
-            kustomize-controller.log
             ocm-k8s-toolkit-controller.log
