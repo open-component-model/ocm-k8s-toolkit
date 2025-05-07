@@ -53,7 +53,7 @@ ocm transfer ctf --copy-resources ./ctf ghcr.io/<your-username/org>
 
 > [!IMPORTANT]
 > The ocm-controllers need to be able to access the OCI registry, in which the OCM component version is stored. So, you
-> either must provide credentials for the OCI registry or make the OCM component version public.
+> either must provide [credentials][ocm-credentials] for the OCI registry or make the OCM component version public.
 
 At last, we need to adjust the OCM repository in the CR `ocmrepository` to point to the OCI registry we specified
 above. Open the file `examples/helm-configuration-localization/bootstrap.yaml` and change the field `baseUrl`.
@@ -168,3 +168,6 @@ kubectl get pods -l app.kubernetes.io/name=helm-configuration-localization-podin
 ```
 [{"name":"PODINFO_UI_MESSAGE","value":"helm-configuration-localization"},{"name":"PODINFO_UI_COLOR","value":"#34577c"}]
 ```
+
+
+[ocm-credentials]: https://ocm.software/docs/examples/credentials-in-an-.ocmconfig-file/#accessing-oci-registries
