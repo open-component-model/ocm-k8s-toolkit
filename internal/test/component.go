@@ -25,7 +25,7 @@ type MockComponentOptions struct {
 	Repository string
 }
 
-func SetupComponentWithDescriptorList(
+func MockComponent(
 	ctx context.Context,
 	name, namespace string,
 	options *MockComponentOptions,

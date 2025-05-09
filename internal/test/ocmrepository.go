@@ -18,7 +18,12 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
-func SetupOCMRepositoryWithSpecData(ctx context.Context, k8sClient client.Client, namespace, repositoryName string, specData []byte) *v1alpha1.OCMRepository {
+func SetupOCMRepositoryWithSpecData(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace, repositoryName string,
+	specData []byte,
+) *v1alpha1.OCMRepository {
 	GinkgoHelper()
 
 	repository := &v1alpha1.OCMRepository{
