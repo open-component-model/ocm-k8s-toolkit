@@ -416,22 +416,32 @@ func getSourceRefForAccessSpec(ctx context.Context, accSpec any, cv ocmctx.Compo
 			return nil, fmt.Errorf("failed to parse OCI reference: %w", err)
 		}
 
+		var tag string
+		if ref.Tag != nil {
+			tag = *ref.Tag
+		}
+
+		var digest string
+		if ref.Digest != nil {
+			digest = ref.Digest.String()
+		}
+
 		var reference string
-		if *ref.Tag != "" && ref.Digest.String() != "" {
-			reference = fmt.Sprintf("%s@%s", *ref.Tag, *ref.Digest)
+		if tag != "" && digest != "" {
+			reference = fmt.Sprintf("%s@%s", tag, digest)
 		}
 
 		return &v1alpha1.SourceReference{
 			Registry:   ref.Host,
 			Repository: strings.TrimLeft(ref.Repository, "/"),
 			Reference:  reference,
-			Tag:        *ref.Tag,
-			Digest:     ref.Digest.String(),
+			Tag:        tag,
+			Digest:     digest,
 		}, nil
 	case *helm.AccessSpec:
 		return &v1alpha1.SourceReference{
 			Registry:   access.HelmRepository,
-			Repository: access.HelmChart,
+			Repository: access.GetChartName(),
 			Reference:  access.GetVersion(),
 		}, nil
 	case *github.AccessSpec:
@@ -440,10 +450,20 @@ func getSourceRefForAccessSpec(ctx context.Context, accSpec any, cv ocmctx.Compo
 			return nil, fmt.Errorf("failed to parse GitHub URL: %w", err)
 		}
 
+		var reference string
+		switch {
+		case access.Commit != "":
+			reference = access.Commit
+		case access.Reference != "":
+			reference = access.Reference
+		default:
+			return nil, fmt.Errorf("no commit or reference specified")
+		}
+
 		return &v1alpha1.SourceReference{
 			Registry:   fmt.Sprintf("%s://%s", gitHubURL.Scheme, gitHubURL.Host),
 			Repository: gitHubURL.Path,
-			Reference:  access.Commit,
+			Reference:  reference,
 		}, nil
 	case *git.AccessSpec:
 		gitURL, err := giturls.Parse(access.Repository)
@@ -451,10 +471,20 @@ func getSourceRefForAccessSpec(ctx context.Context, accSpec any, cv ocmctx.Compo
 			return nil, fmt.Errorf("failed to parse Git URL: %w", err)
 		}
 
+		var reference string
+		switch {
+		case access.Commit != "":
+			reference = access.Commit
+		case access.Ref != "":
+			reference = access.Ref
+		default:
+			return nil, fmt.Errorf("no commit or reference specified")
+		}
+
 		return &v1alpha1.SourceReference{
 			Registry:   fmt.Sprintf("%s://%s", gitURL.Scheme, gitURL.Host),
 			Repository: gitURL.Path,
-			Reference:  access.Ref,
+			Reference:  reference,
 		}, nil
 	default:
 		logger.Info("skip setting reference for resource as no source reference is available for this access type", "access type", access)
