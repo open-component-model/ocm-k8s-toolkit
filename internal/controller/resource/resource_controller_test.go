@@ -29,6 +29,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	. "ocm.software/ocm/api/helper/builder"
 	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
+	"ocm.software/ocm/api/ocm/extensions/accessmethods/github"
+	"ocm.software/ocm/api/ocm/extensions/accessmethods/helm"
+	ocmociartifact "ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
 	"ocm.software/ocm/api/ocm/extensions/artifacttypes"
 	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
 	"ocm.software/ocm/api/utils/accessio"
@@ -45,12 +48,10 @@ import (
 
 var _ = Describe("Resource Controller", func() {
 	var (
-		env     *Builder
-		ctfPath string
+		env *Builder
 	)
 
 	BeforeEach(func() {
-		ctfPath = GinkgoT().TempDir()
 		env = NewBuilder(environment.FileSystem(osfs.OsFs))
 	})
 	AfterEach(func() {
@@ -61,12 +62,14 @@ var _ = Describe("Resource Controller", func() {
 		var componentObj *v1alpha1.Component
 		var namespace *corev1.Namespace
 		var componentName, componentObjName, resourceName string
-		repositoryName := "ocm-repository.io"
+		var componentVersion string
+		repositoryName := "ocm.software/test-repository"
 
 		BeforeEach(func(ctx SpecContext) {
 			componentObjName = test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
 			componentName = "ocm.software/test-component-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
-			resourceName = "resource"
+			resourceName = "test-resource" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
+			componentVersion = "v1.0.0"
 
 			namespaceName := test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
 			namespace = &corev1.Namespace{
@@ -97,68 +100,165 @@ var _ = Describe("Resource Controller", func() {
 			Expect(resources.Items).To(HaveLen(0))
 		})
 
-		It("should reconcile a created resource", func(ctx SpecContext) {
-			By("creating a component version with a resourceObj: plain text")
-			componentVersion := "1.0.0"
-			resourceVersion := "1.0.0"
-			resourceType := artifacttypes.PLAIN_TEXT
-			env.OCMCommonTransport(ctfPath, accessio.FormatDirectory, func() {
-				env.Component(componentName, func() {
-					env.Version(componentVersion, func() {
-						env.Resource(resourceName, resourceVersion, resourceType, v1.LocalRelation, func() {
-							env.BlobData(mime.MIME_TEXT, []byte("Hello World!"))
+		DescribeTable("should reconcile a created resource",
+			func(createCTF func() string, expSourceRef *v1alpha1.SourceReference) {
+				ctfPath := createCTF()
+
+				spec, err := ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfPath)
+				Expect(err).NotTo(HaveOccurred())
+				specData, err := spec.MarshalJSON()
+				Expect(err).NotTo(HaveOccurred())
+
+				By("mocking a component")
+				componentObj = test.MockComponent(
+					ctx,
+					componentObjName,
+					namespace.GetName(),
+					&test.MockComponentOptions{
+						Client:   k8sClient,
+						Recorder: recorder,
+						Info: v1alpha1.ComponentInfo{
+							Component:      componentName,
+							Version:        componentVersion,
+							RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
+						},
+						Repository: repositoryName,
+					},
+				)
+
+				By("creating a resourceObj")
+				resourceObj := &v1alpha1.Resource{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      resourceName,
+						Namespace: namespace.GetName(),
+					},
+					Spec: v1alpha1.ResourceSpec{
+						ComponentRef: corev1.LocalObjectReference{
+							Name: componentObj.GetName(),
+						},
+						Resource: v1alpha1.ResourceID{
+							ByReference: v1alpha1.ResourceReference{
+								Resource: v1.NewIdentity(resourceName),
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
+
+				By("checking that the resourceObj has been reconciled successfully")
+				waitUntilResourceIsReady(ctx, resourceObj)
+
+				if expSourceRef != nil {
+					Expect(resourceObj.Status.Reference).To(Equal(expSourceRef))
+				}
+
+				By("deleting the resource")
+				deleteResource(ctx, resourceObj)
+
+			},
+
+			Entry("plain text", func() string {
+				ctfPath := GinkgoT().TempDir()
+				env.OCMCommonTransport(ctfPath, accessio.FormatDirectory, func() {
+					env.Component(componentName, func() {
+						env.Version(componentVersion, func() {
+							env.Resource(resourceName, "1.0.0", artifacttypes.PLAIN_TEXT, v1.LocalRelation, func() {
+								env.BlobData(mime.MIME_TEXT, []byte("Hello World!"))
+							})
 						})
 					})
 				})
-			})
-			spec, err := ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfPath)
-			Expect(err).NotTo(HaveOccurred())
-			specData, err := spec.MarshalJSON()
-			Expect(err).NotTo(HaveOccurred())
-
-			By("mocking a component")
-			componentObj = test.MockComponent(
-				ctx,
-				componentObjName,
-				namespace.GetName(),
-				&test.MockComponentOptions{
-					Client:   k8sClient,
-					Recorder: recorder,
-					Info: v1alpha1.ComponentInfo{
-						Component:      componentName,
-						Version:        componentVersion,
-						RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
-					},
-					Repository: repositoryName,
+				return ctfPath
+			},
+				nil),
+			Entry("OCI artifact access", func() string {
+				ctfPath := GinkgoT().TempDir()
+				env.OCMCommonTransport(ctfPath, accessio.FormatDirectory, func() {
+					env.Component(componentName, func() {
+						env.Version(componentVersion, func() {
+							env.Resource(resourceName, "1.0.0", artifacttypes.OCI_ARTIFACT, v1.ExternalRelation, func() {
+								env.Access(ocmociartifact.New(fmt.Sprintf("ghcr.io/open-component-model/ocm/ocm.software/ocmcli/ocmcli-image:0.24.0")))
+							})
+						})
+					})
+				})
+				return ctfPath
+			},
+				&v1alpha1.SourceReference{
+					Registry:   "ghcr.io",
+					Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
+					Tag:        "0.24.0",
 				},
-			)
-
-			By("creating a resourceObj")
-			resourceObj := &v1alpha1.Resource{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespace.GetName(),
+			),
+			Entry("Helm access", func() string {
+				ctfPath := GinkgoT().TempDir()
+				env.OCMCommonTransport(ctfPath, accessio.FormatDirectory, func() {
+					env.Component(componentName, func() {
+						env.Version(componentVersion, func() {
+							env.Resource(resourceName, "1.0.0", artifacttypes.HELM_CHART, v1.ExternalRelation, func() {
+								env.Access(helm.New("podinfo:6.7.1", "oci://ghcr.io/stefanprodan/charts"))
+							})
+						})
+					})
+				})
+				return ctfPath
+			},
+				&v1alpha1.SourceReference{
+					Registry:   "oci://ghcr.io/stefanprodan/charts",
+					Repository: "podinfo",
+					Reference:  "6.7.1",
 				},
-				Spec: v1alpha1.ResourceSpec{
-					ComponentRef: corev1.LocalObjectReference{
-						Name: componentObj.GetName(),
-					},
-					Resource: v1alpha1.ResourceID{
-						ByReference: v1alpha1.ResourceReference{
-							Resource: v1.NewIdentity(resourceName),
-						},
-					},
+			),
+			Entry("GitHub access", func() string {
+				ctfPath := GinkgoT().TempDir()
+				env.OCMCommonTransport(ctfPath, accessio.FormatDirectory, func() {
+					env.Component(componentName, func() {
+						env.Version(componentVersion, func() {
+							env.Resource(resourceName, "1.0.0", artifacttypes.DIRECTORY_TREE, v1.ExternalRelation, func() {
+								env.Access(github.New(
+									"https://github.com/open-component-model/ocm-k8s-toolkit",
+									"/repos/open-component-model/ocm-k8s-toolkit",
+									github.WithReference("main"),
+								))
+							})
+						})
+					})
+				})
+				return ctfPath
+			},
+				&v1alpha1.SourceReference{
+					Registry:   "https://github.com",
+					Repository: "/open-component-model/ocm-k8s-toolkit",
+					Reference:  "main",
 				},
-			}
-			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
-
-			By("checking that the resourceObj has been reconciled successfully")
-			waitUntilResourceIsReady(ctx, resourceObj)
-
-			By("deleting the resource")
-			deleteResource(ctx, resourceObj)
-		})
-
+			),
+			// TODO: @frewilhelm potential bug in ocm
+			//   Instead of creating the directory /tmp/repository, it tries to create /repository which is forbidden.
+			//   see ocm/api/utils/blobaccess/git/access.go:24
+			//          ocm/api/utils/blobaccess/git/access.go:51
+			//Entry("git access", func() string {
+			//	ctfPath := GinkgoT().TempDir()
+			//	env.OCMCommonTransport(ctfPath, accessio.FormatDirectory, func() {
+			//		env.Component(componentName, func() {
+			//			env.Version(componentVersion, func() {
+			//				env.Resource(resourceName, "1.0.0", artifacttypes.DIRECTORY_TREE, v1.ExternalRelation, func() {
+			//					env.Access(git.New(
+			//						"https://github.com/open-component-model/ocm-k8s-toolkit",
+			//						git.WithRef("refs/heads/main"),
+			//					))
+			//				})
+			//			})
+			//		})
+			//	})
+			//	return ctfPath
+			//},
+			//	&v1alpha1.SourceReference{
+			//		Registry:   "https://github.com",
+			//		Repository: "/open-component-model/ocm-k8s-toolkit",
+			//		Reference:  "refs/heads/main",
+			//	},
+			//),
+		)
 	})
 })
 
