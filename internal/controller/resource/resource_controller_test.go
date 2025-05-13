@@ -20,9 +20,11 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"path/filepath"
 
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/mandelsoft/vfs/pkg/osfs"
+	"github.com/mandelsoft/vfs/pkg/projectionfs"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -48,11 +50,15 @@ import (
 
 var _ = Describe("Resource Controller", func() {
 	var (
-		env *Builder
+		env     *Builder
+		tempDir string
 	)
 
 	BeforeEach(func() {
-		env = NewBuilder(environment.FileSystem(osfs.OsFs))
+		tempDir = GinkgoT().TempDir()
+		fs, err := projectionfs.New(osfs.OsFs, tempDir)
+		Expect(err).NotTo(HaveOccurred())
+		env = NewBuilder(environment.FileSystem(fs))
 	})
 	AfterEach(func() {
 		Expect(env.Cleanup()).To(Succeed())
@@ -158,8 +164,8 @@ var _ = Describe("Resource Controller", func() {
 			},
 
 			Entry("plain text", func() string {
-				ctfPath := GinkgoT().TempDir()
-				env.OCMCommonTransport(ctfPath, accessio.FormatDirectory, func() {
+				ctfName := "plainText"
+				env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
 					env.Component(componentName, func() {
 						env.Version(componentVersion, func() {
 							env.Resource(resourceName, "1.0.0", artifacttypes.PLAIN_TEXT, v1.LocalRelation, func() {
@@ -168,12 +174,12 @@ var _ = Describe("Resource Controller", func() {
 						})
 					})
 				})
-				return ctfPath
+				return filepath.Join(tempDir, ctfName)
 			},
 				nil),
 			Entry("OCI artifact access", func() string {
-				ctfPath := GinkgoT().TempDir()
-				env.OCMCommonTransport(ctfPath, accessio.FormatDirectory, func() {
+				ctfName := "ociArtifactAccess"
+				env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
 					env.Component(componentName, func() {
 						env.Version(componentVersion, func() {
 							env.Resource(resourceName, "1.0.0", artifacttypes.OCI_ARTIFACT, v1.ExternalRelation, func() {
@@ -182,7 +188,7 @@ var _ = Describe("Resource Controller", func() {
 						})
 					})
 				})
-				return ctfPath
+				return filepath.Join(tempDir, ctfName)
 			},
 				&v1alpha1.SourceReference{
 					Registry:   "ghcr.io",
@@ -191,8 +197,8 @@ var _ = Describe("Resource Controller", func() {
 				},
 			),
 			Entry("Helm access", func() string {
-				ctfPath := GinkgoT().TempDir()
-				env.OCMCommonTransport(ctfPath, accessio.FormatDirectory, func() {
+				ctfName := "helmAccess"
+				env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
 					env.Component(componentName, func() {
 						env.Version(componentVersion, func() {
 							env.Resource(resourceName, "1.0.0", artifacttypes.HELM_CHART, v1.ExternalRelation, func() {
@@ -201,7 +207,7 @@ var _ = Describe("Resource Controller", func() {
 						})
 					})
 				})
-				return ctfPath
+				return filepath.Join(tempDir, ctfName)
 			},
 				&v1alpha1.SourceReference{
 					Registry:   "oci://ghcr.io/stefanprodan/charts",
@@ -210,8 +216,8 @@ var _ = Describe("Resource Controller", func() {
 				},
 			),
 			Entry("GitHub access", func() string {
-				ctfPath := GinkgoT().TempDir()
-				env.OCMCommonTransport(ctfPath, accessio.FormatDirectory, func() {
+				ctfName := "gitHubAccess"
+				env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
 					env.Component(componentName, func() {
 						env.Version(componentVersion, func() {
 							env.Resource(resourceName, "1.0.0", artifacttypes.DIRECTORY_TREE, v1.ExternalRelation, func() {
@@ -224,7 +230,7 @@ var _ = Describe("Resource Controller", func() {
 						})
 					})
 				})
-				return ctfPath
+				return filepath.Join(tempDir, ctfName)
 			},
 				&v1alpha1.SourceReference{
 					Registry:   "https://github.com",
@@ -233,12 +239,10 @@ var _ = Describe("Resource Controller", func() {
 				},
 			),
 			// TODO: @frewilhelm potential bug in ocm
-			//   Instead of creating the directory /tmp/repository, it tries to create /repository which is forbidden.
-			//   see ocm/api/utils/blobaccess/git/access.go:24
-			//          ocm/api/utils/blobaccess/git/access.go:51
+			//   Git directory gets flatten while creating the tar
 			//Entry("git access", func() string {
-			//	ctfPath := GinkgoT().TempDir()
-			//	env.OCMCommonTransport(ctfPath, accessio.FormatDirectory, func() {
+			//	ctfName := "gitAccess"
+			//	env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
 			//		env.Component(componentName, func() {
 			//			env.Version(componentVersion, func() {
 			//				env.Resource(resourceName, "1.0.0", artifacttypes.DIRECTORY_TREE, v1.ExternalRelation, func() {
@@ -250,7 +254,7 @@ var _ = Describe("Resource Controller", func() {
 			//			})
 			//		})
 			//	})
-			//	return ctfPath
+			//	return filepath.Join(tempDir, ctfName)
 			//},
 			//	&v1alpha1.SourceReference{
 			//		Registry:   "https://github.com",
