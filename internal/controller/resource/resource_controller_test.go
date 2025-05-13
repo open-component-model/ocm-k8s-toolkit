@@ -29,8 +29,10 @@ import (
 	. "github.com/onsi/gomega"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	. "ocm.software/ocm/api/helper/builder"
-	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
+	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
+	"ocm.software/ocm/api/ocm/extensions/accessmethods/git"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/github"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/helm"
 	ocmociartifact "ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
@@ -108,6 +110,7 @@ var _ = Describe("Resource Controller", func() {
 
 		DescribeTable("should reconcile a created resource",
 			func(createCTF func() string, expSourceRef *v1alpha1.SourceReference) {
+				By("creating a CTF")
 				ctfPath := createCTF()
 
 				spec, err := ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfPath)
@@ -144,7 +147,7 @@ var _ = Describe("Resource Controller", func() {
 						},
 						Resource: v1alpha1.ResourceID{
 							ByReference: v1alpha1.ResourceReference{
-								Resource: v1.NewIdentity(resourceName),
+								Resource: ocmmetav1.NewIdentity(resourceName),
 							},
 						},
 					},
@@ -160,7 +163,6 @@ var _ = Describe("Resource Controller", func() {
 
 				By("deleting the resource")
 				deleteResource(ctx, resourceObj)
-
 			},
 
 			Entry("plain text", func() string {
@@ -168,7 +170,7 @@ var _ = Describe("Resource Controller", func() {
 				env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
 					env.Component(componentName, func() {
 						env.Version(componentVersion, func() {
-							env.Resource(resourceName, "1.0.0", artifacttypes.PLAIN_TEXT, v1.LocalRelation, func() {
+							env.Resource(resourceName, "1.0.0", artifacttypes.PLAIN_TEXT, ocmmetav1.LocalRelation, func() {
 								env.BlobData(mime.MIME_TEXT, []byte("Hello World!"))
 							})
 						})
@@ -182,8 +184,8 @@ var _ = Describe("Resource Controller", func() {
 				env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
 					env.Component(componentName, func() {
 						env.Version(componentVersion, func() {
-							env.Resource(resourceName, "1.0.0", artifacttypes.OCI_ARTIFACT, v1.ExternalRelation, func() {
-								env.Access(ocmociartifact.New(fmt.Sprintf("ghcr.io/open-component-model/ocm/ocm.software/ocmcli/ocmcli-image:0.24.0")))
+							env.Resource(resourceName, "1.0.0", artifacttypes.OCI_ARTIFACT, ocmmetav1.ExternalRelation, func() {
+								env.Access(ocmociartifact.New("ghcr.io/open-component-model/ocm/ocm.software/ocmcli/ocmcli-image:0.24.0"))
 							})
 						})
 					})
@@ -201,7 +203,7 @@ var _ = Describe("Resource Controller", func() {
 				env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
 					env.Component(componentName, func() {
 						env.Version(componentVersion, func() {
-							env.Resource(resourceName, "1.0.0", artifacttypes.HELM_CHART, v1.ExternalRelation, func() {
+							env.Resource(resourceName, "1.0.0", artifacttypes.HELM_CHART, ocmmetav1.ExternalRelation, func() {
 								env.Access(helm.New("podinfo:6.7.1", "oci://ghcr.io/stefanprodan/charts"))
 							})
 						})
@@ -220,7 +222,7 @@ var _ = Describe("Resource Controller", func() {
 				env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
 					env.Component(componentName, func() {
 						env.Version(componentVersion, func() {
-							env.Resource(resourceName, "1.0.0", artifacttypes.DIRECTORY_TREE, v1.ExternalRelation, func() {
+							env.Resource(resourceName, "1.0.0", artifacttypes.DIRECTORY_TREE, ocmmetav1.ExternalRelation, func() {
 								env.Access(github.New(
 									"https://github.com/open-component-model/ocm-k8s-toolkit",
 									"/repos/open-component-model/ocm-k8s-toolkit",
@@ -238,31 +240,174 @@ var _ = Describe("Resource Controller", func() {
 					Reference:  "main",
 				},
 			),
-			// TODO: @frewilhelm potential bug in ocm
-			//   Git directory gets flatten while creating the tar
-			//Entry("git access", func() string {
-			//	ctfName := "gitAccess"
-			//	env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
-			//		env.Component(componentName, func() {
-			//			env.Version(componentVersion, func() {
-			//				env.Resource(resourceName, "1.0.0", artifacttypes.DIRECTORY_TREE, v1.ExternalRelation, func() {
-			//					env.Access(git.New(
-			//						"https://github.com/open-component-model/ocm-k8s-toolkit",
-			//						git.WithRef("refs/heads/main"),
-			//					))
-			//				})
-			//			})
-			//		})
-			//	})
-			//	return filepath.Join(tempDir, ctfName)
-			//},
-			//	&v1alpha1.SourceReference{
-			//		Registry:   "https://github.com",
-			//		Repository: "/open-component-model/ocm-k8s-toolkit",
-			//		Reference:  "refs/heads/main",
-			//	},
-			//),
+			Entry("git access", func() string {
+				ctfName := "gitAccess"
+				env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
+					env.Component(componentName, func() {
+						env.Version(componentVersion, func() {
+							env.Resource(resourceName, "1.0.0", artifacttypes.DIRECTORY_TREE, ocmmetav1.ExternalRelation, func() {
+								env.Access(git.New(
+									"https://github.com/open-component-model/ocm-k8s-toolkit",
+									git.WithRef("refs/heads/main"),
+								))
+							})
+						})
+					})
+				})
+				return filepath.Join(tempDir, ctfName)
+			},
+				&v1alpha1.SourceReference{
+					Registry:   "https://github.com",
+					Repository: "/open-component-model/ocm-k8s-toolkit",
+					Reference:  "refs/heads/main",
+				},
+			),
 		)
+
+		// In this test the component version is updated with a new resource. This should trigger the control-loop of
+		// the resource and we expect an updated source reference.
+		It("reconciles again when the component changes", func(ctx SpecContext) {
+			By("creating a CTF")
+			ctfName := "component-change"
+			env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(componentVersion, func() {
+						env.Resource(resourceName, "1.0.0", artifacttypes.OCI_ARTIFACT, ocmmetav1.ExternalRelation, func() {
+							env.Access(ocmociartifact.New("ghcr.io/open-component-model/ocm/ocm.software/ocmcli/ocmcli-image:0.23.0"))
+						})
+					})
+				})
+			})
+
+			ctfPath := filepath.Join(tempDir, ctfName)
+			spec, err := ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfPath)
+			Expect(err).NotTo(HaveOccurred())
+			specData, err := spec.MarshalJSON()
+			Expect(err).NotTo(HaveOccurred())
+
+			By("mocking a component")
+			componentObj = test.MockComponent(
+				ctx,
+				componentObjName,
+				namespace.GetName(),
+				&test.MockComponentOptions{
+					Client:   k8sClient,
+					Recorder: recorder,
+					Info: v1alpha1.ComponentInfo{
+						Component:      componentName,
+						Version:        componentVersion,
+						RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
+					},
+					Repository: repositoryName,
+				},
+			)
+
+			By("creating a resourceObj")
+			resourceObj := &v1alpha1.Resource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: namespace.GetName(),
+				},
+				Spec: v1alpha1.ResourceSpec{
+					ComponentRef: corev1.LocalObjectReference{
+						Name: componentObj.GetName(),
+					},
+					Resource: v1alpha1.ResourceID{
+						ByReference: v1alpha1.ResourceReference{
+							Resource: ocmmetav1.NewIdentity(resourceName),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
+
+			By("checking that the resourceObj has been reconciled successfully")
+			waitUntilResourceIsReady(ctx, resourceObj)
+			expectedSourceRef := &v1alpha1.SourceReference{
+				Registry:   "ghcr.io",
+				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
+				Tag:        "0.23.0",
+			}
+			Expect(resourceObj.Status.Reference).To(Equal(expectedSourceRef))
+
+			By("updating the component version with a new resource")
+			componentVersionUpdated := "v1.0.1"
+			env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(componentVersion, func() {
+						env.Resource(resourceName, "1.0.0", artifacttypes.OCI_ARTIFACT, ocmmetav1.ExternalRelation, func() {
+							env.Access(ocmociartifact.New("ghcr.io/open-component-model/ocm/ocm.software/ocmcli/ocmcli-image:0.23.0"))
+						})
+					})
+				})
+				env.Component(componentName, func() {
+					env.Version(componentVersionUpdated, func() {
+						env.Resource(resourceName, "1.0.1", artifacttypes.OCI_ARTIFACT, ocmmetav1.ExternalRelation, func() {
+							env.Access(ocmociartifact.New("ghcr.io/open-component-model/ocm/ocm.software/ocmcli/ocmcli-image:0.24.0"))
+						})
+					})
+				})
+			})
+
+			By("updating mock component status")
+			componentObj = &v1alpha1.Component{
+				ObjectMeta: k8smetav1.ObjectMeta{
+					Namespace: componentObj.GetNamespace(),
+					Name:      componentObj.GetName(),
+				},
+			}
+			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(componentObj), componentObj)
+			Expect(err).ToNot(HaveOccurred())
+
+			componentObj.Status.Component.Version = componentVersionUpdated
+			Expect(k8sClient.Status().Update(ctx, componentObj)).To(Succeed())
+
+			By("updating mock component spec")
+			componentObj = &v1alpha1.Component{
+				ObjectMeta: k8smetav1.ObjectMeta{
+					Namespace: componentObj.GetNamespace(),
+					Name:      componentObj.GetName(),
+				},
+			}
+			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(componentObj), componentObj)
+			Expect(err).ToNot(HaveOccurred())
+
+			componentObj.Spec.Semver = componentVersionUpdated
+			Expect(k8sClient.Update(ctx, componentObj)).To(Succeed())
+
+			// component spec update should trigger resource reconciliation
+			By("checking that the resource was reconciled again")
+			resourceObjUpdated := &v1alpha1.Resource{}
+			Eventually(func(g Gomega, ctx context.Context) error {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resourceObj), resourceObjUpdated)
+				if err != nil {
+					return fmt.Errorf("failed to get resource: %w", err)
+				}
+
+				if !conditions.IsReady(resourceObjUpdated) {
+					return fmt.Errorf("resource %s is not ready", resourceObjUpdated.Name)
+				}
+
+				if resourceObjUpdated.Status.Component == nil {
+					return fmt.Errorf("resource %s component in status is nil", resourceObjUpdated.Name)
+				}
+
+				if resourceObjUpdated.Status.Component.Version != componentVersionUpdated {
+					return fmt.Errorf("resource %s component version in status is not updated", resourceObjUpdated.Name)
+				}
+
+				return nil
+			}, "15s").WithContext(ctx).Should(Succeed())
+			expectedSourceRef = &v1alpha1.SourceReference{
+				Registry:   "ghcr.io",
+				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
+				Tag:        "0.24.0",
+			}
+			Expect(resourceObjUpdated.Status.Reference).To(Equal(expectedSourceRef))
+
+			By("deleting the resource")
+			deleteResource(ctx, resourceObj)
+		})
 	})
 })
 
