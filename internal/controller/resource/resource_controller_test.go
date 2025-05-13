@@ -333,9 +333,305 @@ var _ = Describe("Resource Controller", func() {
 			deleteResource(ctx, resourceObj)
 		})
 
+		It("returns an appropriate error when the resource cannot be fetched", func(ctx SpecContext) {
+			By("creating a CTF")
+			ctfName := "resource-not-found"
+			env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(componentVersion, func() {
+						env.Resource(resourceName, "1.0.0", artifacttypes.PLAIN_TEXT, ocmmetav1.LocalRelation, func() {
+							env.BlobData(mime.MIME_TEXT, []byte("Hello World!"))
+						})
+					})
+				})
+			})
+
+			ctfPath := filepath.Join(tempDir, ctfName)
+			spec, err := ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfPath)
+			Expect(err).NotTo(HaveOccurred())
+			specData, err := spec.MarshalJSON()
+			Expect(err).NotTo(HaveOccurred())
+
+			By("mocking a component")
+			componentObj = test.MockComponent(
+				ctx,
+				componentObjName,
+				namespace.GetName(),
+				&test.MockComponentOptions{
+					Client:   k8sClient,
+					Recorder: recorder,
+					Info: v1alpha1.ComponentInfo{
+						Component:      componentName,
+						Version:        componentVersion,
+						RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
+					},
+					Repository: repositoryName,
+				},
+			)
+
+			By("creating a resource")
+			resourceObj := &v1alpha1.Resource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: namespace.GetName(),
+				},
+				Spec: v1alpha1.ResourceSpec{
+					ComponentRef: corev1.LocalObjectReference{
+						Name: componentObj.GetName(),
+					},
+					Resource: v1alpha1.ResourceID{
+						ByReference: v1alpha1.ResourceReference{
+							Resource: ocmmetav1.NewIdentity("resource-not-found"),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
+
+			By("checking that the resource has not been reconciled successfully")
+			resourceObjNotReady := &v1alpha1.Resource{}
+			Eventually(func(g Gomega, ctx context.Context) error {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resourceObj), resourceObjNotReady)
+				if err != nil {
+					return fmt.Errorf("failed to get resource: %w", err)
+				}
+
+				if conditions.IsReady(resourceObjNotReady) {
+					return fmt.Errorf("resource %s is ready", resourceObjNotReady.Name)
+				}
+
+				reason := conditions.GetReason(resourceObjNotReady, "Ready")
+				if reason != v1alpha1.GetOCMResourceFailedReason {
+					return fmt.Errorf("expected not-ready resource reason %s, got %s", v1alpha1.GetOCMResourceFailedReason, reason)
+				}
+
+				return nil
+			}, "15s").WithContext(ctx).Should(Succeed())
+
+			By("deleting the resource")
+			deleteResource(ctx, resourceObj)
+		})
+
+		// This test is checking that the resource is reconciled again when the status of the component changes.
+		It("reconciles when the component is updated to ready status", func(ctx SpecContext) {
+			By("creating a CTF")
+			ctfName := "component-ready"
+			env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(componentVersion, func() {
+						env.Resource(resourceName, "1.0.0", artifacttypes.OCI_ARTIFACT, ocmmetav1.ExternalRelation, func() {
+							env.Access(ocmociartifact.New("ghcr.io/open-component-model/ocm/ocm.software/ocmcli/ocmcli-image:0.24.0"))
+						})
+					})
+				})
+			})
+
+			ctfPath := filepath.Join(tempDir, ctfName)
+			spec, err := ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfPath)
+			Expect(err).NotTo(HaveOccurred())
+			specData, err := spec.MarshalJSON()
+			Expect(err).NotTo(HaveOccurred())
+
+			By("mocking a component")
+			componentObj = test.MockComponent(
+				ctx,
+				componentObjName,
+				namespace.GetName(),
+				&test.MockComponentOptions{
+					Client:   k8sClient,
+					Recorder: recorder,
+					Info: v1alpha1.ComponentInfo{
+						Component:      componentName,
+						Version:        componentVersion,
+						RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
+					},
+					Repository: repositoryName,
+				},
+			)
+
+			By("marking the mocked component as not ready")
+			componentObjNotReady := &v1alpha1.Component{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(componentObj), componentObjNotReady)).To(Succeed())
+
+			status.MarkNotReady(recorder, componentObjNotReady, v1alpha1.ResourceIsNotAvailable, "mock component is not ready")
+			Expect(k8sClient.Status().Update(ctx, componentObjNotReady)).To(Succeed())
+
+			By("creating a resource")
+			resourceObj := &v1alpha1.Resource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: namespace.GetName(),
+				},
+				Spec: v1alpha1.ResourceSpec{
+					ComponentRef: corev1.LocalObjectReference{
+						Name: componentObj.GetName(),
+					},
+					Resource: v1alpha1.ResourceID{
+						ByReference: v1alpha1.ResourceReference{
+							Resource: ocmmetav1.NewIdentity(resourceName),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
+
+			By("checking that the resource has not been reconciled successfully")
+			resourceObjNotReady := &v1alpha1.Resource{}
+			Eventually(func(g Gomega, ctx context.Context) error {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resourceObj), resourceObjNotReady)
+				if err != nil {
+					return fmt.Errorf("failed to get resource: %w", err)
+				}
+
+				if conditions.IsReady(resourceObjNotReady) {
+					return fmt.Errorf("resource %s is ready", resourceObjNotReady.Name)
+				}
+
+				reason := conditions.GetReason(resourceObjNotReady, "Ready")
+				if reason != v1alpha1.ResourceIsNotAvailable {
+					return fmt.Errorf("expected not-ready resource reason %s, got %s", v1alpha1.ResourceIsNotAvailable, reason)
+				}
+
+				return nil
+			}, "15s").WithContext(ctx).Should(Succeed())
+
+			By("updating the component to ready")
+			componentObjReady := &v1alpha1.Component{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(componentObj), componentObjReady)).To(Succeed())
+
+			status.MarkReady(recorder, componentObjReady, "mock component is ready")
+			Expect(k8sClient.Status().Update(ctx, componentObjReady)).To(Succeed())
+
+			By("checking that the resource has been reconciled successfully")
+			waitUntilResourceIsReady(ctx, resourceObj)
+			expectedSourceRef := &v1alpha1.SourceReference{
+				Registry:   "ghcr.io",
+				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
+				Tag:        "0.24.0",
+			}
+			Expect(resourceObj.Status.Reference).To(Equal(expectedSourceRef))
+
+			By("deleting the resource")
+			deleteResource(ctx, resourceObj)
+		})
+
+		// This test checks if the resource is reconciled again, when the resource spec is updated.
+		It("reconciles again when the resource changes", func(ctx SpecContext) {
+			By("creating a CTF")
+			ctfName := "resource-change"
+			resourceVersionUpdated := "1.0.1"
+			env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(componentVersion, func() {
+						env.Resource(resourceName, "1.0.0", artifacttypes.OCI_ARTIFACT, ocmmetav1.ExternalRelation, func() {
+							env.Access(ocmociartifact.New("ghcr.io/open-component-model/ocm/ocm.software/ocmcli/ocmcli-image:0.23.0"))
+						})
+						env.Resource("resource-update", resourceVersionUpdated, artifacttypes.OCI_ARTIFACT, ocmmetav1.ExternalRelation, func() {
+							env.Access(ocmociartifact.New("ghcr.io/open-component-model/ocm/ocm.software/ocmcli/ocmcli-image:0.24.0"))
+						})
+					})
+				})
+			})
+
+			ctfPath := filepath.Join(tempDir, ctfName)
+			spec, err := ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfPath)
+			Expect(err).NotTo(HaveOccurred())
+			specData, err := spec.MarshalJSON()
+			Expect(err).NotTo(HaveOccurred())
+
+			By("mocking a component")
+			componentObj = test.MockComponent(
+				ctx,
+				componentObjName,
+				namespace.GetName(),
+				&test.MockComponentOptions{
+					Client:   k8sClient,
+					Recorder: recorder,
+					Info: v1alpha1.ComponentInfo{
+						Component:      componentName,
+						Version:        componentVersion,
+						RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
+					},
+					Repository: repositoryName,
+				},
+			)
+
+			By("creating a resource")
+			resourceObj := &v1alpha1.Resource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: namespace.GetName(),
+				},
+				Spec: v1alpha1.ResourceSpec{
+					ComponentRef: corev1.LocalObjectReference{
+						Name: componentObj.GetName(),
+					},
+					Resource: v1alpha1.ResourceID{
+						ByReference: v1alpha1.ResourceReference{
+							Resource: ocmmetav1.NewIdentity(resourceName),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
+
+			By("checking that the resource has been reconciled successfully")
+			waitUntilResourceIsReady(ctx, resourceObj)
+			expectedSourceRef := &v1alpha1.SourceReference{
+				Registry:   "ghcr.io",
+				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
+				Tag:        "0.23.0",
+			}
+			Expect(resourceObj.Status.Reference).To(Equal(expectedSourceRef))
+
+			By("updating resource spec")
+			resourceObjUpdate := &v1alpha1.Resource{}
+			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(resourceObj), resourceObjUpdate)
+			Expect(err).ToNot(HaveOccurred())
+
+			resourceObjUpdate.Spec.Resource = v1alpha1.ResourceID{
+				ByReference: v1alpha1.ResourceReference{
+					Resource: ocmmetav1.NewIdentity("resource-update"),
+				},
+			}
+			Expect(k8sClient.Update(ctx, resourceObjUpdate)).To(Succeed())
+
+			By("checking that the updated resource has been reconciled successfully")
+			resourceObjUpdated := &v1alpha1.Resource{}
+			Eventually(func(g Gomega, ctx context.Context) error {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resourceObj), resourceObjUpdated)
+				if err != nil {
+					return fmt.Errorf("failed to get resource: %w", err)
+				}
+
+				if !conditions.IsReady(resourceObjUpdated) {
+					return fmt.Errorf("resource %s is not ready", resourceObjUpdated.Name)
+				}
+
+				if resourceObjUpdated.Status.Resource == nil {
+					return fmt.Errorf("resource %s has no resource status", resourceObjUpdated.Name)
+				}
+
+				if resourceObjUpdated.Status.Resource.Version != resourceVersionUpdated {
+					return fmt.Errorf("resource %s resource-version in status is not updated", resourceObjUpdated.Name)
+				}
+
+				return nil
+			}, "15s").WithContext(ctx).Should(Succeed())
+			expectedSourceRef = &v1alpha1.SourceReference{
+				Registry:   "ghcr.io",
+				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
+				Tag:        "0.24.0",
+			}
+			Expect(resourceObjUpdated.Status.Reference).To(Equal(expectedSourceRef))
+
+			By("deleting the resource")
+			deleteResource(ctx, resourceObj)
+		})
+
 		// In this test the component version is updated with a new resource. This should trigger the control-loop of
 		// the resource and we expect an updated source reference.
-		It("reconciles again when the component changes", func(ctx SpecContext) {
+		It("reconciles again when the component and resource changes", func(ctx SpecContext) {
 			By("creating a CTF")
 			ctfName := "component-change"
 			env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
@@ -463,120 +759,6 @@ var _ = Describe("Resource Controller", func() {
 
 				if resourceObjUpdated.Status.Component.Version != componentVersionUpdated {
 					return fmt.Errorf("resource %s component version in status is not updated", resourceObjUpdated.Name)
-				}
-
-				return nil
-			}, "15s").WithContext(ctx).Should(Succeed())
-			expectedSourceRef = &v1alpha1.SourceReference{
-				Registry:   "ghcr.io",
-				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
-				Tag:        "0.24.0",
-			}
-			Expect(resourceObjUpdated.Status.Reference).To(Equal(expectedSourceRef))
-
-			By("deleting the resource")
-			deleteResource(ctx, resourceObj)
-		})
-
-		// This test checks if the resource is reconciled again, when the resource spec is updated.
-		FIt("reconciles again when the resource changes", func(ctx SpecContext) {
-			By("creating a CTF")
-			ctfName := "component-change"
-			resourceVersionUpdated := "1.0.1"
-			env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
-				env.Component(componentName, func() {
-					env.Version(componentVersion, func() {
-						env.Resource(resourceName, "1.0.0", artifacttypes.OCI_ARTIFACT, ocmmetav1.ExternalRelation, func() {
-							env.Access(ocmociartifact.New("ghcr.io/open-component-model/ocm/ocm.software/ocmcli/ocmcli-image:0.23.0"))
-						})
-						env.Resource("resource-update", resourceVersionUpdated, artifacttypes.OCI_ARTIFACT, ocmmetav1.ExternalRelation, func() {
-							env.Access(ocmociartifact.New("ghcr.io/open-component-model/ocm/ocm.software/ocmcli/ocmcli-image:0.24.0"))
-						})
-					})
-				})
-			})
-
-			ctfPath := filepath.Join(tempDir, ctfName)
-			spec, err := ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfPath)
-			Expect(err).NotTo(HaveOccurred())
-			specData, err := spec.MarshalJSON()
-			Expect(err).NotTo(HaveOccurred())
-
-			By("mocking a component")
-			componentObj = test.MockComponent(
-				ctx,
-				componentObjName,
-				namespace.GetName(),
-				&test.MockComponentOptions{
-					Client:   k8sClient,
-					Recorder: recorder,
-					Info: v1alpha1.ComponentInfo{
-						Component:      componentName,
-						Version:        componentVersion,
-						RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
-					},
-					Repository: repositoryName,
-				},
-			)
-
-			By("creating a resource")
-			resourceObj := &v1alpha1.Resource{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespace.GetName(),
-				},
-				Spec: v1alpha1.ResourceSpec{
-					ComponentRef: corev1.LocalObjectReference{
-						Name: componentObj.GetName(),
-					},
-					Resource: v1alpha1.ResourceID{
-						ByReference: v1alpha1.ResourceReference{
-							Resource: ocmmetav1.NewIdentity(resourceName),
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
-
-			By("checking that the resource has been reconciled successfully")
-			waitUntilResourceIsReady(ctx, resourceObj)
-			expectedSourceRef := &v1alpha1.SourceReference{
-				Registry:   "ghcr.io",
-				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
-				Tag:        "0.23.0",
-			}
-			Expect(resourceObj.Status.Reference).To(Equal(expectedSourceRef))
-
-			By("updating resource spec")
-			resourceObjUpdate := &v1alpha1.Resource{}
-			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(resourceObj), resourceObjUpdate)
-			Expect(err).ToNot(HaveOccurred())
-
-			resourceObjUpdate.Spec.Resource = v1alpha1.ResourceID{
-				ByReference: v1alpha1.ResourceReference{
-					Resource: ocmmetav1.NewIdentity("resource-update"),
-				},
-			}
-			Expect(k8sClient.Update(ctx, resourceObjUpdate)).To(Succeed())
-
-			By("checking that the updated resource has been reconciled successfully")
-			resourceObjUpdated := &v1alpha1.Resource{}
-			Eventually(func(g Gomega, ctx context.Context) error {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resourceObj), resourceObjUpdated)
-				if err != nil {
-					return fmt.Errorf("failed to get resource: %w", err)
-				}
-
-				if !conditions.IsReady(resourceObjUpdated) {
-					return fmt.Errorf("resource %s is not ready", resourceObjUpdated.Name)
-				}
-
-				if resourceObjUpdated.Status.Resource == nil {
-					return fmt.Errorf("resource %s has no resource status", resourceObjUpdated.Name)
-				}
-
-				if resourceObjUpdated.Status.Resource.Version != resourceVersionUpdated {
-					return fmt.Errorf("resource %s resource-version in status is not updated", resourceObjUpdated.Name)
 				}
 
 				return nil
