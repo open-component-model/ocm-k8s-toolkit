@@ -47,6 +47,7 @@ import (
 	environment "ocm.software/ocm/api/helper/env"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/status"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/test"
 )
 
@@ -76,7 +77,7 @@ var _ = Describe("Resource Controller", func() {
 		BeforeEach(func(ctx SpecContext) {
 			componentObjName = test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
 			componentName = "ocm.software/test-component-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
-			resourceName = "test-resource" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
+			resourceName = "test-resource-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
 			componentVersion = "v1.0.0"
 
 			namespaceName := test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
@@ -264,6 +265,74 @@ var _ = Describe("Resource Controller", func() {
 			),
 		)
 
+		It("should not reconcile when the component is not ready", func(ctx SpecContext) {
+			By("mocking a component")
+			componentObj = test.MockComponent(
+				ctx,
+				componentObjName,
+				namespace.GetName(),
+				&test.MockComponentOptions{
+					Client:   k8sClient,
+					Recorder: recorder,
+					Info: v1alpha1.ComponentInfo{
+						Component:      componentName,
+						Version:        componentVersion,
+						RepositorySpec: &apiextensionsv1.JSON{Raw: []byte("{}")},
+					},
+					Repository: repositoryName,
+				},
+			)
+
+			By("marking the mocked component as not ready")
+			componentObjNotReady := &v1alpha1.Component{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(componentObj), componentObjNotReady)).To(Succeed())
+
+			status.MarkNotReady(recorder, componentObjNotReady, v1alpha1.ResourceIsNotAvailable, "mock component is not ready")
+			Expect(k8sClient.Status().Update(ctx, componentObjNotReady)).To(Succeed())
+
+			By("creating a resource")
+			resourceObj := &v1alpha1.Resource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: namespace.GetName(),
+				},
+				Spec: v1alpha1.ResourceSpec{
+					ComponentRef: corev1.LocalObjectReference{
+						Name: componentObj.GetName(),
+					},
+					Resource: v1alpha1.ResourceID{
+						ByReference: v1alpha1.ResourceReference{
+							Resource: ocmmetav1.NewIdentity(resourceName),
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
+
+			By("checking that the resourceObj has not been reconciled successfully")
+			resourceObjNotReady := &v1alpha1.Resource{}
+			Eventually(func(g Gomega, ctx context.Context) error {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resourceObj), resourceObjNotReady)
+				if err != nil {
+					return fmt.Errorf("failed to get resource: %w", err)
+				}
+
+				if conditions.IsReady(resourceObjNotReady) {
+					return fmt.Errorf("resource %s is ready", resourceObjNotReady.Name)
+				}
+
+				reason := conditions.GetReason(resourceObjNotReady, "Ready")
+				if reason != v1alpha1.ResourceIsNotAvailable {
+					return fmt.Errorf("expected not-ready resource reason %s, got %s", v1alpha1.ResourceIsNotAvailable, reason)
+				}
+
+				return nil
+			}, "15s").WithContext(ctx).Should(Succeed())
+
+			By("deleting the resource")
+			deleteResource(ctx, resourceObj)
+		})
+
 		// In this test the component version is updated with a new resource. This should trigger the control-loop of
 		// the resource and we expect an updated source reference.
 		It("reconciles again when the component changes", func(ctx SpecContext) {
@@ -302,7 +371,7 @@ var _ = Describe("Resource Controller", func() {
 				},
 			)
 
-			By("creating a resourceObj")
+			By("creating a resource")
 			resourceObj := &v1alpha1.Resource{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
