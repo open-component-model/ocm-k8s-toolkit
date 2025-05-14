@@ -170,4 +170,4 @@ kubectl get pods -l app.kubernetes.io/name=helm-configuration-localization-podin
 ```
 
 
-[ocm-credentials]: https://ocm.software/docs/examples/credentials-in-an-.ocmconfig-file/#accessing-oci-registries
+[ocm-credentials]: https://ocm.software/docs/tutorials/credentials-in-.ocmconfig-file/#accessing-oci-registries
