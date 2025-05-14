@@ -54,6 +54,25 @@ ocm transfer ctf --copy-resources ./ctf ghcr.io/<your-username/org>
 > [!IMPORTANT]
 > The ocm-controllers need to be able to access the OCI registry, in which the OCM component version is stored. So, you
 > either must provide [credentials][ocm-credentials] for the OCI registry or make the OCM component version public.
+> 
+> Quick Guide:
+> Assuming you have such a `.ocmconfig` you can use `kubectl create secret generic my-secret --from-file=.ocmconfig`
+> to create the secret and the following fields to use it (for every resource that requires it):
+> ```yaml
+> apiVersion: delivery.ocm.software/v1alpha1
+> kind: OCMRepository
+> metadata:
+>   name: helm-configuration-localization-repository
+> spec:
+>   repositorySpec:
+>     baseUrl: ghcr.io/<your-username/org>
+>     type: OCIRegistry
+>   interval: 10m
+>   ocmConfig:
+>     - kind: Secret
+>       name: my-secret
+>       namespace: default
+> ```
 
 At last, we need to adjust the OCM repository in the CR `ocmrepository` to point to the OCI registry we specified
 above. Open the file `examples/helm-configuration-localization/bootstrap.yaml` and change the field `baseUrl`.
