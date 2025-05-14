@@ -416,22 +416,32 @@ func getSourceRefForAccessSpec(ctx context.Context, accSpec any, cv ocmctx.Compo
 			return nil, fmt.Errorf("failed to parse OCI reference: %w", err)
 		}
 
+		var tag string
+		if ref.Tag != nil {
+			tag = *ref.Tag
+		}
+
+		var digest string
+		if ref.Digest != nil {
+			digest = ref.Digest.String()
+		}
+
 		var reference string
-		if *ref.Tag != "" && ref.Digest.String() != "" {
-			reference = fmt.Sprintf("%s@%s", *ref.Tag, *ref.Digest)
+		if tag != "" && digest != "" {
+			reference = fmt.Sprintf("%s@%s", tag, digest)
 		}
 
 		return &v1alpha1.SourceReference{
 			Registry:   ref.Host,
 			Repository: strings.TrimLeft(ref.Repository, "/"),
 			Reference:  reference,
-			Tag:        *ref.Tag,
-			Digest:     ref.Digest.String(),
+			Tag:        tag,
+			Digest:     digest,
 		}, nil
 	case *helm.AccessSpec:
 		return &v1alpha1.SourceReference{
 			Registry:   access.HelmRepository,
-			Repository: access.HelmChart,
+			Repository: access.GetChartName(),
 			Reference:  access.GetVersion(),
 		}, nil
 	case *github.AccessSpec:
@@ -440,10 +450,15 @@ func getSourceRefForAccessSpec(ctx context.Context, accSpec any, cv ocmctx.Compo
 			return nil, fmt.Errorf("failed to parse GitHub URL: %w", err)
 		}
 
+		reference, err := parseReference(access.Commit, access.Reference)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse reference: %w", err)
+		}
+
 		return &v1alpha1.SourceReference{
 			Registry:   fmt.Sprintf("%s://%s", gitHubURL.Scheme, gitHubURL.Host),
 			Repository: gitHubURL.Path,
-			Reference:  access.Commit,
+			Reference:  reference,
 		}, nil
 	case *git.AccessSpec:
 		gitURL, err := giturls.Parse(access.Repository)
@@ -451,16 +466,35 @@ func getSourceRefForAccessSpec(ctx context.Context, accSpec any, cv ocmctx.Compo
 			return nil, fmt.Errorf("failed to parse Git URL: %w", err)
 		}
 
+		reference, err := parseReference(access.Commit, access.Ref)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse reference: %w", err)
+		}
+
 		return &v1alpha1.SourceReference{
 			Registry:   fmt.Sprintf("%s://%s", gitURL.Scheme, gitURL.Host),
 			Repository: gitURL.Path,
-			Reference:  access.Ref,
+			Reference:  reference,
 		}, nil
 	default:
 		logger.Info("skip setting reference for resource as no source reference is available for this access type", "access type", access)
 
 		return nil, nil
 	}
+}
+
+func parseReference(commit, ref string) (string, error) {
+	var reference string
+	switch {
+	case commit != "":
+		reference = commit
+	case ref != "":
+		reference = ref
+	default:
+		return "", fmt.Errorf("no commit or reference specified")
+	}
+
+	return reference, nil
 }
 
 // setResourceStatus updates the resource status with the all required information.

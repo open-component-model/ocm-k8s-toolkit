@@ -25,7 +25,7 @@ type MockComponentOptions struct {
 	Repository string
 }
 
-func SetupComponentWithDescriptorList(
+func MockComponent(
 	ctx context.Context,
 	name, namespace string,
 	options *MockComponentOptions,
@@ -52,7 +52,7 @@ func SetupComponentWithDescriptorList(
 		status.MarkReady(options.Recorder, component, "applied mock component")
 
 		return status.UpdateStatus(ctx, patchHelper, component, options.Recorder, time.Hour, nil)
-	}).WithContext(ctx).Should(Succeed())
+	}, "15s").WithContext(ctx).Should(Succeed())
 
 	return component
 }
