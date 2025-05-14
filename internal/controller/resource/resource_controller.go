@@ -450,14 +450,9 @@ func getSourceRefForAccessSpec(ctx context.Context, accSpec any, cv ocmctx.Compo
 			return nil, fmt.Errorf("failed to parse GitHub URL: %w", err)
 		}
 
-		var reference string
-		switch {
-		case access.Commit != "":
-			reference = access.Commit
-		case access.Reference != "":
-			reference = access.Reference
-		default:
-			return nil, fmt.Errorf("no commit or reference specified")
+		reference, err := parseReference(access.Commit, access.Reference)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse reference: %w", err)
 		}
 
 		return &v1alpha1.SourceReference{
@@ -471,14 +466,9 @@ func getSourceRefForAccessSpec(ctx context.Context, accSpec any, cv ocmctx.Compo
 			return nil, fmt.Errorf("failed to parse Git URL: %w", err)
 		}
 
-		var reference string
-		switch {
-		case access.Commit != "":
-			reference = access.Commit
-		case access.Ref != "":
-			reference = access.Ref
-		default:
-			return nil, fmt.Errorf("no commit or reference specified")
+		reference, err := parseReference(access.Commit, access.Ref)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse reference: %w", err)
 		}
 
 		return &v1alpha1.SourceReference{
@@ -491,6 +481,20 @@ func getSourceRefForAccessSpec(ctx context.Context, accSpec any, cv ocmctx.Compo
 
 		return nil, nil
 	}
+}
+
+func parseReference(commit, ref string) (string, error) {
+	var reference string
+	switch {
+	case commit != "":
+		reference = commit
+	case ref != "":
+		reference = ref
+	default:
+		return "", fmt.Errorf("no commit or reference specified")
+	}
+
+	return reference, nil
 }
 
 // setResourceStatus updates the resource status with the all required information.
