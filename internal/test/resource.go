@@ -20,13 +20,15 @@ import (
 )
 
 type MockResourceOptions struct {
-	ComponentRef corev1.LocalObjectReference
+	ComponentRef  corev1.LocalObjectReference
+	ComponentInfo *v1alpha1.ComponentInfo
+	ResourceInfo  *v1alpha1.ResourceInfo
 
 	Clnt     client.Client
 	Recorder record.EventRecorder
 }
 
-func SetupMockResource(
+func MockResource(
 	ctx context.Context,
 	name, namespace string,
 	options *MockResourceOptions,
@@ -48,6 +50,9 @@ func SetupMockResource(
 	Expect(options.Clnt.Create(ctx, resource)).To(Succeed())
 
 	patchHelper := patch.NewSerialPatcher(resource, options.Clnt)
+
+	resource.Status.Component = options.ComponentInfo
+	resource.Status.Resource = options.ResourceInfo
 
 	Eventually(func(ctx context.Context) error {
 		status.MarkReady(options.Recorder, resource, "applied mock resource")

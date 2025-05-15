@@ -563,7 +563,7 @@ var _ = Describe("Component Controller", func() {
 			waitUntilComponentIsReady(ctx, component, "1.0.0")
 
 			By("creating a resource that references the component")
-			resource := test.SetupMockResource(ctx, "test-resource", component.GetNamespace(), &test.MockResourceOptions{
+			resource := test.MockResource(ctx, "test-resource", component.GetNamespace(), &test.MockResourceOptions{
 				ComponentRef: corev1.LocalObjectReference{
 					Name: component.GetName(),
 				},

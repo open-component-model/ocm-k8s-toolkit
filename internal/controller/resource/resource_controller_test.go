@@ -109,7 +109,7 @@ var _ = Describe("Resource Controller", func() {
 			Expect(resources.Items).To(HaveLen(0))
 		})
 
-		DescribeTable("should reconcile a created resource",
+		DescribeTable("reconciles a created resource",
 			func(createCTF func() string, expSourceRef *v1alpha1.SourceReference) {
 				By("creating a CTF")
 				ctfPath := createCTF()
@@ -163,7 +163,7 @@ var _ = Describe("Resource Controller", func() {
 				}
 
 				By("deleting the resource")
-				deleteResource(ctx, resourceObj)
+				test.DeleteObject(ctx, k8sClient, resourceObj)
 			},
 
 			Entry("plain text", func() string {
@@ -330,7 +330,7 @@ var _ = Describe("Resource Controller", func() {
 			}, "15s").WithContext(ctx).Should(Succeed())
 
 			By("deleting the resource")
-			deleteResource(ctx, resourceObj)
+			test.DeleteObject(ctx, k8sClient, resourceObj)
 		})
 
 		It("returns an appropriate error when the resource cannot be fetched", func(ctx SpecContext) {
@@ -409,7 +409,7 @@ var _ = Describe("Resource Controller", func() {
 			}, "15s").WithContext(ctx).Should(Succeed())
 
 			By("deleting the resource")
-			deleteResource(ctx, resourceObj)
+			test.DeleteObject(ctx, k8sClient, resourceObj)
 		})
 
 		// This test is checking that the resource is reconciled again when the status of the component changes.
@@ -512,7 +512,7 @@ var _ = Describe("Resource Controller", func() {
 			Expect(resourceObj.Status.Reference).To(Equal(expectedSourceRef))
 
 			By("deleting the resource")
-			deleteResource(ctx, resourceObj)
+			test.DeleteObject(ctx, k8sClient, resourceObj)
 		})
 
 		// This test checks if the resource is reconciled again, when the resource spec is updated.
@@ -626,7 +626,7 @@ var _ = Describe("Resource Controller", func() {
 			Expect(resourceObjUpdated.Status.Reference).To(Equal(expectedSourceRef))
 
 			By("deleting the resource")
-			deleteResource(ctx, resourceObj)
+			test.DeleteObject(ctx, k8sClient, resourceObj)
 		})
 
 		// In this test the component version is updated with a new resource. This should trigger the control-loop of
@@ -771,28 +771,10 @@ var _ = Describe("Resource Controller", func() {
 			Expect(resourceObjUpdated.Status.Reference).To(Equal(expectedSourceRef))
 
 			By("deleting the resource")
-			deleteResource(ctx, resourceObj)
+			test.DeleteObject(ctx, k8sClient, resourceObj)
 		})
 	})
 })
-
-func deleteResource(ctx context.Context, resource *v1alpha1.Resource) {
-	GinkgoHelper()
-
-	Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-
-	Eventually(func(ctx context.Context) error {
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				return nil
-			}
-			return err
-		}
-
-		return fmt.Errorf("resource %s still exists", resource.Name)
-	}, "15s").WithContext(ctx).Should(Succeed())
-}
 
 func waitUntilResourceIsReady(ctx context.Context, resource *v1alpha1.Resource) {
 	GinkgoHelper()
