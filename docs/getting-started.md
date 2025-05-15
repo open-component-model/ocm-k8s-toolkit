@@ -56,7 +56,7 @@ ocm transfer ctf --copy-resources ./ctf ghcr.io/<your-username/org>
 > either must provide [credentials][ocm-credentials] for the OCI registry or make the OCM component version public.
 > 
 > Quick Guide:
-> Assuming you have such a `.ocmconfig` you can use `kubectl create secret generic my-secret --from-file=.ocmconfig`
+> Assuming you work with a configuration file like `.ocmconfig`, you can use `kubectl create secret generic my-secret --from-file=.ocmconfig`
 > to create the secret and the following fields to use it (for every resource that requires it):
 > ```yaml
 > apiVersion: delivery.ocm.software/v1alpha1
