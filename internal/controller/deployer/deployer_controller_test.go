@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/status"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/test"
 )
 
@@ -109,7 +110,7 @@ spec:
 			Expect(deployers.Items).To(HaveLen(0))
 		})
 
-		It("reconciles a created deployer", func(ctx SpecContext) {
+		It("reconciles a deployer with a valid RGD", func(ctx SpecContext) {
 			By("creating a CTF")
 			resourceType := artifacttypes.PLAIN_TEXT
 			resourceVersion := "1.0.0"
@@ -170,13 +171,173 @@ spec:
 			}
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
 
-			By("checking that the resource has been reconciled successfully")
+			By("checking that the deployer has been reconciled successfully")
 			waitUntilDeployerIsReady(ctx, deployerObj)
+
+			By("deleting the deployer")
+			test.DeleteObject(ctx, k8sClient, deployerObj)
+		})
+
+		It("does not reconcile a deployer with an invalid RGD", func(ctx SpecContext) {
+			By("creating a CTF")
+			resourceType := artifacttypes.PLAIN_TEXT
+			resourceVersion := "1.0.0"
+			invalidRgd := []byte("invalid-rgd")
+			env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(componentVersion, func() {
+						env.Resource(resourceName, resourceVersion, resourceType, ocmmetav1.LocalRelation, func() {
+							env.BlobData(mime.MIME_TEXT, invalidRgd)
+						})
+					})
+				})
+			})
+
+			spec, err := ctf.NewRepositorySpec(ctf.ACC_READONLY, filepath.Join(tempDir, ctfName))
+			Expect(err).NotTo(HaveOccurred())
+			specData, err := spec.MarshalJSON()
+			Expect(err).NotTo(HaveOccurred())
+
+			By("mocking a resource")
+			hashRgd := sha256.Sum256(invalidRgd)
+			resourceObj = test.MockResource(
+				ctx,
+				resourceName,
+				namespace.GetName(),
+				&test.MockResourceOptions{
+					ComponentRef: corev1.LocalObjectReference{
+						Name: componentName,
+					},
+					Clnt:     k8sClient,
+					Recorder: recorder,
+					ComponentInfo: &v1alpha1.ComponentInfo{
+						Component:      componentName,
+						Version:        componentVersion,
+						RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
+					},
+					ResourceInfo: &v1alpha1.ResourceInfo{
+						Name:    resourceName,
+						Type:    resourceType,
+						Version: resourceVersion,
+						Access:  apiextensionsv1.JSON{[]byte("{}")},
+						// TODO: Consider calculating the digest the ocm-way
+						Digest: fmt.Sprintf("SHA-256:%s[%s]", hex.EncodeToString(hashRgd[:]), "genericBlobDigest/v1"),
+					},
+				},
+			)
+
+			By("creating a deployer")
+			deployerObj := &v1alpha1.Deployer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: deployerObjName,
+				},
+				Spec: v1alpha1.DeployerSpec{
+					ResourceRef: v1alpha1.ObjectKey{
+						Name:      resourceObj.GetName(),
+						Namespace: namespace.GetName(),
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
+
+			By("checking that the deployer has not been reconciled successfully")
+			deployerObjNotReady := &v1alpha1.Deployer{}
+			Eventually(func(g Gomega, ctx context.Context) error {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(deployerObj), deployerObjNotReady)
+				if err != nil {
+					return fmt.Errorf("failed to get deployer: %w", err)
+				}
+
+				if conditions.IsReady(deployerObjNotReady) {
+					return fmt.Errorf("deployer %s is ready", deployerObjNotReady.GetName())
+				}
+
+				reason := conditions.GetReason(deployerObjNotReady, "Ready")
+				if reason != v1alpha1.MarshalFailedReason {
+					return fmt.Errorf("expected not-ready resource reason %s, got %s", v1alpha1.MarshalFailedReason, reason)
+				}
+
+				return nil
+			}, "15s").WithContext(ctx).Should(Succeed())
 
 			By("deleting the resource")
 			test.DeleteObject(ctx, k8sClient, deployerObj)
 		})
 
+		It("does not reconcile a deployer when the resource is not ready", func(ctx SpecContext) {
+			By("mocking a resource")
+			resourceObj = test.MockResource(
+				ctx,
+				resourceName,
+				namespace.GetName(),
+				&test.MockResourceOptions{
+					ComponentRef: corev1.LocalObjectReference{
+						Name: componentName,
+					},
+					Clnt:     k8sClient,
+					Recorder: recorder,
+					ComponentInfo: &v1alpha1.ComponentInfo{
+						Component:      componentName,
+						Version:        componentVersion,
+						RepositorySpec: &apiextensionsv1.JSON{Raw: []byte("{}")},
+					},
+					ResourceInfo: &v1alpha1.ResourceInfo{
+						Name:    resourceName,
+						Type:    "resource-not-ready-type",
+						Version: "v1.0.0",
+						Access:  apiextensionsv1.JSON{[]byte("{}")},
+						// TODO: Consider calculating the digest the ocm-way
+						Digest: "resource-not-ready-digest",
+					},
+				},
+			)
+
+			By("marking the mocked resource as not ready")
+			resourceObjNotReady := &v1alpha1.Resource{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(resourceObj), resourceObjNotReady)).To(Succeed())
+
+			status.MarkNotReady(recorder, resourceObjNotReady, v1alpha1.ResourceIsNotAvailable, "mock resource is not ready")
+			Expect(k8sClient.Status().Update(ctx, resourceObjNotReady)).To(Succeed())
+
+			By("creating a deployer")
+			deployerObj := &v1alpha1.Deployer{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: deployerObjName,
+				},
+				Spec: v1alpha1.DeployerSpec{
+					ResourceRef: v1alpha1.ObjectKey{
+						Name:      resourceObj.GetName(),
+						Namespace: namespace.GetName(),
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
+
+			By("checking that the deployer has not been reconciled successfully")
+			deployerObjNotReady := &v1alpha1.Deployer{}
+			Eventually(func(g Gomega, ctx context.Context) error {
+				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(deployerObj), deployerObjNotReady)
+				if err != nil {
+					return fmt.Errorf("failed to get deployer: %w", err)
+				}
+
+				if conditions.IsReady(deployerObjNotReady) {
+					return fmt.Errorf("deployer %s is ready", deployerObjNotReady.GetName())
+				}
+
+				reason := conditions.GetReason(deployerObjNotReady, "Ready")
+				if reason != v1alpha1.ResourceIsNotAvailable {
+					return fmt.Errorf("expected not-ready resource reason %s, got %s", v1alpha1.ResourceIsNotAvailable, reason)
+				}
+
+				return nil
+			}, "15s").WithContext(ctx).Should(Succeed())
+
+			By("deleting the resource")
+			test.DeleteObject(ctx, k8sClient, deployerObj)
+		})
+
+		PIt("it updates the RGD when the resource is updated", func() {})
 		PIt("fails when the resource digest differs", func() {})
 		PIt("removes the resource when deleted", func() {})
 	})
