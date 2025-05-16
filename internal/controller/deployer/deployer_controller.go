@@ -47,7 +47,7 @@ var _ ocm.Reconciler = (*Reconciler)(nil)
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Build index for deployers that reference a resource to get notified about resource changes.
-	const fieldName = "Deployer.spec.resourceRef"
+	const fieldName = ".spec.resourceRef"
 	if err := mgr.GetFieldIndexer().IndexField(
 		ctx,
 		&deliveryv1alpha1.Deployer{},
@@ -243,11 +243,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	//  - https://github.com/open-component-model/ocm-k8s-toolkit/issues/195 (@frewilhelm)
 	//  - https://github.com/open-component-model/ocm-k8s-toolkit/issues/196 (@frewilhelm)
 
+	actual := rgd.DeepCopy()
+
 	// Create or update the object in the cluster
-	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, &rgd, func() error {
+	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, actual, func() error {
 		if err := controllerutil.SetControllerReference(deployer, &rgd, r.Scheme); err != nil {
 			return fmt.Errorf("failed to set controller reference on resource graph definition: %w", err)
 		}
+
+		actual.Spec = rgd.Spec
 
 		return nil
 	})
