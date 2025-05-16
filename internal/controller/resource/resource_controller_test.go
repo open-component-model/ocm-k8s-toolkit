@@ -156,11 +156,9 @@ var _ = Describe("Resource Controller", func() {
 				Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
 
 				By("checking that the resource has been reconciled successfully")
-				waitUntilResourceIsReady(ctx, resourceObj)
-
-				if expSourceRef != nil {
-					Expect(resourceObj.Status.Reference).To(Equal(expSourceRef))
-				}
+				test.WaitForReadyObject(ctx, k8sClient, resourceObj, map[string]any{
+					"Status.Reference": expSourceRef,
+				})
 
 				By("deleting the resource")
 				test.DeleteObject(ctx, k8sClient, resourceObj)
@@ -503,13 +501,14 @@ var _ = Describe("Resource Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, componentObjReady)).To(Succeed())
 
 			By("checking that the resource has been reconciled successfully")
-			waitUntilResourceIsReady(ctx, resourceObj)
 			expectedSourceRef := &v1alpha1.SourceReference{
 				Registry:   "ghcr.io",
 				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
 				Tag:        "0.24.0",
 			}
-			Expect(resourceObj.Status.Reference).To(Equal(expectedSourceRef))
+			test.WaitForReadyObject(ctx, k8sClient, resourceObj, map[string]any{
+				"Status.Reference": expectedSourceRef,
+			})
 
 			By("deleting the resource")
 			test.DeleteObject(ctx, k8sClient, resourceObj)
@@ -576,13 +575,14 @@ var _ = Describe("Resource Controller", func() {
 			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
 
 			By("checking that the resource has been reconciled successfully")
-			waitUntilResourceIsReady(ctx, resourceObj)
 			expectedSourceRef := &v1alpha1.SourceReference{
 				Registry:   "ghcr.io",
 				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
 				Tag:        "0.23.0",
 			}
-			Expect(resourceObj.Status.Reference).To(Equal(expectedSourceRef))
+			test.WaitForReadyObject(ctx, k8sClient, resourceObj, map[string]any{
+				"Status.Reference": expectedSourceRef,
+			})
 
 			By("updating resource spec")
 			resourceObjUpdate := &v1alpha1.Resource{}
@@ -687,13 +687,14 @@ var _ = Describe("Resource Controller", func() {
 			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
 
 			By("checking that the resource has been reconciled successfully")
-			waitUntilResourceIsReady(ctx, resourceObj)
 			expectedSourceRef := &v1alpha1.SourceReference{
 				Registry:   "ghcr.io",
 				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
 				Tag:        "0.23.0",
 			}
-			Expect(resourceObj.Status.Reference).To(Equal(expectedSourceRef))
+			test.WaitForReadyObject(ctx, k8sClient, resourceObj, map[string]any{
+				"Status.Reference": expectedSourceRef,
+			})
 
 			By("updating the component version with a new resource")
 			componentVersionUpdated := "v1.0.1"
@@ -775,21 +776,3 @@ var _ = Describe("Resource Controller", func() {
 		})
 	})
 })
-
-func waitUntilResourceIsReady(ctx context.Context, resource *v1alpha1.Resource) {
-	GinkgoHelper()
-
-	Eventually(func(g Gomega, ctx context.Context) error {
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resource), resource)
-		if err != nil {
-			return err
-		}
-		g.Expect(resource).Should(HaveField("Status.Resource", Not(BeNil())))
-
-		if !conditions.IsReady(resource) {
-			return fmt.Errorf("resource %s is not ready", resource.Name)
-		}
-
-		return nil
-	}, "15s").WithContext(ctx).Should(Succeed())
-}

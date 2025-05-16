@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/fluxcd/pkg/runtime/conditions"
+	krov1alpha1 "github.com/kro-run/kro/api/v1alpha1"
 	"github.com/mandelsoft/vfs/pkg/osfs"
 	"github.com/mandelsoft/vfs/pkg/projectionfs"
 	. "github.com/onsi/ginkgo/v2"
@@ -25,6 +26,7 @@ import (
 	"ocm.software/ocm/api/utils/accessio"
 	"ocm.software/ocm/api/utils/mime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/status"
@@ -56,6 +58,9 @@ spec:
           container:
             - name: some-container
               image: some-image:latest`)
+
+	rgdObj := &krov1alpha1.ResourceGraphDefinition{}
+	Expect(yaml.Unmarshal(rgd, rgdObj)).To(Succeed())
 
 	BeforeEach(func() {
 		tempDir = GinkgoT().TempDir()
@@ -108,6 +113,10 @@ spec:
 			deployers := &v1alpha1.DeployerList{}
 			Expect(k8sClient.List(ctx, deployers)).To(Succeed())
 			Expect(deployers.Items).To(HaveLen(0))
+
+			RGDs := &krov1alpha1.ResourceGraphDefinitionList{}
+			Expect(k8sClient.List(ctx, RGDs)).To(Succeed())
+			Expect(RGDs.Items).To(HaveLen(0))
 		})
 
 		It("reconciles a deployer with a valid RGD", func(ctx SpecContext) {
@@ -150,7 +159,7 @@ spec:
 						Name:    resourceName,
 						Type:    resourceType,
 						Version: resourceVersion,
-						Access:  apiextensionsv1.JSON{[]byte("{}")},
+						Access:  apiextensionsv1.JSON{Raw: []byte("{}")},
 						// TODO: Consider calculating the digest the ocm-way
 						Digest: fmt.Sprintf("SHA-256:%s[%s]", hex.EncodeToString(hashRgd[:]), "genericBlobDigest/v1"),
 					},
@@ -172,7 +181,15 @@ spec:
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
 
 			By("checking that the deployer has been reconciled successfully")
-			waitUntilDeployerIsReady(ctx, deployerObj)
+			test.WaitForReadyObject(ctx, k8sClient, deployerObj, map[string]any{})
+
+			By("checking that the deployed ResourceGraphDefinition is correct")
+			rgdObjApplied := &krov1alpha1.ResourceGraphDefinition{}
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rgdObj), rgdObjApplied)).To(Succeed())
+			Expect(rgdObjApplied.GetName()).To(Equal(rgdObj.GetName()))
+
+			By("mocking the GC")
+			test.DeleteObject(ctx, k8sClient, rgdObj)
 
 			By("deleting the deployer")
 			test.DeleteObject(ctx, k8sClient, deployerObj)
@@ -219,7 +236,7 @@ spec:
 						Name:    resourceName,
 						Type:    resourceType,
 						Version: resourceVersion,
-						Access:  apiextensionsv1.JSON{[]byte("{}")},
+						Access:  apiextensionsv1.JSON{Raw: []byte("{}")},
 						// TODO: Consider calculating the digest the ocm-way
 						Digest: fmt.Sprintf("SHA-256:%s[%s]", hex.EncodeToString(hashRgd[:]), "genericBlobDigest/v1"),
 					},
@@ -241,6 +258,7 @@ spec:
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
 
 			By("checking that the deployer has not been reconciled successfully")
+
 			deployerObjNotReady := &v1alpha1.Deployer{}
 			Eventually(func(g Gomega, ctx context.Context) error {
 				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(deployerObj), deployerObjNotReady)
@@ -285,7 +303,7 @@ spec:
 						Name:    resourceName,
 						Type:    "resource-not-ready-type",
 						Version: "v1.0.0",
-						Access:  apiextensionsv1.JSON{[]byte("{}")},
+						Access:  apiextensionsv1.JSON{Raw: []byte("{}")},
 						// TODO: Consider calculating the digest the ocm-way
 						Digest: "resource-not-ready-digest",
 					},
@@ -342,20 +360,3 @@ spec:
 		PIt("removes the resource when deleted", func() {})
 	})
 })
-
-func waitUntilDeployerIsReady(ctx context.Context, deployer *v1alpha1.Deployer) {
-	GinkgoHelper()
-
-	Eventually(func(g Gomega, ctx context.Context) error {
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(deployer), deployer)
-		if err != nil {
-			return err
-		}
-
-		if !conditions.IsReady(deployer) {
-			return fmt.Errorf("deployer not ready")
-		}
-
-		return nil
-	}, "15s").WithContext(ctx).Should(Succeed())
-}
