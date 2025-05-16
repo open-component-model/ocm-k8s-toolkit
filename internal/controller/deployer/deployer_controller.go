@@ -246,7 +246,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	actual := rgd.DeepCopy()
 
 	// Create or update the object in the cluster
-	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, actual, func() error {
+	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, actual, func() error {
 		if err := controllerutil.SetControllerReference(deployer, &rgd, r.Scheme); err != nil {
 			return fmt.Errorf("failed to set controller reference on resource graph definition: %w", err)
 		}
@@ -260,6 +260,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 		return ctrl.Result{}, fmt.Errorf("failed to create or update resource graph definition: %w", err)
 	}
+
+	logger.Info("applied resource graph definition", "operation", op, "name", actual.Name)
 
 	// TODO: Status propagation of RGD status to deployer
 	//       (see https://github.com/open-component-model/ocm-k8s-toolkit/issues/192)
