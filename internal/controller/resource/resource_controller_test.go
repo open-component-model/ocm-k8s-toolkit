@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/mandelsoft/vfs/pkg/osfs"
 	"github.com/mandelsoft/vfs/pkg/projectionfs"
 	. "github.com/onsi/ginkgo/v2"
@@ -308,24 +307,7 @@ var _ = Describe("Resource Controller", func() {
 			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
 
 			By("checking that the resource has not been reconciled successfully")
-			resourceObjNotReady := &v1alpha1.Resource{}
-			Eventually(func(g Gomega, ctx context.Context) error {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resourceObj), resourceObjNotReady)
-				if err != nil {
-					return fmt.Errorf("failed to get resource: %w", err)
-				}
-
-				if conditions.IsReady(resourceObjNotReady) {
-					return fmt.Errorf("resource %s is ready", resourceObjNotReady.Name)
-				}
-
-				reason := conditions.GetReason(resourceObjNotReady, "Ready")
-				if reason != v1alpha1.ResourceIsNotAvailable {
-					return fmt.Errorf("expected not-ready resource reason %s, got %s", v1alpha1.ResourceIsNotAvailable, reason)
-				}
-
-				return nil
-			}, "15s").WithContext(ctx).Should(Succeed())
+			test.WaitForNotReadyObject(ctx, k8sClient, resourceObj, v1alpha1.ResourceIsNotAvailable)
 
 			By("deleting the resource")
 			test.DeleteObject(ctx, k8sClient, resourceObj)
@@ -387,24 +369,7 @@ var _ = Describe("Resource Controller", func() {
 			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
 
 			By("checking that the resource has not been reconciled successfully")
-			resourceObjNotReady := &v1alpha1.Resource{}
-			Eventually(func(g Gomega, ctx context.Context) error {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resourceObj), resourceObjNotReady)
-				if err != nil {
-					return fmt.Errorf("failed to get resource: %w", err)
-				}
-
-				if conditions.IsReady(resourceObjNotReady) {
-					return fmt.Errorf("resource %s is ready", resourceObjNotReady.Name)
-				}
-
-				reason := conditions.GetReason(resourceObjNotReady, "Ready")
-				if reason != v1alpha1.GetOCMResourceFailedReason {
-					return fmt.Errorf("expected not-ready resource reason %s, got %s", v1alpha1.GetOCMResourceFailedReason, reason)
-				}
-
-				return nil
-			}, "15s").WithContext(ctx).Should(Succeed())
+			test.WaitForNotReadyObject(ctx, k8sClient, resourceObj, v1alpha1.GetOCMResourceFailedReason)
 
 			By("deleting the resource")
 			test.DeleteObject(ctx, k8sClient, resourceObj)
@@ -474,24 +439,7 @@ var _ = Describe("Resource Controller", func() {
 			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
 
 			By("checking that the resource has not been reconciled successfully")
-			resourceObjNotReady := &v1alpha1.Resource{}
-			Eventually(func(g Gomega, ctx context.Context) error {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resourceObj), resourceObjNotReady)
-				if err != nil {
-					return fmt.Errorf("failed to get resource: %w", err)
-				}
-
-				if conditions.IsReady(resourceObjNotReady) {
-					return fmt.Errorf("resource %s is ready", resourceObjNotReady.Name)
-				}
-
-				reason := conditions.GetReason(resourceObjNotReady, "Ready")
-				if reason != v1alpha1.ResourceIsNotAvailable {
-					return fmt.Errorf("expected not-ready resource reason %s, got %s", v1alpha1.ResourceIsNotAvailable, reason)
-				}
-
-				return nil
-			}, "15s").WithContext(ctx).Should(Succeed())
+			test.WaitForNotReadyObject(ctx, k8sClient, resourceObj, v1alpha1.ResourceIsNotAvailable)
 
 			By("updating the component to ready")
 			componentObjReady := &v1alpha1.Component{}
@@ -597,33 +545,15 @@ var _ = Describe("Resource Controller", func() {
 			Expect(k8sClient.Update(ctx, resourceObjUpdate)).To(Succeed())
 
 			By("checking that the updated resource has been reconciled successfully")
-			resourceObjUpdated := &v1alpha1.Resource{}
-			Eventually(func(g Gomega, ctx context.Context) error {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resourceObj), resourceObjUpdated)
-				if err != nil {
-					return fmt.Errorf("failed to get resource: %w", err)
-				}
-
-				if !conditions.IsReady(resourceObjUpdated) {
-					return fmt.Errorf("resource %s is not ready", resourceObjUpdated.Name)
-				}
-
-				if resourceObjUpdated.Status.Resource == nil {
-					return fmt.Errorf("resource %s has no resource status", resourceObjUpdated.Name)
-				}
-
-				if resourceObjUpdated.Status.Resource.Version != resourceVersionUpdated {
-					return fmt.Errorf("resource %s resource-version in status is not updated", resourceObjUpdated.Name)
-				}
-
-				return nil
-			}, "15s").WithContext(ctx).Should(Succeed())
 			expectedSourceRef = &v1alpha1.SourceReference{
 				Registry:   "ghcr.io",
 				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
 				Tag:        "0.24.0",
 			}
-			Expect(resourceObjUpdated.Status.Reference).To(Equal(expectedSourceRef))
+			test.WaitForReadyObject(ctx, k8sClient, resourceObj, map[string]any{
+				"Status.Resource.Version": resourceVersionUpdated,
+				"Status.Reference":        expectedSourceRef,
+			})
 
 			By("deleting the resource")
 			test.DeleteObject(ctx, k8sClient, resourceObj)
@@ -743,33 +673,15 @@ var _ = Describe("Resource Controller", func() {
 
 			// component spec update should trigger resource reconciliation
 			By("checking that the resource was reconciled again")
-			resourceObjUpdated := &v1alpha1.Resource{}
-			Eventually(func(g Gomega, ctx context.Context) error {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(resourceObj), resourceObjUpdated)
-				if err != nil {
-					return fmt.Errorf("failed to get resource: %w", err)
-				}
-
-				if !conditions.IsReady(resourceObjUpdated) {
-					return fmt.Errorf("resource %s is not ready", resourceObjUpdated.Name)
-				}
-
-				if resourceObjUpdated.Status.Component == nil {
-					return fmt.Errorf("resource %s component in status is nil", resourceObjUpdated.Name)
-				}
-
-				if resourceObjUpdated.Status.Component.Version != componentVersionUpdated {
-					return fmt.Errorf("resource %s component version in status is not updated", resourceObjUpdated.Name)
-				}
-
-				return nil
-			}, "15s").WithContext(ctx).Should(Succeed())
 			expectedSourceRef = &v1alpha1.SourceReference{
 				Registry:   "ghcr.io",
 				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
 				Tag:        "0.24.0",
 			}
-			Expect(resourceObjUpdated.Status.Reference).To(Equal(expectedSourceRef))
+			test.WaitForReadyObject(ctx, k8sClient, resourceObj, map[string]any{
+				"Status.Component.Version": componentVersionUpdated,
+				"Status.Reference":         expectedSourceRef,
+			})
 
 			By("deleting the resource")
 			test.DeleteObject(ctx, k8sClient, resourceObj)
