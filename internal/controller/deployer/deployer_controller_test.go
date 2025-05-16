@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/fluxcd/pkg/runtime/conditions"
 	krov1alpha1 "github.com/kro-run/kro/api/v1alpha1"
 	"github.com/mandelsoft/vfs/pkg/osfs"
 	"github.com/mandelsoft/vfs/pkg/projectionfs"
@@ -258,25 +257,7 @@ spec:
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
 
 			By("checking that the deployer has not been reconciled successfully")
-
-			deployerObjNotReady := &v1alpha1.Deployer{}
-			Eventually(func(g Gomega, ctx context.Context) error {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(deployerObj), deployerObjNotReady)
-				if err != nil {
-					return fmt.Errorf("failed to get deployer: %w", err)
-				}
-
-				if conditions.IsReady(deployerObjNotReady) {
-					return fmt.Errorf("deployer %s is ready", deployerObjNotReady.GetName())
-				}
-
-				reason := conditions.GetReason(deployerObjNotReady, "Ready")
-				if reason != v1alpha1.MarshalFailedReason {
-					return fmt.Errorf("expected not-ready resource reason %s, got %s", v1alpha1.MarshalFailedReason, reason)
-				}
-
-				return nil
-			}, "15s").WithContext(ctx).Should(Succeed())
+			test.WaitForNotReadyObject(ctx, k8sClient, deployerObj, v1alpha1.MarshalFailedReason)
 
 			By("deleting the resource")
 			test.DeleteObject(ctx, k8sClient, deployerObj)
@@ -332,24 +313,7 @@ spec:
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
 
 			By("checking that the deployer has not been reconciled successfully")
-			deployerObjNotReady := &v1alpha1.Deployer{}
-			Eventually(func(g Gomega, ctx context.Context) error {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(deployerObj), deployerObjNotReady)
-				if err != nil {
-					return fmt.Errorf("failed to get deployer: %w", err)
-				}
-
-				if conditions.IsReady(deployerObjNotReady) {
-					return fmt.Errorf("deployer %s is ready", deployerObjNotReady.GetName())
-				}
-
-				reason := conditions.GetReason(deployerObjNotReady, "Ready")
-				if reason != v1alpha1.ResourceIsNotAvailable {
-					return fmt.Errorf("expected not-ready resource reason %s, got %s", v1alpha1.ResourceIsNotAvailable, reason)
-				}
-
-				return nil
-			}, "15s").WithContext(ctx).Should(Succeed())
+			test.WaitForNotReadyObject(ctx, k8sClient, deployerObj, v1alpha1.ResourceIsNotAvailable)
 
 			By("deleting the resource")
 			test.DeleteObject(ctx, k8sClient, deployerObj)

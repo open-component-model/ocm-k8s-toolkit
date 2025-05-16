@@ -84,3 +84,25 @@ func DeleteObject(ctx context.Context, k8sClient client.Client, obj client.Objec
 		return fmt.Errorf("resource %s (Kind: %s) still exists", obj.GetName(), obj.GetObjectKind())
 	}, "15s").WithContext(ctx).Should(Succeed())
 }
+
+func WaitForNotReadyObject(ctx context.Context, k8sClient client.Client, obj util.Getter, expectedReason string) {
+	GinkgoHelper()
+
+	Eventually(func(ctx context.Context) error {
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), obj)
+		if err != nil {
+			return fmt.Errorf("failed to get object: %w", err)
+		}
+
+		if conditions.IsReady(obj) {
+			return fmt.Errorf("object %s (Kind: %s) is ready", obj.GetName(), obj.GetObjectKind())
+		}
+
+		reason := conditions.GetReason(obj, "Ready")
+		if reason != expectedReason {
+			return fmt.Errorf("expected not-ready object reason %s, got %s", expectedReason, reason)
+		}
+
+		return nil
+	}, "15s").WithContext(ctx).Should(Succeed())
+}
