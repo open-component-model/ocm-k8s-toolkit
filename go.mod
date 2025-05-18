@@ -10,7 +10,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/chainguard-dev/git-urls v1.0.2
 	github.com/fluxcd/pkg/apis/event v0.17.0
-	github.com/fluxcd/pkg/apis/meta v1.11.0
+	github.com/fluxcd/pkg/apis/meta v1.12.0
 	github.com/fluxcd/pkg/runtime v0.59.0
 	github.com/kro-run/kro v0.2.3
 	github.com/mandelsoft/goutils v0.0.0-20241227142622-83a787399095
@@ -18,11 +18,11 @@ require (
 	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/onsi/gomega v1.37.0
 	github.com/stretchr/testify v1.10.0
-	k8s.io/api v0.33.0
-	k8s.io/apiextensions-apiserver v0.33.0
-	k8s.io/apimachinery v0.33.0
-	k8s.io/client-go v0.33.0
-	ocm.software/ocm v0.15.1-0.20250513143322-a9435cc12053
+	k8s.io/api v0.33.1
+	k8s.io/apiextensions-apiserver v0.33.1
+	k8s.io/apimachinery v0.33.1
+	k8s.io/client-go v0.33.1
+	ocm.software/ocm v0.25.0-rc.2
 	sigs.k8s.io/controller-runtime v0.20.4
 	sigs.k8s.io/yaml v1.4.0
 )
@@ -498,7 +498,7 @@ require (
 	helm.sh/helm/v3 v3.17.3 // indirect
 	honnef.co/go/tools v0.6.1 // indirect
 	k8s.io/cli-runtime v0.33.0 // indirect
-	k8s.io/component-base v0.33.0 // indirect
+	k8s.io/component-base v0.33.1 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250318190949-c8a335a9a2ff // indirect
 	k8s.io/kubectl v0.33.0 // indirect
