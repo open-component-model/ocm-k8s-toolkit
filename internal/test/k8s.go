@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	. "github.com/onsi/ginkgo/v2" //nolint:revive // linter is not aware of ginkgo
-	. "github.com/onsi/gomega"    //nolint:revive // linter is not aware of ginkgo
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"k8s.io/apimachinery/pkg/api/errors"

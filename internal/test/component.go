@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	//nolint:revive // dot import necessary for Ginkgo DSL
 	. "github.com/onsi/gomega"
 
 	"github.com/fluxcd/pkg/runtime/patch"

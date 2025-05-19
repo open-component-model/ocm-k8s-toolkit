@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	. "github.com/onsi/ginkgo/v2" //nolint:revive // ginkgo...
+	. "github.com/onsi/ginkgo/v2"
 )
 
 // Run executes the provided command within this context.
