@@ -224,7 +224,7 @@ var _ = Describe("Resource Controller", func() {
 								env.Access(github.New(
 									"https://github.com/open-component-model/ocm-k8s-toolkit",
 									"/repos/open-component-model/ocm-k8s-toolkit",
-									github.WithReference("main"),
+									"8f7e04f4b58d2a9e22f88e79dddfc36183688f28",
 								))
 							})
 						})
@@ -235,7 +235,7 @@ var _ = Describe("Resource Controller", func() {
 				&v1alpha1.SourceReference{
 					Registry:   "https://github.com",
 					Repository: "/open-component-model/ocm-k8s-toolkit",
-					Reference:  "main",
+					Reference:  "8f7e04f4b58d2a9e22f88e79dddfc36183688f28",
 				},
 			),
 			Entry("git access", func() string {

@@ -450,15 +450,13 @@ func getSourceRefForAccessSpec(ctx context.Context, accSpec any, cv ocmctx.Compo
 			return nil, fmt.Errorf("failed to parse GitHub URL: %w", err)
 		}
 
-		reference, err := parseReference(access.Commit, access.Reference)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse reference: %w", err)
-		}
-
+		// In the current OCM spec, the commit is mandatory, while the reference is optional. The ocm v1 lib ignores any
+		// reference. This is why, we set the coomit as reference.
+		// (See spec https://github.com/open-component-model/ocm-spec/blob/7bfbc171e814e73d6e95cfa07cc85813f89a1d44/doc/04-extensions/02-access-types/github.md)
 		return &v1alpha1.SourceReference{
 			Registry:   fmt.Sprintf("%s://%s", gitHubURL.Scheme, gitHubURL.Host),
 			Repository: gitHubURL.Path,
-			Reference:  reference,
+			Reference:  access.Commit,
 		}, nil
 	case *git.AccessSpec:
 		gitURL, err := giturls.Parse(access.Repository)
