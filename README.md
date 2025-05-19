@@ -5,9 +5,10 @@
 > [!IMPORTANT]
 > This project is in early development and not yet ready for production use.
 
-OCM K8s Toolkit contains custom Kubernetes resources and their controllers to provide the location of OCM resources
-from an OCM component version, so it can be consumed by a deployer. It is used to deploy OCM resources like a HelmChart
-or Kustomization into a Kubernetes cluster.
+OCM K8s Toolkit contains the tooling for
+- providing the location of OCM resources from an OCM component version, so it can be consumed by a deployer. It is used
+    to deploy OCM resources like a HelmChart or Kustomization into a Kubernetes cluster.
+- providing a controller to transfer OCM component versions.
 
 ### What should I know before I start?
 
