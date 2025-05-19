@@ -1,19 +1,3 @@
-/*
-Copyright 2024.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package component
 
 import (
@@ -135,10 +119,12 @@ var _ = Describe("Component Controller", func() {
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("checking that the component has been reconciled successfully")
-			waitUntilComponentIsReady(ctx, component, "1.0.0")
+			test.WaitForReadyObject(ctx, k8sClient, component, map[string]any{
+				"Status.Component.Version": Version1,
+			})
 
 			By("delete resources manually")
-			deleteComponent(ctx, component)
+			test.DeleteObject(ctx, k8sClient, component)
 		})
 
 		It("does not reconcile when the repository is not ready", func(ctx SpecContext) {
@@ -178,26 +164,10 @@ var _ = Describe("Component Controller", func() {
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("checking that the component has not been reconciled successfully")
-			Eventually(func(ctx context.Context) error {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
-				if err != nil {
-					return err
-				}
-
-				if conditions.IsReady(component) {
-					return fmt.Errorf("expected component %s to not be ready, but it was ready", component.GetName())
-				}
-
-				reason := conditions.GetReason(component, "Ready")
-				if reason != v1alpha1.GetResourceFailedReason {
-					return fmt.Errorf("expected component ready-condition reason to be %s, but it was %s", v1alpha1.GetResourceFailedReason, reason)
-				}
-
-				return nil
-			}, "15s").WithContext(ctx).Should(Succeed())
+			test.WaitForNotReadyObject(ctx, k8sClient, component, v1alpha1.GetResourceFailedReason)
 
 			By("deleting the resources manually")
-			deleteComponent(ctx, component)
+			test.DeleteObject(ctx, k8sClient, component)
 		})
 
 		It("does reconcile when an unready ocm repository gets ready", func(ctx SpecContext) {
@@ -237,33 +207,19 @@ var _ = Describe("Component Controller", func() {
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("checking that the component has not been reconciled successfully")
-			Eventually(func(ctx context.Context) error {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
-				if err != nil {
-					return err
-				}
-
-				if conditions.IsReady(component) {
-					return fmt.Errorf("expected component %s to not be ready, but it was ready", component.GetName())
-				}
-
-				reason := conditions.GetReason(component, "Ready")
-				if reason != v1alpha1.GetResourceFailedReason {
-					return fmt.Errorf("expected component ready-condition reason to be %s, but it was %s", v1alpha1.GetResourceFailedReason, reason)
-				}
-
-				return nil
-			}, "15s").WithContext(ctx).Should(Succeed())
+			test.WaitForNotReadyObject(ctx, k8sClient, component, v1alpha1.GetResourceFailedReason)
 
 			By("marking the repository as ready")
 			conditions.MarkTrue(repositoryObj, "Ready", "ready", "message")
 			Expect(k8sClient.Status().Update(ctx, repositoryObj)).To(Succeed())
 
 			By("checking that the component has been reconciled successfully")
-			waitUntilComponentIsReady(ctx, component, Version1)
+			test.WaitForReadyObject(ctx, k8sClient, component, map[string]any{
+				"Status.Component.Version": Version1,
+			})
 
 			By("deleting the resources manually")
-			deleteComponent(ctx, component)
+			test.DeleteObject(ctx, k8sClient, component)
 		})
 		It("grabs the new version when it becomes available", func(ctx SpecContext) {
 			By("creating a component version")
@@ -298,7 +254,9 @@ var _ = Describe("Component Controller", func() {
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("checking that the component has been reconciled successfully")
-			waitUntilComponentIsReady(ctx, component, Version1)
+			test.WaitForReadyObject(ctx, k8sClient, component, map[string]any{
+				"Status.Component.Version": Version1,
+			})
 
 			By("increasing the component version")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
@@ -311,10 +269,12 @@ var _ = Describe("Component Controller", func() {
 			})
 
 			By("checking that the increased version has been discovered successfully")
-			waitUntilComponentIsReady(ctx, component, Version2)
+			test.WaitForReadyObject(ctx, k8sClient, component, map[string]any{
+				"Status.Component.Version": Version2,
+			})
 
 			By("delete resources manually")
-			deleteComponent(ctx, component)
+			test.DeleteObject(ctx, k8sClient, component)
 		})
 
 		It("grabs lower version if downgrade is allowed", func(ctx SpecContext) {
@@ -355,17 +315,21 @@ var _ = Describe("Component Controller", func() {
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("checking that the component has been reconciled successfully")
-			waitUntilComponentIsReady(ctx, component, "0.0.3")
+			test.WaitForReadyObject(ctx, k8sClient, component, map[string]any{
+				"Status.Component.Version": "0.0.3",
+			})
 
 			By("decreasing the component version")
 			component.Spec.Semver = "0.0.2"
 			Expect(k8sClient.Update(ctx, component)).To(Succeed())
 
 			By("checking that the decreased version has been discovered successfully")
-			waitUntilComponentIsReady(ctx, component, "0.0.2")
+			test.WaitForReadyObject(ctx, k8sClient, component, map[string]any{
+				"Status.Component.Version": "0.0.2",
+			})
 
 			By("delete resources manually")
-			deleteComponent(ctx, component)
+			test.DeleteObject(ctx, k8sClient, component)
 		})
 
 		It("does not grab lower version if downgrade is denied", func(ctx SpecContext) {
@@ -405,7 +369,9 @@ var _ = Describe("Component Controller", func() {
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("checking that the component has been reconciled successfully")
-			waitUntilComponentIsReady(ctx, component, "0.0.3")
+			test.WaitForReadyObject(ctx, k8sClient, component, map[string]any{
+				"Status.Component.Version": "0.0.3",
+			})
 
 			By("trying to decrease component version")
 			component.Spec.Semver = "0.0.2"
@@ -429,7 +395,7 @@ var _ = Describe("Component Controller", func() {
 			Expect(component.Status.Component.Version).To(Equal("0.0.3"))
 
 			By("delete resources manually")
-			deleteComponent(ctx, component)
+			test.DeleteObject(ctx, k8sClient, component)
 		})
 
 		It("can force downgrade even if not allowed by the component", func(ctx SpecContext) {
@@ -466,17 +432,21 @@ var _ = Describe("Component Controller", func() {
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("checking that the component has been reconciled successfully")
-			waitUntilComponentIsReady(ctx, component, "0.0.3")
+			test.WaitForReadyObject(ctx, k8sClient, component, map[string]any{
+				"Status.Component.Version": "0.0.3",
+			})
 
 			By("decreasing the component version")
 			component.Spec.Semver = "0.0.2"
 			Expect(k8sClient.Update(ctx, component)).To(Succeed())
 
 			By("checking that the decreased version has been discovered successfully")
-			waitUntilComponentIsReady(ctx, component, "0.0.2")
+			test.WaitForReadyObject(ctx, k8sClient, component, map[string]any{
+				"Status.Component.Version": "0.0.2",
+			})
 
 			By("delete resources manually")
-			deleteComponent(ctx, component)
+			test.DeleteObject(ctx, k8sClient, component)
 		})
 
 		It("normalizes a component version with a plus", func(ctx SpecContext) {
@@ -522,11 +492,14 @@ var _ = Describe("Component Controller", func() {
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("checking that the component has been reconciled successfully")
-			waitUntilComponentIsReady(ctx, component, componentVersionPlus)
+			test.WaitForReadyObject(ctx, k8sClient, component, map[string]any{
+				"Status.Component.Version": componentVersionPlus,
+			})
 
 			By("delete resources manually")
-			deleteComponent(ctx, component)
+			test.DeleteObject(ctx, k8sClient, component)
 		})
+
 		It("blocks deletion of a component when a resource is referencing it", func(ctx SpecContext) {
 			By("creating a component version")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
@@ -560,10 +533,12 @@ var _ = Describe("Component Controller", func() {
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("checking that the component has been reconciled successfully")
-			waitUntilComponentIsReady(ctx, component, "1.0.0")
+			test.WaitForReadyObject(ctx, k8sClient, component, map[string]any{
+				"Status.Component.Version": "1.0.0",
+			})
 
 			By("creating a resource that references the component")
-			resource := test.SetupMockResource(ctx, "test-resource", component.GetNamespace(), &test.MockResourceOptions{
+			resource := test.MockResource(ctx, "test-resource", component.GetNamespace(), &test.MockResourceOptions{
 				ComponentRef: corev1.LocalObjectReference{
 					Name: component.GetName(),
 				},
@@ -594,7 +569,7 @@ var _ = Describe("Component Controller", func() {
 
 			By("delete resources manually")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-			deleteComponent(ctx, component)
+			test.DeleteObject(ctx, k8sClient, component)
 		})
 	})
 
@@ -816,7 +791,9 @@ var _ = Describe("Component Controller", func() {
 			Expect(k8sClient.Create(ctx, component)).To(Succeed())
 
 			By("checking that the component has been reconciled successfully")
-			waitUntilComponentIsReady(ctx, component, "1.0.0")
+			test.WaitForReadyObject(ctx, k8sClient, component, map[string]any{
+				"Status.Component.Version": "1.0.0",
+			})
 
 			By("checking component's effective OCM config")
 			Eventually(komega.Object(component), "15s").Should(
@@ -843,48 +820,10 @@ var _ = Describe("Component Controller", func() {
 			)
 
 			By("delete resources manually")
-			deleteComponent(ctx, component)
+			test.DeleteObject(ctx, k8sClient, component)
 		})
 	})
 })
-
-func waitUntilComponentIsReady(ctx context.Context, component *v1alpha1.Component, expectedVersion string) {
-	GinkgoHelper()
-
-	Eventually(func(g Gomega, ctx context.Context) error {
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
-		if err != nil {
-			return err
-		}
-
-		if !conditions.IsReady(component) {
-			return fmt.Errorf("expected component %s to be ready", component.GetName())
-		}
-
-		g.Expect(component).Should(HaveField("Status.Component.Version", expectedVersion))
-
-		return nil
-	}, "15s").WithContext(ctx).Should(Succeed())
-}
-
-func deleteComponent(ctx context.Context, component *v1alpha1.Component) {
-	GinkgoHelper()
-
-	Expect(k8sClient.Delete(ctx, component)).To(Succeed())
-
-	Eventually(func(ctx context.Context) error {
-		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(component), component)
-		if errors.IsNotFound(err) {
-			return nil
-		}
-
-		if err != nil {
-			return err
-		}
-
-		return fmt.Errorf("expected not-found error, but got none")
-	}, "15s").WithContext(ctx).Should(Succeed())
-}
 
 func createTestConfigsAndSecrets(ctx context.Context, namespace string) (configs []*corev1.ConfigMap, secrets []*corev1.Secret) {
 	const (
