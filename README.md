@@ -51,7 +51,6 @@ flowchart TB
     subgraph background[ ]
         direction TB
         subgraph legend[Legend]
-            direction LR
             reconciledBy[reconciled by]
             object[k8s object]
         end
@@ -114,6 +113,29 @@ A more detailed architecture description of the OCM K8s Toolkit can be found [he
 
 ## Installation
 
+Currently, the OCM K8s Toolkit is available as [image][controller-image] and
+[Kustomization](config/default/kustomization.yaml). A Helm Chart is planned for the future.
+
+To install the OCM K8s Toolkit into your running Kubernetes cluster, you can use the following commands:
+
+```console
+# In the ocm-k8s-toolkit/ repository
+make deploy
+```
+
+or
+
+```console
+kubectl apply -k https://github.com/open-component-model/ocm-k8s-toolkit/config/default?ref=main
+```
+
+> [!IMPORTANT]
+> OCM K8s Toolkit requires kro and a deployer, e.g. FluxCD, to deploy an OCM resource into a Kubernetes cluster.
+> The OCM K8s Toolkit deployment, however, does not contain kro or any deployer. Please refer to the respective
+> installation guides for these tools:
+> - [kro](https://kro.run/docs/getting-started/Installation/)
+> - [FluxCD](https://fluxcd.io/docs/installation/)
+
 ## Getting Started
 
 - Basic usage
@@ -132,3 +154,6 @@ OCM K8s Toolkit follows the [CNCF Code of Conduct](https://github.com/cncf/found
 Please see our [LICENSE](LICENSE) for copyright and license information.
 Detailed information including third-party components and their licensing/copyright information is available
 [via the REUSE tool](https://api.reuse.software/info/github.com/open-component-model/open-component-model).
+
+
+[controller-image]: https://github.com/open-component-model/ocm-k8s-toolkit/pkgs/container/ocm-k8s-toolkit
