@@ -1,4 +1,7 @@
-# Getting Started
+# Deploying a Helm Chart using a `ResourceGraphDefinition` inside the OCM component version (bootstrap) with FluxCD
+
+> [!NOTE]
+> This document is under construction. Please refer to https://github.com/open-component-model/ocm-project/issues/487
 
 > [!IMPORTANT]
 > This guide is preliminary and will be updated in the future.
@@ -43,7 +46,7 @@ ocm add componentversions --create --file ./ctf \
 ```
 
 The following command will transfer the local ctf to your specified registry. For this example, we used GitHub's
-container registry, but you can use any OCI registry. Additionally, we used the flag `--copy-resources` to copy the 
+container registry, but you can use any OCI registry. Additionally, we used the flag `--copy-resources` to copy the
 resources from the local ctf to the registry.
 
 ```bash
@@ -54,7 +57,7 @@ ocm transfer ctf --copy-resources ./ctf ghcr.io/<your-username/org>
 > [!IMPORTANT]
 > The ocm-controllers need to be able to access the OCI registry, in which the OCM component version is stored. So, you
 > either must provide [credentials][ocm-credentials] for the OCI registry or make the OCM component version public.
-> 
+>
 > Quick Guide:
 > Assuming you work with a configuration file like `.ocmconfig`, you can use `kubectl create secret generic my-secret --from-file=.ocmconfig`
 > to create the secret and the following fields to use it (for every resource that requires it):
