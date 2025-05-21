@@ -107,7 +107,8 @@ in its status (Of course, only if the resource has remote access, e.g., an OCI o
 
 As a result, FluxCDs can now consume the information of the `Resource` and deploy the Helm Chart:
 - `OCIRepository`: Watches and downloads the resource from the location provided by the `Resource` status.
-- `HelmRelease`: Refers to the `OCIRepository` and deploys the Helm Chart into the Kubernetes cluster. 
+- `HelmRelease`: Refers to the `OCIRepository`, lets you configure the helm chart, and deploys the Helm Chart into the
+Kubernetes cluster.
 
 A more detailed architecture description of the OCM K8s Toolkit can be found [here](docs/architecture/architecture.md).
 
