@@ -139,8 +139,11 @@ kubectl apply -k https://github.com/open-component-model/ocm-k8s-toolkit/config/
 
 ## Getting Started
 
-- Basic usage
-- Bootstrap usage
+- [Setup your (test) environment with KinD, kro, and FluxCD](docs/getting-started/setup.md)
+- [Deploying a Helm Chart using a `ResourceGraphDefinition` with FluxCD](docs/getting-started/deploy-helm-chart.md)
+- [Deploying a Helm Chart using a `ResourceGraphDefinition` inside the OCM component version (bootstrap) with FluxCD](docs/getting-started/deploy-helm-chart-bootstrap.md)
+- [Configuring secrets for OCM K8s Toolkit resources to access private OCM repositories](docs/getting-started/secrets.md)
+- [Transfer OCM component versions](docs/getting-started/transfer.md)
 
 ## Contributing
 
