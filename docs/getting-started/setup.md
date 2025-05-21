@@ -109,5 +109,21 @@ ocm-k8s-toolkit-system   ocm-k8s-toolkit-controller-manager-788f58d4bd-ntbx8   1
 ...
 ```
 
-If all the controllers are running as above you can play around with the examples in the [`examples/`](../../examples) directory or follow
-the [getting-started guides](../getting-started).
+## Access to a registry
+
+As all examples and guides will create an OCM component version that will be consumed by the OCM K8s Toolkit, you will
+need access to a registry. You can either choose a public registry like [ghcr.io][ghcr.io] or deploy a registry (like
+[`registry`][registry], [`zot`][zot], ...) into your Kubernetes cluster.
+
+> [!IMPORTANT]
+> If you choose to deploy a registry into your Kubernetes cluster, you have to make sure it is accessible from outside
+> the cluster (for `ocm transfer` to work) and inside the cluster (for the OCM K8s Toolkit controllers to work). 
+
+---
+
+If you completed all of the above steps, you are ready to go. You can now play around with the examples in the
+[`examples/`](../../examples) directory or follow the [getting-started guides](../getting-started).
+
+[ghcr.io]: https://docs.github.com/en/packages/learn-github-packages/introduction-to-github-packages
+[registry]: https://hub.docker.com/_/registry
+[zot]: https://zotregistry.dev/
