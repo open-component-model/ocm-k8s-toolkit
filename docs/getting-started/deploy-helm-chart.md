@@ -1,7 +1,7 @@
 # Deploying a Helm Chart using a `ResourceGraphDefinition` with FluxCD
 
 This guide demonstrates how to deploy a Helm Chart from an OCM component version using OCM K8s Toolkit, kro, and FluxCD.
-It is a rather basic example, in which it is assumed that a developer created an application, packages it as a Helm
+It is a rather basic example, in which it is assumed that a developer created an application, packaged it as a Helm
 chart, and publishes it as OCM component version in an OCI registry. Then, an operator who wants to deploy the
 application via Helm chart in a Kubernetes cluster, creates a `ResourceGraphDefinition` with resources that point to
 this OCM component version and uses FluxCD to configure and deploy it.
@@ -16,8 +16,7 @@ OCM component version, please refer to the [OCM documentation][ocm-doc].
 
 To create the OCM component version, we will use the following `component-constructor.yaml` file:
 
-```bash
-cat > component-constructor.yaml << EOL
+```yaml
 components:
   - name: ocm.software/ocm-k8s-toolkit/simple
     provider:
@@ -30,10 +29,9 @@ components:
         access:
           type: ociArtifact
           imageReference: ghcr.io/stefanprodan/charts/podinfo:6.7.1
-EOL
 ```
 
-and create the OCM component version pointing to the `component-constructor.yaml` file:
+After creating the file, we can create the OCM component version:
 
 ```bash
 ocm add componentversion --create --file ./ctf component-constructor.yaml
@@ -64,11 +62,201 @@ ocm.software/ocm-k8s-toolkit/simple 1.0.0   ocm.software
 
 ## Deploy the Helm Chart
 
-### Create the `ResourceGraphDefinition`
+To deploy the Helm chart from the OCM component version, we will first create a `ResourceGraphDefinition` that contains
+all required resources. Additionally, we will add a configuration to the `HelmRelease` resource that can be passed
+through the instance of that `ResourceGraphDefinition`. After the `ResourceGraphDefinition` is created and applied, we
+create the instance of the `ResourceGraphDefinition` that will deploy the Helm chart.
 
-### Apply the `ResourceGraphDefinition`
+### Create and apply the `ResourceGraphDefinition`
 
-### Create an Instance of ...
+The `ResourceGraphDefinition` is a custom resource that defines all the resources that should be applied. To proceed
+with the example, create a file named `rgd.yaml` and add the following content:
+
+```yaml
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
+metadata:
+  name: simple
+spec:
+  schema:
+    apiVersion: v1alpha1
+    # The name of the CRD that is created by this ResourceGraphDefinition when applied
+    kind: Simple
+    spec:
+      # This spec defines values that can be referenced in the ResourceGraphDefinition and that can be set in the
+      # instances of this ResourceGraphDefinition.
+      # We will use it to pass a value to the Helm chart and configure the message the application shows
+      # (see resource HelmRelease).
+      message: string | default="foo"
+  resources:
+    # OCMRepository points to the OCM repository in which the OCM component version is stored and checks if it is
+    # reachable by pinging it.
+    - id: ocmRepository
+      template:
+        apiVersion: delivery.ocm.software/v1alpha1
+        kind: OCMRepository
+        metadata:
+          name: simple-ocmrepository
+        spec:
+          repositorySpec:
+              baseUrl: ghcr.io/<your-namespace>
+              type: OCIRegistry
+          interval: 10m
+    # Component refers to the OCMRepository, downloads and verifies the OCM component version descriptor.
+    - id: component
+      template:
+        apiVersion: delivery.ocm.software/v1alpha1
+        kind: Component
+        metadata:
+          name: simple-component
+        spec:
+          repositoryRef:
+            name: ${ocmRepository.metadata.name}
+          component: ocm.software/ocm-k8s-toolkit/simple
+          semver: 1.0.0
+          interval: 10m
+    # Resource points to the Component, downloads the resource passed by reference-name and verifies it. It then
+    # publishes the location of the resource in its status.
+    - id: resourceChart
+      template:
+        apiVersion: delivery.ocm.software/v1alpha1
+        kind: Resource
+        metadata:
+          name: simple-resource
+        spec:
+          componentRef:
+            name: ${component.metadata.name}
+          resource:
+            byReference:
+              resource:
+                name: helm-resource # This must match the resource name set in the OCM component version (see above)
+          interval: 10m
+    # OCIRepository watches and downloads the resource from the location provided by the Resource status.
+    # The Helm chart location (url) refers to the status of the above resource.
+    - id: ocirepository
+      template:
+        apiVersion: source.toolkit.fluxcd.io/v1beta2
+        kind: OCIRepository
+        metadata:
+          name: simple-ocirepository
+        spec:
+          interval: 1m0s
+          layerSelector:
+            mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+            operation: copy
+          url: oci://${resourceChart.status.reference.registry}/${resourceChart.status.reference.repository}
+          ref:
+            tag: ${resourceChart.status.reference.tag}
+    # HelmRelease refers to the OCIRepository, lets you configure the helm chart and deploys the Helm Chart into the
+    # Kubernetes cluster.
+    - id: helmrelease
+      template:
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata:
+          name: simple-helmrelease
+        spec:
+          releaseName: simple
+          interval: 1m
+          timeout: 5m
+          chartRef:
+            kind: OCIRepository
+            name: ${ocirepository.metadata.name}
+            namespace: default
+          values:
+            # We configure the Helm chart using FluxCDs HelmRelease 'values' field. We pass the value that we set in
+            # the instance of the CRD created by the ResourceGraphDefinition (see below).
+            ui:
+              message: ${schema.spec.message}
+```
+
+After creating the file `rgd.yaml` with the above content and adjusting OCMRepository's `baseUrl` to point to your OCM
+repository, you can apply the `ResourceGraphDefinition` to your Kubernetes cluster:
+
+```bash
+kubectl apply -f rgd.yaml
+```
+
+If everything went well, you should see the following output:
+
+```bash
+kubectl get rgd
+```
+
+```console
+NAME     APIVERSION   KIND     STATE    AGE
+simple   v1alpha1     Simple   Active   19s
+```
+
+This creates a Kubernetes Custom Resource Definition (CRD) `Simple` that can be used to create instances. An applied
+instance of the CRD will create all resources defined in the `ResourceGraphDefinition`.
+
+### Create an Instance of "Simple"
+
+> [!NOTE]
+> Creating the instance will apply the resources that require access to the OCM component version stored in the
+> registry you chose in the beginning. If you chose GitHub's container registry, make sure that the OCM component
+> version is public or set up the respective credentials for the OCM K8s Toolkit resources. For more information on how
+> to set up and pass the credentials, please check out the guide
+> [configure secrets for OCM K8s Toolkit resources](secrets.md).
+
+To create an instance of the `Simple` CRD, create a file named `instance.yaml` and add the following content:
+
+```yaml
+apiVersion: kro.run/v1alpha1
+# Kind is the CRD name that was created by the ResourceGraphDefinition
+kind: Simple
+metadata:
+  name: simple
+spec:
+  # This field is passed to the Helm chart and configures the message that podinfo will show
+  message: "bar"
+```
+
+Proceed by applying the instance which will create all the resources defined in the `ResourceGraphDefinition`:
+
+```bash
+kubectl apply -f instance.yaml
+```
+
+This will take some time, but if everything went well, you should see the following output:
+
+```bash
+kubectl get simple
+```
+
+```console
+NAME     STATE    SYNCED   AGE
+simple   ACTIVE   True     5m28s
+```
+
+and the deployment should be in the state `Available`:
+
+```bash
+kubectl get deployments
+```
+
+```console
+NAME                  READY   UP-TO-DATE   AVAILABLE   AGE
+simple-podinfo        1/1     1            1           40m
+```
+
+To make sure that the deployment was configured successfully, take a look at the pod itself or execute the following
+command:
+
+```bash
+kubectl get pods -l app.kubernetes.io/name=simple-podinfo -o jsonpath='{.items[0].spec.containers[0].env[?(@.name=="PODINFO_UI_MESSAGE")].value}'
+```
+
+which should return the value you passed in the instance:
+
+```console
+bar
+```
+
+You now have successfully created an OCM component version containing a Helm chart and deployed as well as configured it
+using the OCM K8s Toolkit, kro, and FluxCD.
+
 
 [ocm-doc]: https://ocm.software/docs/getting-started/create-component-version/
 [ocm-credentials]: https://ocm.software/docs/tutorials/creds-in-ocmconfig/
