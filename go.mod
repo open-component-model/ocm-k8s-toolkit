@@ -11,8 +11,8 @@ require (
 	github.com/chainguard-dev/git-urls v1.0.2
 	github.com/fluxcd/pkg/apis/event v0.17.0
 	github.com/fluxcd/pkg/apis/meta v1.12.0
-	github.com/fluxcd/pkg/runtime v0.59.0
-	github.com/kro-run/kro v0.2.3
+	github.com/fluxcd/pkg/runtime v0.60.0
+	github.com/kro-run/kro v0.3.0
 	github.com/mandelsoft/goutils v0.0.0-20241227142622-83a787399095
 	github.com/mandelsoft/vfs v0.4.4
 	github.com/onsi/ginkgo/v2 v2.23.4
@@ -22,8 +22,8 @@ require (
 	k8s.io/apiextensions-apiserver v0.33.1
 	k8s.io/apimachinery v0.33.1
 	k8s.io/client-go v0.33.1
-	ocm.software/ocm v0.15.1-0.20250519065301-0e5093d1eefc
-	sigs.k8s.io/controller-runtime v0.20.4
+	ocm.software/ocm v0.25.0-rc.5
+	sigs.k8s.io/controller-runtime v0.21.0
 	sigs.k8s.io/yaml v1.4.0
 )
 
