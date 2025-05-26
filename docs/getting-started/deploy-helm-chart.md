@@ -196,9 +196,9 @@ instance of the CRD will create all resources defined in the `ResourceGraphDefin
 > [!NOTE]
 > Creating the instance will apply the resources that require access to the OCM component version stored in the
 > registry you chose in the beginning. If you chose GitHub's container registry, make sure that the OCM component
-> version is public or set up the respective credentials for the OCM K8s Toolkit resources. For more information on how
+> is public or set up the respective credentials for the OCM K8s Toolkit resources. For more information on how
 > to set up and pass the credentials, please check out the guide
-> [configure secrets for OCM K8s Toolkit resources](secrets.md).
+> [configure credentials for OCM K8s Toolkit resources](credentials.md).
 
 To create an instance of the `Simple` CRD, create a file named `instance.yaml` and add the following content:
 
