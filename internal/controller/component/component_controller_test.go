@@ -221,6 +221,7 @@ var _ = Describe("Component Controller", func() {
 			By("deleting the resources manually")
 			test.DeleteObject(ctx, k8sClient, component)
 		})
+
 		It("grabs the new version when it becomes available", func(ctx SpecContext) {
 			By("creating a component version")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
@@ -569,6 +570,45 @@ var _ = Describe("Component Controller", func() {
 
 			By("delete resources manually")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			test.DeleteObject(ctx, k8sClient, component)
+		})
+
+		It("returns an error when specified semver is not found", func(ctx SpecContext) {
+			By("creating a component version")
+			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(Version2)
+				})
+			})
+
+			spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
+			specData := Must(spec.MarshalJSON())
+
+			By("mocking an ocm repository")
+			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+
+			By("creating a component")
+			component := &v1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: namespace.GetName(),
+					Name:      ComponentObj,
+				},
+				Spec: v1alpha1.ComponentSpec{
+					RepositoryRef: corev1.LocalObjectReference{
+						Name: repositoryObj.GetName(),
+					},
+					Component: componentName,
+					Semver:    Version1,
+					Interval:  metav1.Duration{Duration: time.Minute * 10},
+				},
+				Status: v1alpha1.ComponentStatus{},
+			}
+			Expect(k8sClient.Create(ctx, component)).To(Succeed())
+
+			By("checking that the component has not been reconciled successfully")
+			test.WaitForNotReadyObject(ctx, k8sClient, component, v1alpha1.CheckVersionFailedReason)
+
+			By("delete resources manually")
 			test.DeleteObject(ctx, k8sClient, component)
 		})
 	})
