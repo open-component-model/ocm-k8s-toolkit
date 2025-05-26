@@ -352,7 +352,7 @@ func (r *Reconciler) DetermineEffectiveVersion(ctx context.Context, component *v
 	}
 	latestSemver, err := ocm.GetLatestValidVersion(ctx, versions, component.Spec.Semver, filter)
 	if err != nil {
-		return "", reconcile.TerminalError(fmt.Errorf("failed to check latest version: %w", err))
+		return "", reconcile.TerminalError(fmt.Errorf("failed to get valid latest version: %w", err))
 	}
 
 	// we didn't yet reconcile anything, return whatever the retrieved version is.

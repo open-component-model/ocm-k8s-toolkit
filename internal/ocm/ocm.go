@@ -255,6 +255,10 @@ func GetLatestValidVersion(_ context.Context, versions []string, semvers string,
 		return nil, err
 	}
 
+	if len(vers) == 0 {
+		return nil, fmt.Errorf("no valid versions found for constraint %s", semvers)
+	}
+
 	return vers[len(vers)-1], nil
 }
 
