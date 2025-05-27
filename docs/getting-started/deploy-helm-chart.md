@@ -6,7 +6,8 @@ chart, and publishes it as OCM component version in an OCI registry. Then, an op
 application via Helm chart in a Kubernetes cluster, creates a `ResourceGraphDefinition` with resources that point to
 this OCM component version and uses FluxCD to configure and deploy it.
 
-Before starting, make sure you have set up your environment as described in the [setup guide](setup.md).
+> [!IMPORTANT]
+> Before starting, make sure you have set up your environment as described in the [setup guide](setup.md).
 
 ## Create the OCM component version
 
