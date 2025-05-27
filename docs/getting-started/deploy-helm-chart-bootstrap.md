@@ -3,13 +3,27 @@
 The [concept](../../README.md#concept) showed a basic example of how to deploy a Helm chart using the OCM K8s Toolkit,
 in which an operator or dev-ops engineer can define a `ResourceGraphDefinition` to deploy a Helm chart into a Kubernetes
 cluster. However, there are scenarios, where the developer already knows how the deployment should look like and what
-should be configured. So, the developer can already create a `ResourceGraphDefinition` and deliver it with the OCM
-component.
+should be configured. So, the developer can create a `ResourceGraphDefinition` beforehand and deliver it with the OCM
+component itself.
 
 In such a case, we need to bootstrap the `ResourceGraphDefinition` from the OCM component and apply it to the cluster.
-To do so, we use the OCM K8s Toolkit resource `deployer`. By referencing a `Resource` by name, the deployer will
-download the `ResourceGraphDefinition` (RGD) from the OCM component and apply it to the cluster:
+To do so, we use the OCM K8s Toolkit resource `Deployer`. By referencing the `Resource` containing the
+`ResourceGraphDefinition` by name, the deployer will download the content from the OCM component and apply it to the
+cluster.
 
+The following guide demonstrates how to deploy a Helm chart using a `ResourceGraphDefinition` that is also delivered
+with the same OCM component. Additionally, it shows how to *localize* a Helm chart.
+
+> [!NOTE]
+> *Localization* describes the process of inserting a new image reference into a deployment instruction, e.g. a Helm
+> chart. It is a two-step process:
+> 1. When an OCM component and its resources is transferred to another registry, the resources of type `OCI Artifact`
+> with an access pointing to an image reference, will update this image reference to the new registry location in
+> their respective component descriptors (For example, if you use the command `ocm transfer ctf --copy-resources...`).
+> 2. However, the deployment using the image, is not aware of this change. Accordingly, we need to insert the new image
+> reference into the deployment instruction, for instance by using FluxCD's `HelmRelease.values`-field for Helm charts.
+
+The following diagram shows an overview of the resources and their relationships of this guide:
 
 ```mermaid
 flowchart TB
@@ -96,7 +110,33 @@ flowchart TB
     class legend legendStyle;
 ```
 
+As the diagram shows, we will start by creating an OCM component that contains three resources:
+- An OCM Resource of type `HelmChart` that contains the Helm chart we want to deploy.
+- An OCM Resource of type `Image` that contains the image reference we want to use for the deployment and
+  localization.
+- An OCM Resource of type `RGD` that contains the `ResourceGraphDefinition` that will deploy the Helm chart and
+  configure the localization.
 
+To enable the bootstrap of the `ResourceGraphDefinition`, we will create the respective OCM K8s Toolkit resources that
+point to the OCM repository (`OCMRepository`), the OCM component version (`Component`), and the OCM Resource
+(`Resource`) that contains the `ResourceGraphDefinition`. The OCM K8s Toolkit resource `Deployer` will refer to the
+aforementioned `Resource`, download the `ResourceGraphDefinition`, and apply it to the cluster.
+
+kro will reconcile this `ResourceGraphDefinition` and create a Custom Resource Definition (CRD). By creating an
+instance of that CRD, we will deploy the resources defined in the `ResourceGraphDefinition`:
+- A OCM K8s Toolkit resource "HelmChart" of type `Resource` that contains the location of the Helm chart in its status.
+- A OCM K8s Toolkit resource "Image" of type `Resource` that contains the image reference for the localization in its
+  status.
+- A FluxCD resource of type `OCIRepository` that points to the location of the Helm chart retrieved from the status of
+  the resource "HelmChart".
+- A FluxCD resource of type `HelmRelease` that points to the FluxCD `OCIRepository`, gets the Helm chart, and replaces
+  the image location in the deployment using its `spec.values` field and the status of the resource "Image" that
+  contains the image reference.
+
+Finally, we will check if the deployment was successful and if the localization was applied correctly.
+
+> [!IMPORTANT]
+> Before starting, make sure you have set up your environment as described in the [setup guide](setup.md).
 
 > [!NOTE]
 > This document is under construction. Please refer to https://github.com/open-component-model/ocm-project/issues/487
