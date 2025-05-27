@@ -45,15 +45,23 @@ flowchart TB
     classDef cluster fill:white,color:black,stroke:black;
     classDef reconciledBy fill:#dedede,stroke:black,stroke-dasharray: 5,color:black;
     classDef k8sObject fill:#b3b3b3,color:black,stroke:black;
+    classDef information fill:#b3b3b3,color:black,stroke:black,stroke-dasharray: 2;
     classDef ocm fill:white,stroke:black,color:black;
     classDef legendStyle fill:white,stroke:black,color:black,stroke-dasharray: 2;
+    classDef legendStartEnd height:0px;
+    classDef legendItems fill:#b3b3b3,stroke:none,color:black;
+
+    subgraph legend[Legend]
+        start1[ ] ---references[referenced by] --> end1[ ]
+        start2[ ] -.-creates -.-> end2[ ]
+        start3[ ] ---instanceOf[instance of] --> end3[ ]
+        start4[ ] ~~~reconciledBy[reconciled by] ~~~ end4[ ]
+        start5[ ] ~~~k8sObject[k8s object] ~~~ end5[ ]
+        start6[ ] ~~~templateOf[template of] ~~~ end6[ ]
+    end
 
     subgraph background[ ]
         direction TB
-        subgraph legend[Legend]
-            reconciledBy[reconciled by]
-            object[k8s object]
-        end
 
         subgraph ocmRepo[OCM Repository]
            subgraph ocmCV[OCM Component Version]
@@ -63,32 +71,43 @@ flowchart TB
         end
 
         subgraph k8sCluster[Kubernetes Cluster]
-            subgraph kro[kro]
-                subgraph rgd[ResourceGraphDefinition]
-                    subgraph ocmK8sToolkit[OCM K8s Toolkit]
-                        k8sRepo[OCMRepository]
-                        k8sComponent[Component]
-                        k8sResource[Resource]
-                    end
-                    subgraph fluxCD[FluxCD]
-                        source[OCI Repository]
-                        deployment[HelmRelease]
-                    end
+            subgraph kroRGD[kro]
+                subgraph rgd[RGD: Simple]
+                    direction LR
+                    rgdOCMRepository[OCMRepository]
+                    rgdComponent[Component]
+                    rgdResourceHelm[Resource: HelmChart]
+                    rgdSource[FluxCD: OCI Repository]
+                    rgdHelmRelease[FluxCD: HelmRelease]
                 end
             end
+            subgraph kroInstance[kro]
+                subgraph instanceSimple[Instance: Simple]
+                    subgraph ocmK8sToolkit[OCM K8s Toolkit]
+                        k8sRepo[OCMRepository] --> k8sComponent[Component] --> k8sResource[Resource: HelmChart]
+                    end
+                    subgraph fluxCD[FluxCD]
+                        source[OCI Repository] --> helmRelease[HelmRelease]
+                    end
+                    k8sResource --> source
+                end
+            end
+            kroRGD & instanceSimple --> crdSimple[CRD: Simple]
+            helmRelease --> deployment[Deployment: Helm chart]
         end
 
         ocmRepo --> k8sRepo
-        k8sRepo --> k8sComponent
-        k8sComponent --> k8sResource
-        k8sResource --> source
-        source --> deployment
     end
 
     linkStyle default fill:none,stroke:black;
+    linkStyle 2,3,16,18 stroke:black,stroke-dasharray: 10;
+    linkStyle 4,5,17 stroke:black,stroke-dasharray: 4;
 
-    class reconciledBy,ocmK8sToolkit,fluxCD,kro reconciledBy;
-    class object,rgd,k8sRepo,k8sComponent,k8sResource,source,deployment k8sObject;
+    class start1,end1,start2,end2,start3,end3,start4,end4,start5,end5,start6,end6 legendStartEnd;
+    class references,creates,instanceOf legendItems;
+    class templateOf,rgdOCMRepository,rgdComponent,rgdResourceHelm,rgdSource,rgdHelmRelease information;
+    class reconciledBy,ocmK8sToolkit,fluxCD,kroRGD,kroInstance reconciledBy;
+    class k8sObject,rgd,k8sRepo,k8sComponent,k8sResource,source,helmRelease,deployment,crdSimple,instanceSimple k8sObject;
     class ocmRepo,ocmCV,ocmResource ocm;
     class k8sCluster cluster;
     class legend legendStyle;
@@ -97,17 +116,19 @@ flowchart TB
 The above diagram shows an OCM resource of type `helmChart`. This resource is part of an OCM component version,
 which is located in an OCM repository.
 
-In the `Kubernetes Cluster` we can see several Kubernetes (custom) resources. The `ResourceGraphDefintion` contains all
-the resources to deploy the Helm chart into the Kubernetes cluster:
+In the `Kubernetes Cluster` we can see several Kubernetes (custom) resources. The `ResourceGraphDefintion`
+(`RGD: Simple`) contains the template of all the resources for deploying the Helm chart into the Kubernetes cluster.
+kro creates a Custom Resource Definition (CRD) `Simple` based on that `ResourceGraphDefinition`. By creating an instance
+of this CRD (`Instance: Simple`), the resources are created and reconciled by the respective controllers:
 - `OCMRepository`: Points to the OCM repository and checks if it is reachable by pinging it.
 - `Component`: Refers to the `OCMRepository` and downloads and verifies the OCM component version descriptor.
 - `Resource`: Points to the `Component`, downloads the OCM component version descriptor from which it gets the location
-of the OCM resource. It then downloads the resource to verify its signature (optional) and publishes the location of the resource
-in its status (Of course, only if the resource has remote access, e.g., an OCI or a GitHub repository).
+of the OCM resource. It then downloads the resource to verify its signature (optional) and publishes the location of the
+resource in its status (Of course, only if the resource has remote access, e.g., an OCI or a GitHub repository).
 
 As a result, FluxCDs can now consume the information of the `Resource` and deploy the Helm chart:
 - `OCIRepository`: Watches and downloads the resource from the location provided by the `Resource` status.
-- `HelmRelease`: Refers to the `OCIRepository`, lets you configure the Helm chart, and deploys it into the
+- `HelmRelease`: Refers to the `OCIRepository`, lets you configure the Helm chart, and creates the deployment into the
 Kubernetes cluster.
 
 A more detailed architecture description of the OCM K8s Toolkit can be found [here](docs/architecture/architecture.md).
@@ -142,7 +163,7 @@ kubectl apply -k https://github.com/open-component-model/ocm-k8s-toolkit/config/
 - [Setup your (test) environment with kind, kro, and FluxCD](docs/getting-started/setup.md)
 - [Deploying a Helm chart using a `ResourceGraphDefinition` with FluxCD](docs/getting-started/deploy-helm-chart.md)
 - [Deploying a Helm chart using a `ResourceGraphDefinition` inside the OCM component version (bootstrap) with FluxCD](docs/getting-started/deploy-helm-chart-bootstrap.md)
-- [Configuring secrets for OCM K8s Toolkit resources to access private OCM repositories](docs/getting-started/secrets.md)
+- [Configuring credentials for OCM K8s Toolkit resources to access private OCM repositories](docs/getting-started/credentials.md)
 - [Transfer OCM component versions](docs/getting-started/transfer.md)
 
 ## Contributing
