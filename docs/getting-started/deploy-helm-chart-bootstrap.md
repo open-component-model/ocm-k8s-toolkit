@@ -12,16 +12,17 @@ To do so, we use the OCM K8s Toolkit resource `Deployer`. By referencing the `Re
 cluster.
 
 The following guide demonstrates how to deploy a Helm chart using a `ResourceGraphDefinition` that is also delivered
-with the same OCM component. Additionally, it shows how to *localize* a Helm chart.
+with the same OCM component. Additionally, it shows how to **localize** a Helm chart.
 
 > [!NOTE]
-> *Localization* describes the process of inserting a new image reference into a deployment instruction, e.g. a Helm
+> **Localization** describes the process of inserting a new image reference into a deployment instruction, e.g. a Helm
 > chart. It is a two-step process:
-> 1. When an OCM component and its resources is transferred to another registry, the resources of type `OCI Artifact`
+> 1. When an OCM component and its resources are transferred to another registry, the resources of type `OCI Artifact`
 > with an access pointing to an image reference, will update this image reference to the new registry location in
 > their respective component descriptors (For example, if you use the command `ocm transfer ctf --copy-resources...`).
 > 2. However, the deployment using the image, is not aware of this change. Accordingly, we need to insert the new image
-> reference into the deployment instruction, for instance by using FluxCD's `HelmRelease.values`-field for Helm charts.
+> reference into the deployment instruction, for instance by using FluxCD's `HelmRelease.spec.values`-field for Helm
+> charts.
 
 The following diagram shows an overview of the resources and their relationships of this guide:
 
@@ -138,196 +139,183 @@ Finally, we will check if the deployment was successful and if the localization 
 > [!IMPORTANT]
 > Before starting, make sure you have set up your environment as described in the [setup guide](setup.md).
 
-> [!NOTE]
-> This document is under construction. Please refer to https://github.com/open-component-model/ocm-project/issues/487
 
-> [!IMPORTANT]
-> This guide is preliminary and will be updated in the future.
+## Create the OCM component version
 
-The following instructions will help you set up the project locally to play around with its examples. To do so
-these requirements are needed:
+First, we will create an OCM component version containing a Helm chart, the application image that is used in the Helm
+chart, and the `ResourceGraphDefinition` that contains all required resource to deploy the Helm chart and configure the
+localization. For this example, we will use the `podinfo` Helm chart and image, which is a simple web application that
+serves a pod information page. For more details on how to create an OCM component version, please refer to the
+[OCM documentation][ocm-doc].
 
-- Running Kubernetes Cluster, e.g [KinD](https://kind.sigs.k8s.io/docs/user/quick-start/)
-- [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl)
-- [Flux CLI](https://fluxcd.io/flux/installation/)
-- [Kro](https://kro.run/docs/getting-started/Installation/)
-- [ocm](https://ocm.software/docs/getting-started/installing-the-ocm-cli/)
-
-## Setup the environment
-
-### Install Flux controllers
-
-```bash
-flux install
-```
-
-### Install ocm-controllers
-
-```bash
-# Make sure you are in your local ocm-k8s-toolkit repository
-make deploy
-```
-
-## Prepare the example
-
-To run the examples, we need to create an OCM component version and store it in an OCI registry, e.g. GitHub's
-container registry. (We chose the example "helm-configuration-localization" for this guide, but you can choose any of
-the examples in the `examples` folder.)
-
-The following command will create an OCM component version from the example's `component-constructor.yaml` file and
-store it in a local ctf (component transfer format) directory.
-
-```bash
-# Make sure you are in your local ocm-k8s-toolkit repository
-ocm add componentversions --create --file ./ctf \
-  examples/helm-configuration-localization/component-constructor.yaml
-```
-
-The following command will transfer the local ctf to your specified registry. For this example, we used GitHub's
-container registry, but you can use any OCI registry. Additionally, we used the flag `--copy-resources` to copy the
-resources from the local ctf to the registry.
-
-```bash
-# Make sure you are in the same directory as before 
-ocm transfer ctf --copy-resources ./ctf ghcr.io/<your-username/org>
-```
-
-> [!IMPORTANT]
-> The ocm-controllers need to be able to access the OCI registry, in which the OCM component version is stored. So, you
-> either must provide [credentials][ocm-credentials] for the OCI registry or make the OCM component version public.
->
-> Quick Guide:
-> Assuming you work with a configuration file like `.ocmconfig`, you can use `kubectl create secret generic my-secret --from-file=.ocmconfig`
-> to create the secret and the following fields to use it (for every resource that requires it):
-> ```yaml
-> apiVersion: delivery.ocm.software/v1alpha1
-> kind: OCMRepository
-> metadata:
->   name: helm-configuration-localization-repository
-> spec:
->   repositorySpec:
->     baseUrl: ghcr.io/<your-username/org>
->     type: OCIRegistry
->   interval: 10m
->   ocmConfig:
->     - kind: Secret
->       name: my-secret
->       namespace: default
-> ```
-
-At last, we need to adjust the OCM repository in the CR `ocmrepository` to point to the OCI registry we specified
-above. Open the file `examples/helm-configuration-localization/bootstrap.yaml` and change the field `baseUrl`.
+To create the OCM component version, we will use the following `component-constructor.yaml` file:
 
 ```yaml
-apiVersion: delivery.ocm.software/v1alpha1
-kind: OCMRepository
+components:
+  - name: ocm.software/ocm-k8s-toolkit/bootstrap
+    version: "1.0.0"
+    provider:
+      name: ocm.software
+    resources:
+      - name: helm-resource
+        type: helmChart
+        version: "1.0.0"
+        access:
+          type: ociArtifact
+          imageReference: ghcr.io/stefanprodan/charts/podinfo:6.7.1
+      - name: image-resource
+        type: ociArtifact
+        version: "1.0.0"
+        access:
+          type: ociRegistry
+          imageReference: ghcr.io/stefanprodan/podinfo:6.7.1
+      - name: resource-graph-definition
+        type: blob
+        version: "1.0.0"
+        input:
+          type: file
+          path: ./resourceGraphDefinition.yaml
+```
+
+As you can see, the resource `resource-graph-definition` is of type `blob` and contains the path to a file
+`resourceGraphDefinition.yaml`. Before we can create the OCM component version, we need to create this file, with the
+following content:
+
+```yaml
+apiVersion: kro.run/v1alpha1
+kind: ResourceGraphDefinition
 metadata:
-  name: helm-configuration-localization-repository
+  name: bootstrap
 spec:
-  repositorySpec:
-    # Adjust to your OCM repository
-    baseUrl: ghcr.io/<your-username/org> 
-    type: OCIRegistry
-  interval: 10m
+  schema:
+    apiVersion: v1alpha1
+    kind: bootstrap
+  resources:
+    # In this guide, we will not create a "OCMRepository" and "Component" in this ResourceGraphDefinition. Those
+    # resources will be created to bootstrap the ResourceGraphDefinition itself and are already present to be
+    # referenced by the following resources.
+
+    # This resource refers to the resource "helm-resource" defined in the OCM component version. It will be downloaded,
+    # verified, and its location is made available in the status of the resource.
+    - id: resourceChart
+      template:
+        apiVersion: delivery.ocm.software/v1alpha1
+        kind: Resource
+        metadata:
+          name: bootstrap-helm-resource
+        spec:
+          # This component will be part of the bootstrap resources that will be created later.
+          componentRef:
+            name: bootstrap-component
+          resource:
+            byReference:
+              resource:
+                name: helm-resource
+          interval: 10m
+    # This resource refers to the resource "image-resource" defined in the OCM component version. It will be downloaded,
+    # verified, and its location is made available in the status of the resource.
+    - id: resourceImage
+      template:
+        apiVersion: delivery.ocm.software/v1alpha1
+        kind: Resource
+        metadata:
+          name: bootstrap-image-resource
+        spec:
+          # This component will be part of the bootstrap resources that will be created later.
+          componentRef:
+            name: bootstrap-component
+          resource:
+            byReference:
+              resource:
+                name: image-resource
+          interval: 10m
+    # OCIRepository watches and downloads the resource from the location provided by the Resource status.
+    # The Helm chart location (url) refers to the status of the resource helm-resource.
+    - id: ocirepository
+      template:
+        apiVersion: source.toolkit.fluxcd.io/v1beta2
+        kind: OCIRepository
+        metadata:
+          name: bootstrap-ocirepository
+        spec:
+          interval: 1m0s
+          insecure: true
+          layerSelector:
+            mediaType: "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+            operation: copy
+          url: oci://${resourceChart.status.reference.registry}/${resourceChart.status.reference.repository}
+          ref:
+            tag: ${resourceChart.status.reference.tag}
+    # HelmRelease refers to the OCIRepository, lets you configure the helm chart and deploys the Helm Chart into the
+    # Kubernetes cluster.
+    - id: helmrelease
+      template:
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata:
+          name: "${schema.spec.podinfo.releaseName}"
+        spec:
+          releaseName: "${schema.spec.podinfo.releaseName}"
+          interval: 1m
+          timeout: 5m
+          chartRef:
+            kind: OCIRepository
+            name: ${ocirepository.metadata.name}
+            namespace: default
+          values:
+            # This is the second step of the localization. We use the image reference from the resource "image-resource"
+            # and insert it into the Helm chart values.
+            image:
+              repository: ${resourceImage.status.reference.registry}/${resourceImage.status.reference.repository}
+              tag: ${resourceImage.status.reference.tag}
 ```
 
-### Make sure all required controllers are running
-
-```bash
-kubectl get pods --all-namespaces
-```
-```
-NAMESPACE                NAME                                                      READY   STATUS    RESTARTS   AGE
-flux-system              helm-controller-b6767d66-qxp52                            1/1     Running   0          18m
-flux-system              kustomize-controller-57c7ff5596-7dc6l                     1/1     Running   0          18m
-flux-system              notification-controller-58ffd586f7-7qv6k                  1/1     Running   0          18m
-flux-system              source-controller-6ff87cb475-bf5lf                        1/1     Running   0          18m
-kro                      kro-86d5b5b5bd-jxcf6                                      1/1     Running   0          16m
-...
-ocm-k8s-toolkit-system   ocm-k8s-toolkit-controller-manager-788f58d4bd-j8qk2       1/1     Running   0          15m
-```
-
-## Run the example
-
-To run the example, we need to apply the `bootstrap.yaml` file. This file contains all the necessary resources to
-bootstrap the `ResourceGraphDefinition` that will deploy our resources from our OCM component version we just created
-and transferred.
-
-```bash
-# Make sure you are in your local ocm-k8s-toolkit repository
-kubectl apply -f examples/helm-configuration-localization/bootstrap.yaml
-```
-
-If everything went well, we should see the following output:
-
-```bash
-kubectl get rgd
-```
-```
-NAME                              APIVERSION   KIND                            STATE    AGE
-helm-configuration-localization   v1alpha1     HelmConfigurationLocalization   Active   38s
-```
-
-If our `ResourceGraphDefinition` is in the state `Active`, we can apply an instance of the new created CRD
-`HelmConfigurationLocalization`. This will create all resources defined in the `ResourceGraphDefinition` (check
-`examples/helm-configuration-localization/rgd.yaml`).
-
-```bash
-# Make sure you are in your local ocm-k8s-toolkit repository
-kubectl apply -f examples/helm-configuration-localization/instance.yaml
-```
-
-If the instance is created successfully, we should see the following output for the CRD:
-
-```bash
-kubectl get HelmConfigurationLocalization
-```
-```
-NAME                              STATE    SYNCED   AGE
-helm-configuration-localization   ACTIVE   True     37s
-```
-
-We can also check if the deployment was created successfully. The deployment should be in the state `Available`:
-
-```bash
-kubectl get deployments
-```
-```
-NAME                                      READY   UP-TO-DATE   AVAILABLE   AGE
-helm-configuration-localization-podinfo   1/1     1            1           38s
-```
-
-If the deployment was created successfully, we can check if the pod was created successfully.
-The pod should be in the state `Running`:
-
-```bash
-kubectl get pods
-```
-```
-NAME                                                      READY   STATUS    RESTARTS   AGE
-helm-configuration-localization-podinfo-99c4fd587-qdlzh   1/1     Running   0          48s
-```
-
-We can check if the localization was successful by checking the image of the container. It should correspond to the
-OCI registry we transferred the OCM component version to.
+After creating both files, we can create the OCM component version using the following command:
 
 ```bash
-kubectl get pods -l app.kubernetes.io/name=helm-configuration-localization-podinfo -o jsonpath='{.items[0].spec.containers[0].image}'
-```
-```
-ghcr.io/<your username/org>/stefanprodan/podinfo:6.7.1
+ocm add componentversion --create --file ./ctf component-constructor.yaml
 ```
 
-We can also check if the configuration was successful by checking the environment variables of the container. We expect
-the environment variable `PODINFO_UI_MESSAGE` to be set to `helm-configuration-localization` as specified in the
-instance.
+This will create a local CTF (Component Transfer Format) directory `./ctf` containing the OCM component version. Since
+the OCM component version must be accessible for the OCM K8s Toolkit controllers, we will transfer the CTF to a
+registry. For this example, we will use GitHub's container registry, but you can use any OCI registry. Additionally,
+we will use the flag `--copy-resources` to make sure that the resources are copied to the registry. In case of resources
+of type `OCI Artifact` (e.g. Helm charts), this will update the image reference to the new registry location:
 
 ```bash
-kubectl get pods -l app.kubernetes.io/name=helm-configuration-localization-podinfo -o jsonpath='{.items[0].spec.containers[0].env}'
-```
-```
-[{"name":"PODINFO_UI_MESSAGE","value":"helm-configuration-localization"},{"name":"PODINFO_UI_COLOR","value":"#34577c"}]
+ocm transfer ctf --copy-resources ./ctf ghcr.io/<your-namespace>
 ```
 
+> [!NOTE]
+> If you are using a registry that requires authentication, you need to provide credentials for ocm. Please refer to
+> the [OCM CLI credentials documentation][ocm-credentials] for more information on how to set up and use credentials.
 
-[ocm-credentials]: https://ocm.software/docs/tutorials/credentials-in-.ocmconfig-file/#accessing-oci-registries
+If everything went well, you should see the following output:
+
+```bash
+ocm get componentversion ghcr.io/<your-namespace>//ocm.software/ocm-k8s-toolkit/bootstrap:1.0.0 -o yaml
+```
+
+```console
+# Output is truncated for brevity
+component:
+  componentReferences: []
+  name: ocm.software/ocm-k8s-toolkit/bootstrap
+  ...
+  resources:
+  - access:
+      # This image reference is now updated to the new registry location.
+      imageReference: ghcr.io/<your-namespace>/stefanprodan/podinfo:6.7.1@sha256:...
+      type: ociArtifact
+    name: image-resource
+    type: ociArtifact
+  ...
+```
+
+## Deploy the Helm Chart
+
+### Bootstraping
+
+### Creating an instance
+
+## Checking the deployment
