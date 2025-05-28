@@ -189,7 +189,7 @@ metadata:
 spec:
   schema:
     apiVersion: v1alpha1
-    kind: bootstrap
+    kind: Bootstrap
   resources:
     # In this guide, we will not create a "OCMRepository" and "Component" in this ResourceGraphDefinition. Those
     # resources will be created to bootstrap the ResourceGraphDefinition itself and are already present to be
@@ -253,9 +253,9 @@ spec:
         apiVersion: helm.toolkit.fluxcd.io/v2
         kind: HelmRelease
         metadata:
-          name: "${schema.spec.podinfo.releaseName}"
+          name: bootstrap-helmrelease
         spec:
-          releaseName: "${schema.spec.podinfo.releaseName}"
+          releaseName: bootstrap-release
           interval: 1m
           timeout: 5m
           chartRef:
@@ -279,8 +279,8 @@ ocm add componentversion --create --file ./ctf component-constructor.yaml
 This will create a local CTF (Component Transfer Format) directory `./ctf` containing the OCM component version. Since
 the OCM component version must be accessible for the OCM K8s Toolkit controllers, we will transfer the CTF to a
 registry. For this example, we will use GitHub's container registry, but you can use any OCI registry. Additionally,
-we will use the flag `--copy-resources` to make sure that the resources are copied to the registry. In case of resources
-of type `OCI Artifact` (e.g. Helm charts), this will update the image reference to the new registry location:
+we will use the flag `--copy-resources` to make sure that all referential resources, for instance the Helm chart,will be
+localized in the first step - so, the image reference is updated to the new registry location:
 
 ```bash
 ocm transfer ctf --copy-resources ./ctf ghcr.io/<your-namespace>
@@ -314,8 +314,173 @@ component:
 
 ## Deploy the Helm Chart
 
-### Bootstraping
+To deploy the Helm chart from the OCM component, we first need to create all resources that are required to bootstrap
+the `ResourceGraphDefinition` from the OCM component. Afterwards, we will create an instance of the resulting Custom
+Resource Definition (CRD) which will deploy the Helm chart and configure the localization.
+
+### Bootstrapping
+
+The bootstrap process consists in creating the OCM K8s Toolkits resources that will download and apply the
+`ResourceGraphDefinition`. First, we will create a `OCMRepository` and `Component` resource that point to the OCM
+component in the registry (the `Component` resource is reused in the `ResourceGraphDefinition` (see above) as reference
+for the `Resource` resources). The a `Resource` resource will be created that points to the OCM resource containing the
+`ResourceGraphDefinition`. Finally, we will create a `Deployer` resource that will download the
+`ResourceGraphDefinition` and apply it to the cluster.
+
+Create the following file named `bootstrap.yaml` containing the abovementioned resources:
+
+```yaml
+apiVersion: delivery.ocm.software/v1alpha1
+kind: OCMRepository
+metadata:
+  name: bootstrap-repository
+spec:
+  repositorySpec:
+    # Adjust to your OCM repository
+    baseUrl: ghcr.io/<your-namespace>
+    type: OCIRegistry
+  interval: 10m
+---
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Component
+metadata:
+  name: bootstrap-component
+spec:
+  component: ocm.software/ocm-k8s-toolkit/bootstrap
+  repositoryRef:
+    name: bootstrap-repository
+  semver: 1.0.0
+  interval: 10m
+---
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Resource
+metadata:
+  name: bootstrap-rgd
+  namespace: default
+spec:
+  componentRef:
+    name: bootstrap-component
+  resource:
+    byReference:
+      resource:
+        name: resource-graph-definition
+  interval: 10m
+---
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Deployer
+metadata:
+  name: bootstrap-deployer
+spec:
+  resourceRef:
+    # Reference to the Kubernetes resource OCM resource that contains the ResourceGraphDefinition.
+    name: bootstrap-rgd
+    # As kro processes resources in cluster-scope, the deployer must also be cluster-scoped. Accordingly, we have to
+    # set the namespace of the resource here (usually, when the namespace is not specified, it is derived from the
+    # referencing Kubernetes resource).
+    namespace: default
+```
+
+Apply the `bootstrap.yaml` file to the cluster:
+
+```bash
+kubectl apply -f bootstrap.yaml
+```
+
+This will create all the defined resources in the cluster and reconcile them. This can take a few seconds. As a result,
+you should see the `ResourceGraphDefinition` being created in the cluster:
+
+```bash
+kubectl get rgd
+```
+
+```console
+NAME        APIVERSION   KIND        STATE    AGE
+bootstrap   v1alpha1     Bootstrap   Active   2m56s
+```
+
+By applying the `ResourceGraphDefinition` successfully, a Custom Resource Definition (CRD) named `Bootstrap` is
+created in the cluster. Check if the CRD is available by using the following command:
+
+```bash
+kubectl get crd bootstraps.kro.run
+```
+
+```console
+NAME                 CREATED AT
+bootstraps.kro.run   2025-05-28T11:40:38Z
+```
+
+#### Troubleshooting
+
+You can check the status of the `ResourceGraphDefinition` by investigating the status of the resources or the logs of
+the `ocm-k8s-toolkit-controller-manager`.
+
+One common issue, when using GitHub's container registry, is that the transferred OCM component is by default a
+private package. If so, you might see an error like the following:
+
+```console
+failed to list versions: failed to list tags: GET "https://ghcr.io/v2...": response status code 401: unauthorized: authentication required
+```
+
+You can resolve this issue by making the package public or by [providing credentials](credentials.md) to the
+respective resources.
 
 ### Creating an instance
 
-## Checking the deployment
+After applying the `ResourceGraphDefinition` and making sure that the resulting CRD is available, we can create an
+instance of the CRD, which will deploy the Helm chart and configure the localization. To do so, create a file containing
+the following content and name it `instance.yaml`:
+
+```yaml
+apiVersion: kro.run/v1alpha1
+kind: Bootstrap
+metadata:
+  name: bootstrap
+```
+
+Apply the instance to the cluster:
+
+```bash
+kubectl apply -f instance.yaml
+```
+
+If successful, you should see the following output:
+
+```bash
+kubectl get bootstrap
+```
+
+```console
+NAME        STATE    SYNCED   AGE
+bootstrap   ACTIVE   True     3m23s
+```
+
+If the instance is in the `ACTIVE` state, the resources defined in the `ResourceGraphDefinition` are created and
+reconciled. This includes the OCM K8s Toolkit resources for the Helm chart and the image, as well as the FluxCD
+resources for the OCI repository and the Helm release. Accordingly, you should see the following deployment in the
+cluster:
+
+```bash
+kubectl get deployments
+```
+
+```console
+NAME                        READY   UP-TO-DATE   AVAILABLE   AGE
+bootstrap-release-podinfo   1/1     1            1           4m25s
+```
+
+And you can check the pod itself to see if the localization was applied correctly:
+
+```bash
+kubectl get pods -l app.kubernetes.io/name=bootstrap-release-podinfo -o jsonpath='{.items[0].spec.containers[0].image}'
+```
+
+```console
+ghcr.io/<your-namespace>/stefanprodan/podinfo:6.7.1
+```
+
+You now have successfully created an OCM component version containing a Helm chart, the respective image for
+localization, and a `ResourceGraphDefintiion` to deploy your Helm chart and localize the image.
+By creating the required bootstrap-resources you bootstrapped the `ResourceGraphDefinition` from the OCM component
+and created the resulting CRD. Finally, you created an instance of the CRD which deployed the Helm chart and
+configured the localization using the OCM K8s Toolkit, kro, and FluxCD.
