@@ -1,12 +1,17 @@
 # Deploying a Helm Chart using a `ResourceGraphDefinition` inside the OCM component version (bootstrap) with FluxCD
 
-The [concept](../../README.md#concept) showed a basic example of how to deploy a Helm chart using the OCM K8s Toolkit,
-in which an operator or dev-ops engineer can define a `ResourceGraphDefinition` to deploy a Helm chart into a Kubernetes
-cluster. However, there are scenarios, where the developer already knows how the deployment should look like and what
-should be configured. So, the developer can create a `ResourceGraphDefinition` beforehand and deliver it with the OCM
-component itself.
+This [concept](../../README.md#concept) showed a basic example of how to deploy a Helm chart from an OCM component.
+By defining a `ResourceGraphDefinition` that contains the all the required resources to deploy the Helm chart into a
+Kubernetes cluster.
+
+However, there are scenarios, where the developer already knows how the deployment instructions for the Helm chart
+should look like and what should be configured.
+Accordingly, the developer can create a `ResourceGraphDefinition` that contains all the required resources to deploy and
+configure the Helm chart, and deliver it with the OCM component version itself. This way, the deployment instructions
+can also be delivered securely through OCM and the operator does not need to know which resources are required.
 
 In such a case, we need to bootstrap the `ResourceGraphDefinition` from the OCM component and apply it to the cluster.
+
 To do so, we use the OCM K8s Toolkit resource `Deployer`. By referencing the `Resource` containing the
 `ResourceGraphDefinition` by name, the deployer will download the content from the OCM component and apply it to the
 cluster.
@@ -15,14 +20,18 @@ The following guide demonstrates how to deploy a Helm chart using a `ResourceGra
 with the same OCM component. Additionally, it shows how to **localize** a Helm chart.
 
 > [!NOTE]
-> **Localization** describes the process of inserting a new image reference into a deployment instruction, e.g. a Helm
-> chart. It is a two-step process:
-> 1. When an OCM component and its resources are transferred to another registry, the resources of type `OCI Artifact`
-> with an access pointing to an image reference, will update this image reference to the new registry location in
-> their respective component descriptors (For example, if you use the command `ocm transfer ctf --copy-resources...`).
+> **Localization** describes the process of inserting a new image reference into the deployment instructions, e.g. a
+> Helm chart. It is a two-step process:
+> 1. When an OCM component and its resources are transferred to another registry, **referential resources** can
+> potentially update their reference to the new location. For Instance, a resource with an access type `ociArtifact`
+> will update its image reference in the component descriptor to the new registry location, if the OCM transfer is done
+> with the flag `--copy-resources`.
 > 2. However, the deployment using the image, is not aware of this change. Accordingly, we need to insert the new image
-> reference into the deployment instruction, for instance by using FluxCD's `HelmRelease.spec.values`-field for Helm
-> charts.
+> reference into the deployment instruction. This can be done using deployment tools like FluxCDs
+> [HelmRelease](https://fluxcd.io/flux/components/helm/helmreleases/#values) and
+> [Kustomization](https://fluxcd.io/flux/components/kustomize/kustomizations/#patches) or ArgoCDs
+> [Helm](https://argo-cd.readthedocs.io/en/stable/user-guide/helm/#values) and
+> [Kustomize](https://argo-cd.readthedocs.io/en/stable/user-guide/kustomize/#patches).
 
 The following diagram shows an overview of the resources and their relationships of this guide:
 
@@ -112,33 +121,31 @@ flowchart TB
 ```
 
 As the diagram shows, we will start by creating an OCM component that contains three resources:
-- An OCM Resource of type `HelmChart` that contains the Helm chart we want to deploy.
-- An OCM Resource of type `Image` that contains the image reference we want to use for the deployment and
-  localization.
-- An OCM Resource of type `RGD` that contains the `ResourceGraphDefinition` that will deploy the Helm chart and
-  configure the localization.
+- An OCM Resource containing the "HelmChart" we want to deploy.
+- An OCM Resource containing an access specification to an "Image" we want to use for the deployment and localization.
+- An OCM Resource containing the `ResourceGraphDefinition` (RGD) that will deploy the Helm chart and configure the
+localization.
 
 To enable the bootstrap of the `ResourceGraphDefinition`, we will create the respective OCM K8s Toolkit resources that
-point to the OCM repository (`OCMRepository`), the OCM component version (`Component`), and the OCM Resource
-(`Resource`) that contains the `ResourceGraphDefinition`. The OCM K8s Toolkit resource `Deployer` will refer to the
-aforementioned `Resource`, download the `ResourceGraphDefinition`, and apply it to the cluster.
+point to the OCM repository ("OCMRepository"), the OCM component version ("Component"), and the OCM Resource
+("Resource: RGD") that contains the `ResourceGraphDefinition`. The OCM K8s Toolkit resource "Deployer" will refer to the
+aforementioned "Resource: RGD", download the `ResourceGraphDefinition`, and apply it to the cluster.
 
-kro will reconcile this `ResourceGraphDefinition` and create a Custom Resource Definition (CRD). By creating an
-instance of that CRD, we will deploy the resources defined in the `ResourceGraphDefinition`:
-- A OCM K8s Toolkit resource "HelmChart" of type `Resource` that contains the location of the Helm chart in its status.
-- A OCM K8s Toolkit resource "Image" of type `Resource` that contains the image reference for the localization in its
-  status.
+After applying the `ResourceGraphDefinition`, kro will reconcile it and create a Custom Resource Definition
+("CRD: Bootstrap"). By creating an instance of that CRD, we will deploy the resources as defined in the
+`ResourceGraphDefinition`:
+- An OCM K8s Toolkit resource "HelmChart" of type `Resource` that contains the location of the Helm chart in its status.
+- An OCM K8s Toolkit resource "Image" of type `Resource` that contains the localized image reference in its status.
 - A FluxCD resource of type `OCIRepository` that points to the location of the Helm chart retrieved from the status of
   the resource "HelmChart".
-- A FluxCD resource of type `HelmRelease` that points to the FluxCD `OCIRepository`, gets the Helm chart, and replaces
-  the image location in the deployment using its `spec.values` field and the status of the resource "Image" that
-  contains the image reference.
+- A FluxCD resource of type `HelmRelease` that points to FluxCDs `OCIRepository`, gets the Helm chart, and replaces
+  the image location in the deployment using its `spec.values`-field and the status of the resource "Image" that
+  contains the localized image reference.
 
 Finally, we will check if the deployment was successful and if the localization was applied correctly.
 
 > [!IMPORTANT]
 > Before starting, make sure you have set up your environment as described in the [setup guide](setup.md).
-
 
 ## Create the OCM component version
 
@@ -279,8 +286,8 @@ ocm add componentversion --create --file ./ctf component-constructor.yaml
 This will create a local CTF (Component Transfer Format) directory `./ctf` containing the OCM component version. Since
 the OCM component version must be accessible for the OCM K8s Toolkit controllers, we will transfer the CTF to a
 registry. For this example, we will use GitHub's container registry, but you can use any OCI registry. Additionally,
-we will use the flag `--copy-resources` to make sure that all referential resources, for instance the Helm chart,will be
-localized in the first step - so, the image reference is updated to the new registry location:
+we will use the flag `--copy-resources` to make sure that all referential resources, for instance the Helm chart, will
+be localized in the first step - so, the image reference is updated to the new registry location:
 
 ```bash
 ocm transfer ctf --copy-resources ./ctf ghcr.io/<your-namespace>
@@ -296,7 +303,7 @@ If everything went well, you should see the following output:
 ocm get componentversion ghcr.io/<your-namespace>//ocm.software/ocm-k8s-toolkit/bootstrap:1.0.0 -o yaml
 ```
 
-```console
+```text
 # Output is truncated for brevity
 component:
   componentReferences: []
@@ -321,13 +328,16 @@ Resource Definition (CRD) which will deploy the Helm chart and configure the loc
 ### Bootstrapping
 
 The bootstrap process consists in creating the OCM K8s Toolkits resources that will download and apply the
-`ResourceGraphDefinition`. First, we will create a `OCMRepository` and `Component` resource that point to the OCM
-component in the registry (the `Component` resource is reused in the `ResourceGraphDefinition` (see above) as reference
-for the `Resource` resources). The a `Resource` resource will be created that points to the OCM resource containing the
-`ResourceGraphDefinition`. Finally, we will create a `Deployer` resource that will download the
-`ResourceGraphDefinition` and apply it to the cluster.
+`ResourceGraphDefinition`.
+First, we will create a `OCMRepository` and `Component` resource that point to the OCM component in the registry
+(the `Component` resource is reused in the `ResourceGraphDefinition` (see above) as reference for the `Resource`
+resources).
+Then, we create the `Resource` resource that references by name to the OCM resource containing the
+`ResourceGraphDefinition`.
+Finally, we will create a `Deployer` resource that will download the `ResourceGraphDefinition` and apply it to the
+cluster.
 
-Create the following file named `bootstrap.yaml` containing the abovementioned resources:
+To proceed, create the following file named `bootstrap.yaml` containing the above-mentioned resources:
 
 ```yaml
 apiVersion: delivery.ocm.software/v1alpha1
@@ -380,7 +390,7 @@ spec:
     namespace: default
 ```
 
-Apply the `bootstrap.yaml` file to the cluster:
+Afterwards, apply the `bootstrap.yaml` to the cluster:
 
 ```bash
 kubectl apply -f bootstrap.yaml
@@ -438,7 +448,7 @@ metadata:
   name: bootstrap
 ```
 
-Apply the instance to the cluster:
+Then, apply the instance to the cluster:
 
 ```bash
 kubectl apply -f instance.yaml
@@ -455,10 +465,10 @@ NAME        STATE    SYNCED   AGE
 bootstrap   ACTIVE   True     3m23s
 ```
 
-If the instance is in the `ACTIVE` state, the resources defined in the `ResourceGraphDefinition` are created and
-reconciled. This includes the OCM K8s Toolkit resources for the Helm chart and the image, as well as the FluxCD
+If the instance is in the `ACTIVE` state, the resources defined in the `ResourceGraphDefinition` were created and
+reconciled. This includes the OCM K8s Toolkit resources for the Helm chart and the image, as well as FluxCDs
 resources for the OCI repository and the Helm release. Accordingly, you should see the following deployment in the
-cluster:
+cluster. To see, if the deployment was successful, you can use the following command:
 
 ```bash
 kubectl get deployments
@@ -469,7 +479,8 @@ NAME                        READY   UP-TO-DATE   AVAILABLE   AGE
 bootstrap-release-podinfo   1/1     1            1           4m25s
 ```
 
-And you can check the pod itself to see if the localization was applied correctly:
+Finally, you can check the pod itself to see if the localization was applied correctly by checking the image name
+in the container::
 
 ```bash
 kubectl get pods -l app.kubernetes.io/name=bootstrap-release-podinfo -o jsonpath='{.items[0].spec.containers[0].image}'
@@ -479,8 +490,12 @@ kubectl get pods -l app.kubernetes.io/name=bootstrap-release-podinfo -o jsonpath
 ghcr.io/<your-namespace>/stefanprodan/podinfo:6.7.1
 ```
 
-You now have successfully created an OCM component version containing a Helm chart, the respective image for
-localization, and a `ResourceGraphDefintiion` to deploy your Helm chart and localize the image.
+You now have successfully created an OCM component containing a Helm chart, the respective image for localization, and a
+`ResourceGraphDefintion` to deploy your Helm chart and localize the image.
 By creating the required bootstrap-resources you bootstrapped the `ResourceGraphDefinition` from the OCM component
-and created the resulting CRD. Finally, you created an instance of the CRD which deployed the Helm chart and
-configured the localization using the OCM K8s Toolkit, kro, and FluxCD.
+and created the resulting CRD.
+Finally, you created an instance of the CRD which deployed the Helm chart and configured the localization using the OCM
+K8s Toolkit, kro, and FluxCD.
+
+[ocm-doc]: https://ocm.software/docs/getting-started/create-component-version/
+[ocm-credentials]: https://ocm.software/docs/tutorials/creds-in-ocmconfig/
