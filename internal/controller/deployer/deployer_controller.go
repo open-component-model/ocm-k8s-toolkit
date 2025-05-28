@@ -233,7 +233,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	var rgd krov1alpha1.ResourceGraphDefinition
 	// Unmarshal the manifest into the ResourceGraphDefinition object
 	if err := yaml.Unmarshal(rgdManifest, &rgd); err != nil {
-		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.MarshalFailedReason, "unmarshal failed")
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.MarshalFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to unmarshal manifest: %w", err)
 	}
@@ -256,7 +256,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return nil
 	})
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.CreateOrUpdateFailedReason, "create or update failed")
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.CreateOrUpdateFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to create or update resource graph definition: %w", err)
 	}
