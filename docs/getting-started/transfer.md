@@ -7,18 +7,38 @@ The replication controller can be used to transfer OCM components between differ
 This is useful for mirroring components or moving them between environments.
 
 In this guide, we will create an OCM component transfer it to a registry, and then use the OCM K8s Toolkit replication
-controller to transfer the component to another registry.
+controller to transfer the component to another registry. As source registry, we will use GitHub's Container registry
+and transfer the OCM component to a local registry running in our kind cluster.
 
-To get started, make sure to setup your environment by fulfilling the [prerequisites](setup.md#prerequisites), start a
-local [kind cluster](setup.md#start-a-local-kubernetes-cluster-with-kind) (or have any other running Kubernetes
-cluster), installing the [OCM K8s Toolkit](setup.md#install-the-ocm-k8s-toolkit), and having
-[access to a registry](setup.md#access-to-a-registry). For simplicity, we will use GitHubs Container Registry as our
-source registry, but you can use any other registry.
+To get started, we will have a slightly different setup as described in [here](setup.md), although the
+[prerequisites](setup.md#prerequisites) are required either way. To make the local registry available, we need to create
+the kind cluster using the following configuration stored in a file called `kind.yaml` (This step is optional if you
+already have a Kubernetes cluster or will use a different target registry):
+
+```yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 31000
+        hostPort: 31000
+```
+
+Then, create the kind cluster with the following command:
+
+```bash
+kind create cluster --config kind.yaml
+```
+
+After the cluster is created, you can follow the setup instructions to install the
+[OCM K8s Toolkit](setup.md#install-the-ocm-k8s-toolkit).
 
 ## Deploy another registry into your Kubernetes cluster (optional)
 
-This step is optional. If you already have a second registry available that you can use as target registry, you can skip
-this step.
+> [!NOTE]
+> This step is optional. If you already have a second registry available that you can use as target registry, you can
+> skip this step.
 
 We will deploy a second registry into our Kubernetes cluster to use it as target registry for the transfer.
 Create a file called `registry.yaml` in the root of your repository and copy the following manifests into it:
@@ -84,7 +104,7 @@ metadata:
 spec:
   type: NodePort
   ports:
-    - port: 5001
+    - port: 5000
       targetPort: 5000
       nodePort: 31000
   selector:
@@ -100,7 +120,7 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - port: 5001
+    - port: 5000
       targetPort: 5000
   selector:
     app: registry
@@ -209,7 +229,7 @@ spec:
 After creating the file, we can apply the OCM K8s Toolkit resources:
 
 ```bash
-kubectl apply -f replication.yaml
+kubectl apply -f source.yaml
 ```
 
 This will create the resources and the OCM K8s Toolkit controllers will start processing them. You can check the status
@@ -222,6 +242,7 @@ kubectl describe ocmrepository replication-source-registry
 ```console
 Name:         replication-source-registry
 ...
+Events:
   Type    Reason     Age                  From             Message
   ----    ------     ----                 ----             -------
   Normal  Succeeded  51s (x3 over 2m51s)  ocm-k8s-toolkit  Successfully reconciled
@@ -263,7 +284,100 @@ spec:
     type: OCIRegistry
 ```
 
+After creating the file, we can apply the OCM K8s Toolkit resources:
 
+```bash
+kubectl apply -f target.yaml
+```
 
+Check the status of the OCM repository by running:
 
+```bash
+kubectl describe ocmrepository replication-target-registry
+```
 
+```console
+Name:         replication-target-registry
+...
+Events:
+  Type    Reason     Age   From             Message
+  ----    ------     ----  ----             -------
+  Normal  Succeeded  4s    ocm-k8s-toolkit  Successfully reconciled
+  Normal  Succeeded  4s    ocm-k8s-toolkit  Reconciliation finished, next run in 1m0s
+```
+
+After creating the OCM K8s Toolkit resources for the source OCM repository and component, as well as the target OCM
+repository, we can now create the resource that will connect both repositories and start the transfer. Creat a file
+called `replication.yaml` with the following content:
+
+```yaml
+apiVersion: delivery.ocm.software/v1alpha1
+kind: Replication
+metadata:
+  name: replication
+spec:
+  componentRef:
+    name: replication-component
+  interval: 2m0s
+  targetRepositoryRef:
+    name: replication-target-registry 
+```
+
+Apply the replication resource by executing the following command:
+
+```bash
+kubectl apply -f replication.yaml
+```
+
+Check the status of the replication by running:
+
+```bash
+kubectl describe replication replication
+```
+
+```console
+Name:         replication
+...
+Status:
+  Conditions:
+    Last Transition Time:  2025-05-30T13:01:11Z
+    Message:               Successfully replicated replication-component to replication-target-registry
+    Observed Generation:   3
+    Reason:                Succeeded
+    Status:                True
+    Type:                  Ready
+  History:
+    Component:               ocm.software/ocm-k8s-toolkit/replication
+    End Time:                2025-05-30T13:01:11Z
+    Source Repository Spec:  {"baseUrl":"ghcr.io","subPath":"<your-namespace","type":"OCIRegistry"}
+    Start Time:              2025-05-30T13:01:10Z
+    Success:                 true
+    Target Repository Spec:  {"baseUrl":"http://registry-internal.default.svc.cluster.local:5000","type":"OCIRegistry"}
+    Version:                 1.0.0
+  Observed Generation:       3
+Events:
+  Type    Reason     Age   From             Message
+  ----    ------     ----  ----             -------
+  Normal  Succeeded  16s   ocm-k8s-toolkit  Successfully replicated replication-component to replication-target-registry
+  Normal  Succeeded  16s   ocm-k8s-toolkit  Reconciliation finished, next run in 2m0s
+```
+
+Additionally, you can check if the component version is available in the target registry by running:
+
+```bash
+ocm get cv http://localhost:31000//ocm.software/ocm-k8s-toolkit/replication
+```
+
+```console
+ 2025-05-30T15:03:17+02:00 warning [ocm/oci/ocireg] "using insecure http for oci registry localhost:31000"
+COMPONENT                                VERSION PROVIDER
+ocm.software/ocm-k8s-toolkit/replication 1.0.0   ocm.software
+```
+
+You should see the component version listed, indicating that the transfer was successful.
+
+This guide has shown how to transfer an OCM component from a source registry to a target registry using the OCM K8s
+Toolkit. We created two resources, the `OCMRepository` and `Component`, to define the source OCM repository and its
+component. Then, we created another `OCMRepository` for the target registry and finally a `Replication` resource to
+connect both repositories and start the transfer. The OCM K8s Toolkit controllers handled the transfer automatically,
+ensuring that the component version was replicated to the target registry.
