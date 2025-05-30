@@ -1,4 +1,4 @@
-# Setup your environment with KinD, kro, and FluxCD
+# Setup your environment
 
 This document describes how to set up a local environment for testing and running examples from the `examples/`
 directory or the [getting-started guides](../getting-started).
