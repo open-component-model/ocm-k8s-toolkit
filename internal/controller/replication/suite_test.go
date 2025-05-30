@@ -37,6 +37,7 @@ var k8sManager ctrl.Manager
 var testEnv *envtest.Environment
 var ctx context.Context
 var cancel context.CancelFunc
+var recorder record.EventRecorder
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -46,8 +47,6 @@ func TestControllers(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
-
-	ctx, cancel = context.WithCancel(context.TODO())
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
@@ -92,14 +91,28 @@ var _ = BeforeSuite(func() {
 	ctx, cancel := context.WithCancel(context.Background())
 	DeferCleanup(cancel)
 
+	events := make(chan string)
+	recorder = &record.FakeRecorder{
+		Events:        events,
+		IncludeObject: true,
+	}
+
+	go func() {
+		for {
+			select {
+			case event := <-events:
+				GinkgoLogr.Info("Event received", "event", event)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
-			Client: k8sClient,
-			Scheme: testEnv.Scheme,
-			EventRecorder: &record.FakeRecorder{
-				Events:        make(chan string, 32),
-				IncludeObject: true,
-			},
+			Client:        k8sManager.GetClient(),
+			Scheme:        testEnv.Scheme,
+			EventRecorder: recorder,
 		},
 	}).SetupWithManager(ctx, k8sManager)).To(Succeed())
 
