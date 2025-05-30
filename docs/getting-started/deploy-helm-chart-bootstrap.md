@@ -1,4 +1,4 @@
-# Deploying a Helm Chart using a `ResourceGraphDefinition` inside the OCM component version (bootstrap) with FluxCD
+# Deploying a Helm Chart (Bootstrap)
 
 This [concept](../../README.md#concept) showed a basic example of how to deploy a Helm chart from an OCM component.
 By defining a `ResourceGraphDefinition` that contains the all the required resources to deploy the Helm chart into a

@@ -1,4 +1,4 @@
-# Deploying a Helm Chart using a `ResourceGraphDefinition` with FluxCD
+# Deploying a Helm Chart
 
 This guide demonstrates how to deploy a Helm Chart from an OCM component version using OCM K8s Toolkit, kro, and FluxCD.
 It is a rather basic example, in which it is assumed that a developer created an application, packaged it as a Helm
