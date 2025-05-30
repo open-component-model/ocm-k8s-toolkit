@@ -1,9 +1,6 @@
-# Transfer OCM component versions
+# Transfer OCM components
 
-> [!NOTE]
-> This document is under construction. Please refer to https://github.com/open-component-model/ocm-project/issues/487
-
-The replication controller can be used to transfer OCM components between different OCM registries.
+The replication controller can be used to transfer OCM components between different remote OCM repositories.
 This is useful for mirroring components or moving them between environments.
 
 In this guide, we will create an OCM component transfer it to a registry, and then use the OCM K8s Toolkit replication
@@ -41,7 +38,7 @@ After the cluster is created, you can follow the setup instructions to install t
 > skip this step.
 
 We will deploy a second registry into our Kubernetes cluster to use it as target registry for the transfer.
-Create a file called `registry.yaml` in the root of your repository and copy the following manifests into it:
+Create a file called `registry.yaml` and copy the following manifests into it:
 
 ```yaml
 # Deployment for the zot registry
@@ -169,8 +166,11 @@ After creating the file, we can create the OCM component version:
 ocm add componentversion --create --file ./ctf component-constructor.yaml
 ```
 
+> [!NOTE]
+> For more details on how to create an OCM component version, please refer to the [OCM documentation][ocm-doc].
+
 This will create a local CTF (Component Transfer Format) directory `./ctf` containing the OCM component version. Since
-the OCM component version must be accessible for the OCM K8s Toolkit controllers, we will transfer the CTF to a
+the OCM component must be accessible for the OCM K8s Toolkit controllers, we will transfer the CTF to a
 registry. For this example, we will use GitHub's container registry, but you can use any OCI registry:
 
 ```bash
@@ -349,7 +349,7 @@ Status:
   History:
     Component:               ocm.software/ocm-k8s-toolkit/replication
     End Time:                2025-05-30T13:01:11Z
-    Source Repository Spec:  {"baseUrl":"ghcr.io","subPath":"<your-namespace","type":"OCIRegistry"}
+    Source Repository Spec:  {"baseUrl":"ghcr.io","subPath":"<your-namespace>","type":"OCIRegistry"}
     Start Time:              2025-05-30T13:01:10Z
     Success:                 true
     Target Repository Spec:  {"baseUrl":"http://registry-internal.default.svc.cluster.local:5000","type":"OCIRegistry"}
@@ -381,3 +381,6 @@ Toolkit. We created two resources, the `OCMRepository` and `Component`, to defin
 component. Then, we created another `OCMRepository` for the target registry and finally a `Replication` resource to
 connect both repositories and start the transfer. The OCM K8s Toolkit controllers handled the transfer automatically,
 ensuring that the component version was replicated to the target registry.
+
+[ocm-doc]: https://ocm.software/docs/getting-started/create-component-version/
+[ocm-credentials]: https://ocm.software/docs/tutorials/creds-in-ocmconfig/
