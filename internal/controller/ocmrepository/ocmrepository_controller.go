@@ -159,7 +159,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	err = r.validate(octx, session, ocmRepo)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.GetOCMRepositoryFailedReason, "failed to validate ocm repository")
+		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.GetOCMRepositoryFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to validate ocm repository: %w", err)
 	}
