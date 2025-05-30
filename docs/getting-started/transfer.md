@@ -1,3 +1,11 @@
+---
+title: Transfer OCM components
+description: "Transfer OCM components between different remote OCM repositories using the OCM K8s Toolkit."
+icon: ":railway_track:"
+weight:
+toc: true
+---
+
 # Transfer OCM components
 
 The replication controller can be used to transfer OCM components between different remote OCM repositories.

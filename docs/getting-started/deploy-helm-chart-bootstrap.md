@@ -1,3 +1,11 @@
+---
+title: Deploying a Helm Chart (Bootstrap)
+description: "Demonstrates how to deploy a Helm Chart using a ResourceGraphDefinition delivered with the OCM component."
+icon: ":ship:"
+weight:
+toc: true
+---
+
 # Deploying a Helm Chart (Bootstrap)
 
 This [concept](../../README.md#concept) showed a basic example of how to deploy a Helm chart from an OCM component.
