@@ -164,7 +164,7 @@ kubectl apply -k https://github.com/open-component-model/ocm-k8s-toolkit/config/
 - [Deploying a Helm chart using a `ResourceGraphDefinition` with FluxCD](docs/getting-started/deploy-helm-chart.md)
 - [Deploying a Helm chart using a `ResourceGraphDefinition` inside the OCM component version (bootstrap) with FluxCD](docs/getting-started/deploy-helm-chart-bootstrap.md)
 - [Configuring credentials for OCM K8s Toolkit resources to access private OCM repositories](docs/getting-started/credentials.md)
-- [Transfer OCM component versions](docs/getting-started/transfer.md)
+- [Transfer OCM components](docs/getting-started/transfer.md)
 
 ## Contributing
 
