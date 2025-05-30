@@ -321,7 +321,7 @@ var _ = Describe("Replication Controller", func() {
 			prevStartTime := replication.Status.History[0].StartTime
 			expectedErrorMsg := "cannot lookup component version in source repository: component version \"" + compOCMName + ":" + compVersion + "\" not found"
 
-			Eventually(func() bool {
+			Eventually(func(ctx context.Context) bool {
 				Expect(conditions.IsReady(replication)).To(BeFalse(), "Expect replication to fail")
 				Expect(len(replication.Status.History)).To(Equal(1), "Expect history to only contain one entry")
 

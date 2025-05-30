@@ -29,6 +29,7 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/status"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/util"
 )
 
 // Reconciler reconciles a Replication object.
@@ -41,44 +42,44 @@ const (
 	targetRepoIndexField = "spec.targetRepositoryRef.name"
 )
 
+// SetupWithManager sets up the controller with the Manager.
+func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	// Create index for component name
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Replication{}, componentIndexField, componentNameExtractor); err != nil {
+		return err
+	}
+
+	// Create index for target repository name
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Replication{}, targetRepoIndexField, targetRepoNameExtractor); err != nil {
+		return err
+	}
+
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&v1alpha1.Replication{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&v1alpha1.Component{}, handler.EnqueueRequestsFromMapFunc(r.replicationMapFunc)).
+		Watches(&v1alpha1.OCMRepository{}, handler.EnqueueRequestsFromMapFunc(r.replicationMapFunc)).
+		Complete(r)
+}
+
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=replications,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=replications/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=replications/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Replication object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
-func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
+	logger := log.FromContext(ctx)
+	logger.Info("starting reconciliation")
+
 	replication := &v1alpha1.Replication{}
 	if err := r.Get(ctx, req.NamespacedName, replication); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	return r.reconcileWithStatusUpdate(ctx, replication)
-}
-
-func (r *Reconciler) reconcileWithStatusUpdate(ctx context.Context, replication *v1alpha1.Replication) (ctrl.Result, error) {
 	patchHelper := patch.NewSerialPatcher(replication, r.Client)
+	defer func(ctx context.Context) {
+		err = errors.Join(err, status.UpdateStatus(ctx, patchHelper, replication, r.EventRecorder, replication.GetRequeueAfter(), err))
+	}(ctx)
 
-	result, err := r.reconcileExists(ctx, replication)
-
-	err = errors.Join(err, status.UpdateStatus(ctx, patchHelper, replication, r.EventRecorder, replication.GetRequeueAfter(), err))
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	return result, nil
-}
-
-func (r *Reconciler) reconcileExists(ctx context.Context, replication *v1alpha1.Replication) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-	if replication.GetDeletionTimestamp() != nil {
+	if !replication.GetDeletionTimestamp().IsZero() {
 		logger.Info("replication is being deleted and cannot be used", "name", replication.Name)
 
 		return ctrl.Result{Requeue: true}, nil
@@ -90,52 +91,50 @@ func (r *Reconciler) reconcileExists(ctx context.Context, replication *v1alpha1.
 		return ctrl.Result{}, nil
 	}
 
-	return r.reconcile(ctx, replication)
-}
+	logger.Info("prepare reconciling replication")
 
-func (r *Reconciler) reconcile(ctx context.Context, replication *v1alpha1.Replication) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
+	compNamespace := replication.Spec.ComponentRef.Namespace
+	if compNamespace == "" {
+		compNamespace = replication.GetNamespace()
+	}
 
-	// get component to be copied
-	comp := &v1alpha1.Component{}
-	if err := r.Get(ctx, types.NamespacedName{
-		Namespace: replication.Spec.ComponentRef.Namespace,
+	comp, err := util.GetReadyObject[v1alpha1.Component, *v1alpha1.Component](ctx, r.GetClient(), client.ObjectKey{
+		Namespace: compNamespace,
 		Name:      replication.Spec.ComponentRef.Name,
-	}, comp); err != nil {
-		logger.Info("failed to get component")
+	})
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, replication, v1alpha1.GetResourceFailedReason, "Component is not ready")
 
-		return ctrl.Result{}, fmt.Errorf("failed to get component: %w", err)
+		if errors.Is(err, util.NotReadyError{}) || errors.Is(err, util.DeletionError{}) {
+			logger.Info(err.Error())
+
+			// return no requeue as we watch the object for changes anyway
+			return ctrl.Result{}, nil
+		}
+
+		return ctrl.Result{}, fmt.Errorf("failed to get ready component: %w", err)
 	}
 
-	if !conditions.IsReady(comp) {
-		logger.Info("component is not ready", "name", comp.Name)
-		status.MarkNotReady(r.EventRecorder, replication, v1alpha1.GetResourceFailedReason, "Component is not ready yet")
-
-		return ctrl.Result{Requeue: true}, nil
+	repoNamespace := replication.Spec.TargetRepositoryRef.Namespace
+	if repoNamespace == "" {
+		repoNamespace = replication.GetNamespace()
 	}
 
-	// get target repository
-	repo := &v1alpha1.OCMRepository{}
-	if err := r.Get(ctx, types.NamespacedName{
-		Namespace: replication.Spec.TargetRepositoryRef.Namespace,
+	repo, err := util.GetReadyObject[v1alpha1.OCMRepository, *v1alpha1.OCMRepository](ctx, r.GetClient(), client.ObjectKey{
+		Namespace: repoNamespace,
 		Name:      replication.Spec.TargetRepositoryRef.Name,
-	}, repo); err != nil {
-		logger.Info("failed to get repository")
+	})
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, replication, v1alpha1.GetResourceFailedReason, "OCM repository is not ready")
 
-		return ctrl.Result{}, fmt.Errorf("failed to get repository: %w", err)
-	}
+		if errors.Is(err, util.NotReadyError{}) || errors.Is(err, util.DeletionError{}) {
+			logger.Info(err.Error())
 
-	if repo.DeletionTimestamp != nil {
-		logger.Info("repository is being deleted, please do not use it", "name", repo.Name)
+			// return no requeue as we watch the object for changes anyway
+			return ctrl.Result{}, nil
+		}
 
-		return ctrl.Result{}, nil
-	}
-
-	if !conditions.IsReady(repo) {
-		logger.Info("repository is not ready", "name", repo.Name)
-		status.MarkNotReady(r.EventRecorder, replication, v1alpha1.GetResourceFailedReason, "Repository is not ready yet")
-
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{}, fmt.Errorf("failed to get ready OCM repository: %w", err)
 	}
 
 	if conditions.IsReady(replication) &&
@@ -279,25 +278,6 @@ func (r *Reconciler) setReplicationStatus(configs []v1alpha1.OCMConfiguration, r
 	replication.Status.EffectiveOCMConfig = configs
 }
 
-// SetupWithManager sets up the controller with the Manager.
-func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	// Create index for component name
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Replication{}, componentIndexField, componentNameExtractor); err != nil {
-		return err
-	}
-
-	// Create index for target repository name
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Replication{}, targetRepoIndexField, targetRepoNameExtractor); err != nil {
-		return err
-	}
-
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.Replication{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&v1alpha1.Component{}, handler.EnqueueRequestsFromMapFunc(r.replicationMapFunc)).
-		Watches(&v1alpha1.OCMRepository{}, handler.EnqueueRequestsFromMapFunc(r.replicationMapFunc)).
-		Complete(r)
-}
-
 func componentNameExtractor(obj client.Object) []string {
 	replication, ok := obj.(*v1alpha1.Replication)
 	if !ok {
@@ -316,23 +296,15 @@ func targetRepoNameExtractor(obj client.Object) []string {
 	return []string{replication.Spec.TargetRepositoryRef.Name}
 }
 
-func componentMatchingFields(component *v1alpha1.Component) client.MatchingFields {
-	return client.MatchingFields{componentIndexField: component.GetName()}
-}
-
-func targetRepoMatchingFields(repo *v1alpha1.OCMRepository) client.MatchingFields {
-	return client.MatchingFields{targetRepoIndexField: repo.GetName()}
-}
-
 func (r *Reconciler) replicationMapFunc(ctx context.Context, obj client.Object) []reconcile.Request {
 	var fields client.MatchingFields
 	replList := &v1alpha1.ReplicationList{}
 
 	component, ok := obj.(*v1alpha1.Component)
 	if ok {
-		fields = componentMatchingFields(component)
+		fields = client.MatchingFields{componentIndexField: component.GetName()}
 	} else if repo, ok := obj.(*v1alpha1.OCMRepository); ok {
-		fields = targetRepoMatchingFields(repo)
+		fields = client.MatchingFields{targetRepoIndexField: repo.GetName()}
 	} else {
 		return []reconcile.Request{}
 	}

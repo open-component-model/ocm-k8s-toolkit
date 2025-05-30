@@ -153,7 +153,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	patchHelper := patch.NewSerialPatcher(component, r.Client)
 	defer func(ctx context.Context) {
-		err = status.UpdateStatus(ctx, patchHelper, component, r.EventRecorder, component.GetRequeueAfter(), err)
+		err = errors.Join(err, status.UpdateStatus(ctx, patchHelper, component, r.EventRecorder, component.GetRequeueAfter(), err))
 	}(ctx)
 
 	if !component.GetDeletionTimestamp().IsZero() {
