@@ -1,3 +1,11 @@
+---
+title: Configuring credentials
+description: "Learn how to configure credentials for accessing private OCM repositories in OCM K8s Toolkit resources."
+icon: ":key:"
+weight:
+toc: true
+---
+
 # Configuring credentials
 
 OCM K8s Toolkit resources need access to OCM components and their resources. If these OCM components are stored in a

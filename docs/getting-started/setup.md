@@ -1,3 +1,11 @@
+---
+title: Set up your environment
+description: "Set up a local environment for testing and running examples from the examples directory or the getting-started guides."
+icon: ":anchor:"
+weight:
+toc: true
+---
+
 # Setup your environment
 
 This document describes how to set up a local environment for testing and running examples from the `examples/`
