@@ -92,8 +92,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	logger.Info("prepare reconciling replication")
+
+	compNamespace := replication.Spec.ComponentRef.Namespace
+	if compNamespace == "" {
+		compNamespace = replication.GetNamespace()
+	}
+
 	comp, err := util.GetReadyObject[v1alpha1.Component, *v1alpha1.Component](ctx, r.GetClient(), client.ObjectKey{
-		Namespace: replication.GetNamespace(),
+		Namespace: compNamespace,
 		Name:      replication.Spec.ComponentRef.Name,
 	})
 	if err != nil {
@@ -109,8 +115,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to get ready component: %w", err)
 	}
 
+	repoNamespace := replication.Spec.TargetRepositoryRef.Namespace
+	if repoNamespace == "" {
+		repoNamespace = replication.GetNamespace()
+	}
+
 	repo, err := util.GetReadyObject[v1alpha1.OCMRepository, *v1alpha1.OCMRepository](ctx, r.GetClient(), client.ObjectKey{
-		Namespace: replication.GetNamespace(),
+		Namespace: repoNamespace,
 		Name:      replication.Spec.TargetRepositoryRef.Name,
 	})
 	if err != nil {
