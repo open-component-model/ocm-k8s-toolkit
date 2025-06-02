@@ -308,7 +308,7 @@ ocm transfer ctf --copy-resources ./ctf ghcr.io/<your-namespace>
 If everything went well, you should see the following output:
 
 ```bash
-ocm get componentversion ghcr.io/<your-namespace>//ocm.software/ocm-k8s-toolkit/bootstrap:1.0.0 -o yaml
+ocm get componentversion ghcr.io/<your-namespace>//ocm.software/ocm-k8s-toolkit/bootstrap:1.0.0 -o yaml | yq .component.resources
 ```
 
 ```text
