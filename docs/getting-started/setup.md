@@ -13,7 +13,6 @@ directory or the [getting-started guides](../getting-started).
 
 ## Prerequisites
 
-- command line interface, preferably bash, iTerm, wsl, ...
 - [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl)
 - [ocm](https://ocm.software/docs/getting-started/installation/) (`ocm` will not be used in this guide, but 
 is needed to follow the examples and getting-started guides)

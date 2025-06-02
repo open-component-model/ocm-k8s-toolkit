@@ -313,18 +313,34 @@ ocm get componentversion ghcr.io/<your-namespace>//ocm.software/ocm-k8s-toolkit/
 
 ```text
 # Output is truncated for brevity
-component:
-  componentReferences: []
-  name: ocm.software/ocm-k8s-toolkit/bootstrap
-  ...
-  resources:
-  - access:
-      # This image reference is now updated to the new registry location.
-      imageReference: ghcr.io/<your-namespace>/stefanprodan/podinfo:6.7.1@sha256:...
-      type: ociArtifact
-    name: image-resource
+- access:
+    imageReference: ghcr.io/<your-namespace>/stefanprodan/charts/podinfo:6.7.1@sha256:4d5bd3562f0b150bd6cdfdbfb149e7e4ac36e555e25baa1da9f511f4d9fb7391
     type: ociArtifact
-  ...
+  digest:
+    ...
+  name: helm-resource
+  relation: external
+  type: helmChart
+  version: 1.0.0
+- access:
+    imageReference: ghcr.io/<your-namespace>/stefanprodan/podinfo:6.7.1@sha256:862ca45e61b32392f7941a1bdfdbe5ff8b6899070135f1bdca1c287d0057fc94
+    type: ociArtifact
+  digest:
+    ...
+  name: image-resource
+  relation: external
+  type: ociArtifact
+  version: 1.0.0
+- access:
+    localReference: sha256:ed5252ff70bfe93e763ff6afeafe8dafd14c128981e4ae1472e35afc3ebe7a63
+    mediaType: application/octet-stream
+    type: localBlob
+  digest:
+     ...
+  name: resource-graph-definition
+  relation: local
+  type: blob
+  version: 1.0.0
 ```
 
 ## Deploy the Helm Chart
@@ -392,9 +408,11 @@ spec:
   resourceRef:
     # Reference to the Kubernetes resource OCM resource that contains the ResourceGraphDefinition.
     name: bootstrap-rgd
-    # As kro processes resources in cluster-scope, the deployer must also be cluster-scoped. Accordingly, we have to
+    # As kro processes resources in cluster-scope*, the deployer must also be cluster-scoped. Accordingly, we have to
     # set the namespace of the resource here (usually, when the namespace is not specified, it is derived from the
     # referencing Kubernetes resource).
+    # Check out the kro documentation for more details:
+    # https://github.com/kro-run/kro/blob/8f53372bfde232db7ddd6809eebb6a1d69b34f2e/website/docs/docs/concepts/20-access-control.md
     namespace: default
 ```
 
