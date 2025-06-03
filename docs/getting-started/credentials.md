@@ -28,14 +28,11 @@ The simplest way to configure credentials for accessing private OCM repositories
 was used to transfer the OCM component in the first place.
 
 > [!NOTE]
+> Usually, the `.ocmconfig` file is located in your home directory, but you can also specify a different path.
 > For more information on how to create and use the `.ocmconfig` file, please refer to the
 > [OCM CLI credentials documentation][ocm-credentials].
 
 For instance, consider you used the following command and `.ocmconfig` file to transfer the OCM component:
-
-```bash
-ocm --config ./.ocmconfig transfer ctf ./ctf ghcr.io/<your-namespace>
-```
 
 ```yaml
 type: generic.config.ocm.software/v1
@@ -54,10 +51,14 @@ configurations:
               password: <your-password/token>
 ```
 
+```bash
+ocm --config ./.ocmconfig transfer ctf ./ctf ghcr.io/<your-namespace>
+```
+
 You can now create a secret in the Kubernetes cluster that contains the `.ocmconfig` file:
 
 ```bash
-kubectl create secret generic ocm-secret --from-file=.ocmconfig
+kubectl create secret generic ocm-secret --from-file=./.ocmconfig
 ```
 
 > [!NOTE]
