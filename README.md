@@ -124,7 +124,14 @@ of this CRD (`Instance: Simple`), the resources are created and reconciled by th
 - `Component`: Refers to the `OCMRepository` and downloads and verifies the OCM component version descriptor.
 - `Resource`: Points to the `Component`, downloads the OCM component version descriptor from which it gets the location
 of the OCM resource. It then downloads the resource to verify its signature (optional) and publishes the location of the
-resource in its status (Of course, only if the resource has remote access, e.g., an OCI or a GitHub repository).
+resource in its status.
+
+> [!IMPORTANT]
+> The resource controller will only publish the location of the resource if its access is accessible remotely,
+> e.g. as an image reference, OCI repository, or Git repository.
+> This is important if the location to a resource needs to be propagated to a deployer, so it can download the artifact
+> and deploy it into a Kubernetes cluster. In this example, the resource needs to be consumed by FluxCDs
+> Source-controller. Accordingly, it must be accessible via an OCI or GitHub repository.
 
 As a result, FluxCD can now consume the information of the `Resource` and deploy the Helm chart:
 - `OCIRepository`: Watches and downloads the resource from the location provided by the `Resource` status.
