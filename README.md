@@ -152,9 +152,9 @@ kubectl apply -k https://github.com/open-component-model/ocm-k8s-toolkit/config/
 ```
 
 > [!IMPORTANT]
-> OCM K8s Toolkit requires kro and a deployer, e.g. FluxCD, to deploy an OCM resource into a Kubernetes cluster.
-> The OCM K8s Toolkit deployment, however, does not contain kro or any deployer. Please refer to the respective
-> installation guides for these tools:
+> While the OCM K8s Toolkit technically can be used standalone, it requires kro and a deployer, e.g. FluxCD, to deploy
+> an OCM resource into a Kubernetes cluster. The OCM K8s Toolkit deployment, however, does not contain kro or any
+> deployer. Please refer to the respective installation guides for these tools:
 > - [kro](https://kro.run/docs/getting-started/Installation/)
 > - [FluxCD](https://fluxcd.io/docs/installation/)
 
