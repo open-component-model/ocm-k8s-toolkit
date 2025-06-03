@@ -31,10 +31,10 @@ with the same OCM component. Additionally, it shows how to **localize** a Helm c
 > **Localization** describes the process of inserting a new image reference into the deployment instructions, e.g. a
 > Helm chart. It is a two-step process:
 > 1. When an OCM component and its resources are transferred to another registry, **referential resources** can
-> potentially update their reference to the new location. For Instance, a resource with an access type `ociArtifact`
+> potentially update their reference to the new location. For instance, a resource with an access type `ociArtifact`
 > will update its image reference in the component descriptor to the new registry location, if the OCM transfer is done
 > with the flag `--copy-resources`.
-> 2. However, the deployment using the image, is not aware of this change. Accordingly, we need to insert the new image
+> 2. However, the deployment using the image is not aware of this change. Accordingly, we need to insert the new image
 > reference into the deployment instruction. This can be done using deployment tools like FluxCDs
 > [HelmRelease](https://fluxcd.io/flux/components/helm/helmreleases/#values) and
 > [Kustomization](https://fluxcd.io/flux/components/kustomize/kustomizations/#patches) or ArgoCDs
@@ -357,7 +357,7 @@ Resource Definition (CRD) which will deploy the Helm chart and configure the loc
 
 ### Bootstrapping
 
-The bootstrap process consists in creating the OCM K8s Toolkits resources that will download and apply the
+The bootstrap process consists of creating the OCM K8s Toolkits resources that will download and apply the
 `ResourceGraphDefinition`.
 First, we will create a `OCMRepository` and `Component` resource that point to the OCM component in the registry
 (the `Component` resource is reused in the `ResourceGraphDefinition` (see above) as reference for the `Resource`

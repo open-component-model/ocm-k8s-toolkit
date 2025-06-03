@@ -11,7 +11,7 @@ toc: true
 The replication controller can be used to transfer OCM components between different remote OCM repositories.
 This is useful for mirroring components or moving them between environments.
 
-In this guide, we will create an OCM component transfer it to a registry, and then use the OCM K8s Toolkit replication
+In this guide, we will create an OCM component, transfer it to a registry, and then use the OCM K8s Toolkit replication
 controller to transfer the component to another registry. As source registry, we will use GitHub's Container registry
 and transfer the OCM component to a local registry running in our kind cluster.
 
@@ -315,7 +315,7 @@ Events:
 ```
 
 After creating the OCM K8s Toolkit resources for the source OCM repository and component, as well as the target OCM
-repository, we can now create the resource that will connect both repositories and start the transfer. Creat a file
+repository, we can now create the resource that will connect both repositories and start the transfer. Create a file
 called `replication.yaml` with the following content:
 
 ```yaml
