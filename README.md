@@ -127,11 +127,8 @@ of the OCM resource. It then downloads the resource to verify its signature (opt
 resource in its status.
 
 > [!IMPORTANT]
-> The resource controller will only publish the location of the resource if its access is accessible remotely,
-> e.g. as an image reference, OCI repository, or Git repository.
-> This is important if the location to a resource needs to be propagated to a deployer, so it can download the artifact
-> and deploy it into a Kubernetes cluster. In this example, the resource needs to be consumed by FluxCDs
-> Source-controller. Accordingly, it must be accessible via an OCI or GitHub repository.
+> With FluxCD, this only works if the OCM resource has ab access for which FluxCD has a corresponding Source type (e.g.
+> an OCI or a GitHub repository)
 
 As a result, FluxCD can now consume the information of the `Resource` and deploy the Helm chart:
 - `OCIRepository`: Watches and downloads the resource from the location provided by the `Resource` status.
