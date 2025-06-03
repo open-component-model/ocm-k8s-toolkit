@@ -126,7 +126,7 @@ of this CRD (`Instance: Simple`), the resources are created and reconciled by th
 of the OCM resource. It then downloads the resource to verify its signature (optional) and publishes the location of the
 resource in its status (Of course, only if the resource has remote access, e.g., an OCI or a GitHub repository).
 
-As a result, FluxCDs can now consume the information of the `Resource` and deploy the Helm chart:
+As a result, FluxCD can now consume the information of the `Resource` and deploy the Helm chart:
 - `OCIRepository`: Watches and downloads the resource from the location provided by the `Resource` status.
 - `HelmRelease`: Refers to the `OCIRepository`, lets you configure the Helm chart, and creates the deployment into the
 Kubernetes cluster.
