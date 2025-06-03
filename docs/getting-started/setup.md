@@ -125,6 +125,11 @@ need access to a registry. You can either choose a public registry like [ghcr.io
 > [!IMPORTANT]
 > If you choose to deploy a registry into your Kubernetes cluster, you have to make sure it is accessible from outside
 > the cluster (for `ocm transfer` to work) and inside the cluster (for the OCM K8s Toolkit controllers to work). 
+>
+> We **strongly** recommend to use a registry that is publicly accessible, like [ghcr.io][ghcr.io].
+> (Deploying your own registry requires a lot of additional configuration. Especially, if you want to try out the
+> localization example, you will need to configure a registry that is accessible with the same address from your
+> CLI, kubelet, and inside the cluster.)
 
 ---
 
