@@ -16,8 +16,11 @@ controller to transfer the component to another registry. As source registry, we
 and transfer the OCM component to a local registry running in our kind cluster.
 
 To get started, we will have a slightly different setup as described in [here](setup.md), although the
-[prerequisites](setup.md#prerequisites) are required either way. To make the local registry available, we need to create
-the kind cluster using the following configuration stored in a file called `kind.yaml` (This step is optional if you
+[prerequisites](setup.md#prerequisites) are required either way.
+
+The target registry will be a local registry running in our kind Kubernetes cluster, which we will set up in the
+following sections. To make the local registry available outside the kind cluster, we will expose its port using the
+following kind configuration. Create a filed called `kind.yaml` with the following content (This step is optional if you
 already have a Kubernetes cluster or will use a different target registry):
 
 ```yaml
