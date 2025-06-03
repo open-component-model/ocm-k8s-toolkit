@@ -113,6 +113,8 @@ spec:
               baseUrl: ghcr.io/<your-namespace>
               type: OCIRegistry
           interval: 10m
+          # ocmConfig is required, if the OCM repository requires credentials to access it.
+          # ocmConfig:
     # Component refers to the OCMRepository, downloads and verifies the OCM component version descriptor.
     - id: component
       template:
@@ -126,6 +128,8 @@ spec:
           component: ocm.software/ocm-k8s-toolkit/simple
           semver: 1.0.0
           interval: 10m
+          # ocmConfig is required, if the OCM repository requires credentials to access it.
+          # ocmConfig:
     # Resource points to the Component, downloads the resource passed by reference-name and verifies it. It then
     # publishes the location of the resource in its status.
     - id: resourceChart
@@ -142,6 +146,8 @@ spec:
               resource:
                 name: helm-resource # This must match the resource name set in the OCM component version (see above)
           interval: 10m
+          # ocmConfig is required, if the OCM repository requires credentials to access it.
+          # ocmConfig:
     # OCIRepository watches and downloads the resource from the location provided by the Resource status.
     # The Helm chart location (url) refers to the status of the above resource.
     - id: ocirepository
@@ -158,6 +164,8 @@ spec:
           url: oci://${resourceChart.status.reference.registry}/${resourceChart.status.reference.repository}
           ref:
             tag: ${resourceChart.status.reference.tag}
+          # secretRef is required, if the OCI repository requires credentials to access it.
+          # secretRef:
     # HelmRelease refers to the OCIRepository, lets you configure the helm chart and deploys the Helm Chart into the
     # Kubernetes cluster.
     - id: helmrelease

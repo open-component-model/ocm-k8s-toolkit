@@ -227,6 +227,8 @@ spec:
               resource:
                 name: helm-resource
           interval: 10m
+          # ocmConfig is required, if the OCM repository requires credentials to access it.
+          # ocmConfig:
     # This resource refers to the resource "image-resource" defined in the OCM component version. It will be downloaded,
     # verified, and its location is made available in the status of the resource.
     - id: resourceImage
@@ -244,6 +246,8 @@ spec:
               resource:
                 name: image-resource
           interval: 10m
+          # ocmConfig is required, if the OCM repository requires credentials to access it.
+          # ocmConfig:
     # OCIRepository watches and downloads the resource from the location provided by the Resource status.
     # The Helm chart location (url) refers to the status of the resource helm-resource.
     - id: ocirepository
@@ -261,6 +265,8 @@ spec:
           url: oci://${resourceChart.status.reference.registry}/${resourceChart.status.reference.repository}
           ref:
             tag: ${resourceChart.status.reference.tag}
+          # secretRef is required, if the OCI repository requires credentials to access it.
+          # secretRef:
     # HelmRelease refers to the OCIRepository, lets you configure the helm chart and deploys the Helm Chart into the
     # Kubernetes cluster.
     - id: helmrelease
@@ -374,6 +380,8 @@ spec:
     baseUrl: ghcr.io/<your-namespace>
     type: OCIRegistry
   interval: 10m
+  # ocmConfig is required, if the OCM repository requires credentials to access it.
+  # ocmConfig:
 ---
 apiVersion: delivery.ocm.software/v1alpha1
 kind: Component
@@ -385,6 +393,8 @@ spec:
     name: bootstrap-repository
   semver: 1.0.0
   interval: 10m
+  # ocmConfig is required, if the OCM repository requires credentials to access it.
+  # ocmConfig:
 ---
 apiVersion: delivery.ocm.software/v1alpha1
 kind: Resource
@@ -399,6 +409,8 @@ spec:
       resource:
         name: resource-graph-definition
   interval: 10m
+  # ocmConfig is required, if the OCM repository requires credentials to access it.
+  # ocmConfig:
 ---
 apiVersion: delivery.ocm.software/v1alpha1
 kind: Deployer
@@ -414,6 +426,9 @@ spec:
     # Check out the kro documentation for more details:
     # https://github.com/kro-run/kro/blob/8f53372bfde232db7ddd6809eebb6a1d69b34f2e/website/docs/docs/concepts/20-access-control.md
     namespace: default
+  # ocmConfig is required, if the OCM repository requires credentials to access it.
+  # (You also need to specify the namespace of the reference as the 'deployer' is cluster-scoped.)
+  # ocmConfig:
 ```
 
 Afterwards, apply the `bootstrap.yaml` to the cluster:
