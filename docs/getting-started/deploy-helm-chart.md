@@ -13,7 +13,7 @@ It is a rather basic example, in which it is assumed that a developer created an
 chart, and publishes it as OCM component version in an OCI registry. Then, an operator who wants to deploy the
 application via Helm chart in a Kubernetes cluster, creates a `ResourceGraphDefinition` with resources that point to
 this OCM component version. Using CEL expressions inside the `ResourceGraphDefinition`, the information about the
-resource location will be passed to FluxCD, which will then deploy and configure the Helm chart into the Kubernetes
+resource location will be passed to FluxCD, which will then configure the Helm chart and deploy it into the Kubernetes
 cluster.
 
 > [!IMPORTANT]
