@@ -112,7 +112,7 @@ spec:
           repositorySpec:
               baseUrl: ghcr.io/<your-namespace>
               type: OCIRegistry
-          interval: 10m
+          interval: 1m
           # ocmConfig is required, if the OCM repository requires credentials to access it.
           # ocmConfig:
     # Component refers to the OCMRepository, downloads and verifies the OCM component version descriptor.
@@ -127,7 +127,7 @@ spec:
             name: ${ocmRepository.metadata.name}
           component: ocm.software/ocm-k8s-toolkit/simple
           semver: 1.0.0
-          interval: 10m
+          interval: 1m
           # ocmConfig is required, if the OCM repository requires credentials to access it.
           # ocmConfig:
     # Resource points to the Component, downloads the resource passed by reference-name and verifies it. It then
@@ -145,7 +145,7 @@ spec:
             byReference:
               resource:
                 name: helm-resource # This must match the resource name set in the OCM component version (see above)
-          interval: 10m
+          interval: 1m
           # ocmConfig is required, if the OCM repository requires credentials to access it.
           # ocmConfig:
     # OCIRepository watches and downloads the resource from the location provided by the Resource status.

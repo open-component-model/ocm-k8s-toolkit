@@ -111,7 +111,7 @@ spec:
   repositorySpec:
     baseUrl: ghcr.io/<your-namespace>
     type: OCIRegistry
-  interval: 10m
+  interval: 1m
   ocmConfig:
     - kind: secret
       name: ocm-secret
@@ -130,7 +130,7 @@ spec:
   repositorySpec:
     baseUrl: ghcr.io/<your-namespace>
     type: OCIRegistry
-  interval: 10m
+  interval: 1m
   ocmConfig:
     - kind: Secret
       name: ocm-secret
@@ -144,7 +144,7 @@ spec:
   repositoryRef:
     name: guide-repository
   semver: 1.0.0
-  interval: 10m
+  interval: 1m
   ocmConfig:
     - kind: OCMRepository
       apiVersion: delivery.ocm.software/v1alpha1
@@ -173,7 +173,7 @@ spec:
   repositoryRef:
     name: guide-repository
   semver: 1.0.0
-  interval: 10m
+  interval: 1m
   ocmConfig:
     - kind: OCMRepository
       apiVersion: delivery.ocm.software/v1alpha1
