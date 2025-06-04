@@ -214,7 +214,7 @@ var _ = Describe("OCMRepository Controller", func() {
 							Name:       secrets[0].Name,
 							Namespace:  secrets[0].Namespace,
 						},
-						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+						Policy: v1alpha1.ConfigurationPolicyPropagate,
 					},
 					{
 						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
@@ -241,7 +241,7 @@ var _ = Describe("OCMRepository Controller", func() {
 							Name:       configs[0].Name,
 							Namespace:  configs[0].Namespace,
 						},
-						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+						Policy: v1alpha1.ConfigurationPolicyPropagate,
 					},
 					{
 						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
