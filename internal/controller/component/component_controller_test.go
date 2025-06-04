@@ -718,7 +718,7 @@ var _ = Describe("Component Controller", func() {
 							Name:       secrets[0].Name,
 							Namespace:  secrets[0].Namespace,
 						},
-						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+						Policy: v1alpha1.ConfigurationPolicyPropagate,
 					},
 					{
 						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
@@ -745,7 +745,7 @@ var _ = Describe("Component Controller", func() {
 							Name:       configs[0].Name,
 							Namespace:  configs[1].Namespace,
 						},
-						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+						Policy: v1alpha1.ConfigurationPolicyPropagate,
 					},
 					{
 						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
@@ -842,8 +842,26 @@ var _ = Describe("Component Controller", func() {
 						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 							APIVersion: corev1.SchemeGroupVersion.String(),
 							Kind:       "Secret",
+							Name:       secrets[0].Name,
+							Namespace:  secrets[0].Namespace,
+						},
+						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+					},
+					v1alpha1.OCMConfiguration{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "Secret",
 							Name:       secrets[2].Name,
 							Namespace:  secrets[2].Namespace,
+						},
+						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
+					},
+					v1alpha1.OCMConfiguration{
+						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
+							APIVersion: corev1.SchemeGroupVersion.String(),
+							Kind:       "ConfigMap",
+							Name:       configs[0].Name,
+							Namespace:  configs[0].Namespace,
 						},
 						Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
 					},
