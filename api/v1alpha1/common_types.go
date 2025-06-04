@@ -29,7 +29,7 @@ type OCMConfiguration struct {
 	// ConfigurationPolicyPropagate other ocm api objects can reference this
 	// object to reuse this configuration.
 	// +kubebuilder:validation:Enum:="Propagate";"DoNotPropagate"
-	// +kubebuilder:default:="DoNotPropagate"
+	// +kubebuilder:default:="Propagate"
 	// +required
 	Policy ConfigurationPolicy `json:"policy,omitempty"`
 }

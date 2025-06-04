@@ -64,7 +64,7 @@ spec:
                         acts as LocalObjectReference.
                       type: string
                     policy:
-                      default: DoNotPropagate
+                      default: Propagate
                       description: |-
                         Policy affects the propagation behavior of the configuration. If set to
                         ConfigurationPolicyPropagate other ocm api objects can reference this
@@ -193,7 +193,7 @@ spec:
                         acts as LocalObjectReference.
                       type: string
                     policy:
-                      default: DoNotPropagate
+                      default: Propagate
                       description: |-
                         Policy affects the propagation behavior of the configuration. If set to
                         ConfigurationPolicyPropagate other ocm api objects can reference this
