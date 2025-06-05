@@ -100,14 +100,14 @@ spec:
       # (see resource HelmRelease).
       message: string | default="foo"
   resources:
-    # OCMRepository points to the OCM repository in which the OCM component version is stored and checks if it is
+    # Repository points to the OCM repository in which the OCM component version is stored and checks if it is
     # reachable by pinging it.
-    - id: ocmRepository
+    - id: repository
       template:
         apiVersion: delivery.ocm.software/v1alpha1
-        kind: OCMRepository
+        kind: Repository
         metadata:
-          name: simple-ocmrepository
+          name: simple-repository
         spec:
           repositorySpec:
               baseUrl: ghcr.io/<your-namespace>
@@ -115,7 +115,7 @@ spec:
           interval: 1m
           # ocmConfig is required, if the OCM repository requires credentials to access it.
           # ocmConfig:
-    # Component refers to the OCMRepository, downloads and verifies the OCM component version descriptor.
+    # Component refers to the Repository, downloads and verifies the OCM component version descriptor.
     - id: component
       template:
         apiVersion: delivery.ocm.software/v1alpha1
@@ -124,7 +124,7 @@ spec:
           name: simple-component
         spec:
           repositoryRef:
-            name: ${ocmRepository.metadata.name}
+            name: ${repository.metadata.name}
           component: ocm.software/ocm-k8s-toolkit/simple
           semver: 1.0.0
           interval: 1m
@@ -189,7 +189,7 @@ spec:
               message: ${schema.spec.message}
 ```
 
-After creating the file `rgd.yaml` with the above content and adjusting OCMRepository's `baseUrl` to point to your OCM
+After creating the file `rgd.yaml` with the above content and adjusting Repository's `baseUrl` to point to your OCM
 repository, you can apply the `ResourceGraphDefinition` to your Kubernetes cluster:
 
 ```bash

@@ -135,7 +135,7 @@ As the diagram shows, we will start by creating an OCM component that contains t
 localization.
 
 To enable the bootstrap of the `ResourceGraphDefinition`, we will create the respective OCM K8s Toolkit resources that
-point to the OCM repository ("OCMRepository"), the OCM component version ("Component"), and the OCM Resource
+point to the OCM repository ("Repository"), the OCM component version ("Component"), and the OCM Resource
 ("Resource: RGD") that contains the `ResourceGraphDefinition`. The OCM K8s Toolkit resource "Deployer" will refer to the
 aforementioned "Resource: RGD", download the `ResourceGraphDefinition`, and apply it to the cluster.
 
@@ -206,7 +206,7 @@ spec:
     apiVersion: v1alpha1
     kind: Bootstrap
   resources:
-    # In this guide, we will not create a "OCMRepository" and "Component" in this ResourceGraphDefinition. Those
+    # In this guide, we will not create a "Repository" and "Component" in this ResourceGraphDefinition. Those
     # resources will be created to bootstrap the ResourceGraphDefinition itself and are already present to be
     # referenced by the following resources.
 
@@ -359,7 +359,7 @@ Resource Definition (CRD) which will deploy the Helm chart and configure the loc
 
 The bootstrap process consists of creating the OCM K8s Toolkits resources that will download and apply the
 `ResourceGraphDefinition`.
-First, we will create a `OCMRepository` and `Component` resource that point to the OCM component in the registry
+First, we will create a `Repository` and `Component` resource that point to the OCM component in the registry
 (the `Component` resource is reused in the `ResourceGraphDefinition` (see above) as reference for the `Resource`
 resources).
 Then, we create the `Resource` resource that references by name to the OCM resource containing the
@@ -371,7 +371,7 @@ To proceed, create the following file named `bootstrap.yaml` containing the abov
 
 ```yaml
 apiVersion: delivery.ocm.software/v1alpha1
-kind: OCMRepository
+kind: Repository
 metadata:
   name: bootstrap-repository
 spec:

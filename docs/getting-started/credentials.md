@@ -104,7 +104,7 @@ or configmap that contains the credentials.
 
 ```yaml
 apiVersion: delivery.ocm.software/v1alpha1
-kind: OCMRepository
+kind: Repository
 metadata:
   name: helm-configuration-localization-repository
 spec:
@@ -122,7 +122,7 @@ specifying the secret or configmap again, you can reference the resource in the 
 
 ```yaml
 apiVersion: delivery.ocm.software/v1alpha1
-kind: OCMRepository
+kind: Repository
 metadata:
   name: guide-repository
   namespace: default
@@ -146,15 +146,15 @@ spec:
   semver: 1.0.0
   interval: 1m
   ocmConfig:
-    - kind: OCMRepository
+    - kind: Repository
       apiVersion: delivery.ocm.software/v1alpha1
       name: guide-repository
       namespace: default
 ```
 
-The above example shows how to use the `ocmConfig` field in an `OCMRepository` and a `Component`. The `OCMRepository`
+The above example shows how to use the `ocmConfig` field in an `Repository` and a `Component`. The `Repository`
 references a secret named `ocm-secret` that contains the credentials for accessing the private OCM repository.
-The `Component` then references the `OCMRepository` in `ocmConfig`and uses the same credentials.
+The `Component` then references the `Repository` in `ocmConfig`and uses the same credentials.
 
 However, you always need to specify a reference to the credentials either as secret, configmap, or as OCM K8s Toolkit
 resource for *each resource*. The credentials will not be propagated automatically to all OCM K8s Toolkit resources in
@@ -175,7 +175,7 @@ spec:
   semver: 1.0.0
   interval: 1m
   ocmConfig:
-    - kind: OCMRepository
+    - kind: Repository
       apiVersion: delivery.ocm.software/v1alpha1
       name: guide-repository
       namespace: default
