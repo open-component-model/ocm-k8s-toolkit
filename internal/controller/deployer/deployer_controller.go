@@ -247,7 +247,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	// Create or update the object in the cluster
 	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, actual, func() error {
-		if err := controllerutil.SetControllerReference(deployer, &rgd, r.Scheme); err != nil {
+		if err := controllerutil.SetControllerReference(deployer, actual, r.Scheme); err != nil {
 			return fmt.Errorf("failed to set controller reference on resource graph definition: %w", err)
 		}
 
