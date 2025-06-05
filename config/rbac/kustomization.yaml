@@ -19,8 +19,8 @@ resources:
 - resource_viewer_role.yaml
 - component_editor_role.yaml
 - component_viewer_role.yaml
-- ocmrepository_editor_role.yaml
-- ocmrepository_viewer_role.yaml
+- repository_editor_role.yaml
+- repository_viewer_role.yaml
 - deployer_editor_role.yaml
 - deployer_viewer_role.yaml
 

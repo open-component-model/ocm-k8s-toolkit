@@ -110,11 +110,11 @@ spec:
                     rule: ((!has(self.apiVersion) || self.apiVersion == "" || self.apiVersion
                       == "v1") && (self.kind == "Secret" || self.kind == "ConfigMap"))
                       || (self.apiVersion == "delivery.ocm.software/v1alpha1" && (self.kind
-                      == "OCMRepository" || self.kind == "Component" || self.kind
-                      == "Resource" || self.kind == "Replication"))
+                      == "Repository" || self.kind == "Component" || self.kind ==
+                      "Resource" || self.kind == "Replication"))
                 type: array
               repositoryRef:
-                description: RepositoryRef is a reference to a OCMRepository.
+                description: RepositoryRef is a reference to a Repository.
                 properties:
                   name:
                     default: ""
@@ -305,8 +305,8 @@ spec:
                     rule: ((!has(self.apiVersion) || self.apiVersion == "" || self.apiVersion
                       == "v1") && (self.kind == "Secret" || self.kind == "ConfigMap"))
                       || (self.apiVersion == "delivery.ocm.software/v1alpha1" && (self.kind
-                      == "OCMRepository" || self.kind == "Component" || self.kind
-                      == "Resource" || self.kind == "Replication"))
+                      == "Repository" || self.kind == "Component" || self.kind ==
+                      "Resource" || self.kind == "Replication"))
                 type: array
               observedGeneration:
                 description: |-

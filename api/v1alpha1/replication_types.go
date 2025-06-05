@@ -19,7 +19,7 @@ type ReplicationSpec struct {
 	// +required
 	ComponentRef ObjectKey `json:"componentRef"`
 
-	// targetRepositoryRef is a reference to an OCMRepository the component to be replicated to.
+	// targetRepositoryRef is a reference to an Repository the component to be replicated to.
 	// +required
 	TargetRepositoryRef ObjectKey `json:"targetRepositoryRef"`
 
@@ -107,12 +107,12 @@ type TransferStatus struct {
 	Success bool `json:"success"`
 }
 
-// GetConditions returns the conditions of the OCMRepository.
+// GetConditions returns the conditions of the Repository.
 func (repl *Replication) GetConditions() []metav1.Condition {
 	return repl.Status.Conditions
 }
 
-// SetConditions sets the conditions of the OCMRepository.
+// SetConditions sets the conditions of the Repository.
 func (repl *Replication) SetConditions(conditions []metav1.Condition) {
 	repl.Status.Conditions = conditions
 }

@@ -32,8 +32,8 @@ rules:
   resources:
   - components
   - deployers
-  - ocmrepositories
   - replications
+  - repositories
   - resources
   verbs:
   - create
@@ -48,8 +48,8 @@ rules:
   resources:
   - components/finalizers
   - deployers/finalizers
-  - ocmrepositories/finalizers
   - replications/finalizers
+  - repositories/finalizers
   verbs:
   - update
 - apiGroups:
@@ -57,8 +57,8 @@ rules:
   resources:
   - components/status
   - deployers/status
-  - ocmrepositories/status
   - replications/status
+  - repositories/status
   - resources/status
   verbs:
   - get

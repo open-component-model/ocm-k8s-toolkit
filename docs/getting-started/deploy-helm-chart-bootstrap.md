@@ -63,7 +63,7 @@ ocm transfer ctf --copy-resources ./ctf ghcr.io/<your-username/org>
 > to create the secret and the following fields to use it (for every resource that requires it):
 > ```yaml
 > apiVersion: delivery.ocm.software/v1alpha1
-> kind: OCMRepository
+> kind: Repository
 > metadata:
 >   name: helm-configuration-localization-repository
 > spec:
@@ -77,12 +77,12 @@ ocm transfer ctf --copy-resources ./ctf ghcr.io/<your-username/org>
 >       namespace: default
 > ```
 
-At last, we need to adjust the OCM repository in the CR `ocmrepository` to point to the OCI registry we specified
+At last, we need to adjust the OCM repository in the CR `repository` to point to the OCI registry we specified
 above. Open the file `examples/helm-configuration-localization/bootstrap.yaml` and change the field `baseUrl`.
 
 ```yaml
 apiVersion: delivery.ocm.software/v1alpha1
-kind: OCMRepository
+kind: Repository
 metadata:
   name: helm-configuration-localization-repository
 spec:
