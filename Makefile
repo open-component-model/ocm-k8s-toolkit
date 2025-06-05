@@ -198,5 +198,5 @@ endef
 # set-images will set use kustomize to set the specified images for the controller
 define set-images
 set -e
-cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+cd config/manager && $(KUSTOMIZE) edit set image ghcr.io/open-component-model/ocm-k8s-toolkit=${IMG}
 endef

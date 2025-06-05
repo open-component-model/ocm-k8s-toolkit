@@ -7,7 +7,7 @@ Technical Story:
 
 The replication controller integrated into the ocm-k8s-toolkit mimics the `ocm transfer` behaviour into a controller. This allows transferring OCM components from one OCI registry to another one, e.g. as part of a delivery pipeline or a backup procedure. A possible use case would be that the replication controller is running in a Management / Control-Plane cluster.
 
-One can use a Component custom resource to subscribe to a OCM component stored in an OCI registry. Each time the Component resource is reconciled, the current version of the OCM component is written to the resource's status. The Component resource is referenced by one or several Replication custom resources, thus the replication controller is able to detect changes in the Component's status. So, if a version change is detected, the replication controller will trigger an OCM transfer operation of the latest component version to the configured target environment, specified by an OCMRepository custom resource.
+One can use a Component custom resource to subscribe to a OCM component stored in an OCI registry. Each time the Component resource is reconciled, the current version of the OCM component is written to the resource's status. The Component resource is referenced by one or several Replication custom resources, thus the replication controller is able to detect changes in the Component's status. So, if a version change is detected, the replication controller will trigger an OCM transfer operation of the latest component version to the configured target environment, specified by an Repository custom resource.
 
 # Problem Statement and Proposed Solutions
 
@@ -27,7 +27,7 @@ Possible consequences:
 
 ## Problem 2: Should a successful replication automatically result in creation of k8s resources in the target environment?
 
-The target OCI registry might also be watched by a set of ocm-k8s-toolkit controllers. Then the question could araise, if after a successful transfer of an OCM component to the target environment a corresponding set of k8s resources (i.e. Component, OCMRepository etc.) has to be created or updated there, e.g. if not existing yet.
+The target OCI registry might also be watched by a set of ocm-k8s-toolkit controllers. Then the question could araise, if after a successful transfer of an OCM component to the target environment a corresponding set of k8s resources (i.e. Component, Repository etc.) has to be created or updated there, e.g. if not existing yet.
 
 Options:
 * Option 1: Yes, always create.
@@ -113,11 +113,11 @@ Proposed solution:
 Possible consequences:
 * It has to be evaluated, whether we want to store a certain specific configuration, which a transfer operation was executed with, and which does not contain sensitive infomation, like e.g. the transfer options, in a human readable form in the status as part of the Replication's history. The latter would simplify support and problem analysis by an SRE. For transfer options this is addressed in https://github.com/open-component-model/ocm-project/issues/355.
 
-## Problem 8: Should a Replication resource support several target OCMRepository resources?
+## Problem 8: Should a Replication resource support several target Repository resources?
 
 Options:
-* Option 1: No, one Replication resource referrs to exactly one target OCMRepository resource.
+* Option 1: No, one Replication resource referrs to exactly one target Repository resource.
 * Option 2: Yes, one Replication resource should be able to control replication to several target repositories, e.g. if there is a need to distribute a Component across several locations.
 
 Proposed solution:
-* Option 1, because it is easier to understand and to keep track of. This also corresponds to how the OCM CLI is currently working. It is easy to set up several sets of resources (Replication + OCMRepository) to enable distribution to several locations. On the other hand, if there will be customer demand, we can always create a "ReplicationSet" later on that can deal with multiple targets.
+* Option 1, because it is easier to understand and to keep track of. This also corresponds to how the OCM CLI is currently working. It is easy to set up several sets of resources (Replication + Repository) to enable distribution to several locations. On the other hand, if there will be customer demand, we can always create a "ReplicationSet" later on that can deal with multiple targets.

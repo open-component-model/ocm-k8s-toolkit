@@ -122,7 +122,7 @@ var _ = Describe("Replication Controller", func() {
 			sourceRepo, sourceSpecData := newTestCFTRepository(testNamespace, sourceRepoResourceName, sourcePath)
 			Expect(k8sClient.Create(ctx, sourceRepo)).To(Succeed())
 
-			By("Simulate ocmrepository controller for source repository")
+			By("Simulate repository controller for source repository")
 			conditions.MarkTrue(sourceRepo, meta.ReadyCondition, "ready", "")
 			Expect(k8sClient.Status().Update(ctx, sourceRepo)).To(Succeed())
 
@@ -142,7 +142,7 @@ var _ = Describe("Replication Controller", func() {
 			targetRepo, targetSpecData := newTestCFTRepository(testNamespace, targetRepoResourceName, targetPath)
 			Expect(k8sClient.Create(ctx, targetRepo)).To(Succeed())
 
-			By("Simulate ocmrepository controller for target repository")
+			By("Simulate repository controller for target repository")
 			targetRepo.Spec.RepositorySpec.Raw = *targetSpecData
 			conditions.MarkTrue(targetRepo, meta.ReadyCondition, "ready", "")
 			Expect(k8sClient.Status().Update(ctx, targetRepo)).To(Succeed())
@@ -207,7 +207,7 @@ var _ = Describe("Replication Controller", func() {
 			sourceRepo, sourceSpecData := newTestCFTRepository(testNamespace, sourceRepoResourceName, sourcePath)
 			Expect(k8sClient.Create(ctx, sourceRepo)).To(Succeed())
 
-			By("Simulate ocmrepository controller for source repository")
+			By("Simulate repository controller for source repository")
 			conditions.MarkTrue(sourceRepo, meta.ReadyCondition, "ready", "")
 			Expect(k8sClient.Status().Update(ctx, sourceRepo)).To(Succeed())
 
@@ -227,7 +227,7 @@ var _ = Describe("Replication Controller", func() {
 			targetRepo, targetSpecData := newTestCFTRepository(testNamespace, targetRepoResourceName, targetPath)
 			Expect(k8sClient.Create(ctx, targetRepo)).To(Succeed())
 
-			By("Simulate ocmrepository controller for target repository")
+			By("Simulate repository controller for target repository")
 			targetRepo.Spec.RepositorySpec.Raw = *targetSpecData
 			conditions.MarkTrue(targetRepo, meta.ReadyCondition, "ready", "")
 			Expect(k8sClient.Status().Update(ctx, targetRepo)).To(Succeed())
@@ -282,7 +282,7 @@ var _ = Describe("Replication Controller", func() {
 			sourceRepo, sourceSpecData := newTestCFTRepository(testNamespace, sourceRepoResourceName, sourcePath)
 			Expect(k8sClient.Create(ctx, sourceRepo)).To(Succeed())
 
-			By("Simulate ocmrepository controller for source repository")
+			By("Simulate repository controller for source repository")
 			conditions.MarkTrue(sourceRepo, meta.ReadyCondition, "ready", "")
 			Expect(k8sClient.Status().Update(ctx, sourceRepo)).To(Succeed())
 
@@ -302,7 +302,7 @@ var _ = Describe("Replication Controller", func() {
 			targetRepo, targetSpecData := newTestCFTRepository(testNamespace, targetRepoResourceName, targetPath)
 			Expect(k8sClient.Create(ctx, targetRepo)).To(Succeed())
 
-			By("Simulate ocmrepository controller for target repository")
+			By("Simulate repository controller for target repository")
 			targetRepo.Spec.RepositorySpec.Raw = *targetSpecData
 			conditions.MarkTrue(targetRepo, meta.ReadyCondition, "ready", "")
 			Expect(k8sClient.Status().Update(ctx, targetRepo)).To(Succeed())
@@ -373,25 +373,25 @@ func newTestComponentVersionInCTFDir(env *ocmbuilder.Builder, path, compName, co
 	})
 }
 
-func newTestCFTRepository(namespace, name, path string) (*v1alpha1.OCMRepository, *[]byte) {
+func newTestCFTRepository(namespace, name, path string) (*v1alpha1.Repository, *[]byte) {
 	spec := mandelsoft.Must(ctf.NewRepositorySpec(ctf.ACC_CREATE, path))
 
-	return newTestOCMRepository(namespace, name, spec)
+	return newTestRepository(namespace, name, spec)
 }
 
-func newTestOCMRepository(namespace, name string, spec *genericocireg.RepositorySpec) (*v1alpha1.OCMRepository, *[]byte) {
+func newTestRepository(namespace, name string, spec *genericocireg.RepositorySpec) (*v1alpha1.Repository, *[]byte) {
 	specData := mandelsoft.Must(spec.MarshalJSON())
 
-	return &v1alpha1.OCMRepository{
+	return &v1alpha1.Repository{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "OCMRepository",
+			Kind:       "Repository",
 			APIVersion: v1alpha1.GroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
 			Name:      name,
 		},
-		Spec: v1alpha1.OCMRepositorySpec{
+		Spec: v1alpha1.RepositorySpec{
 			RepositorySpec: &apiextensionsv1.JSON{
 				Raw: specData,
 			},

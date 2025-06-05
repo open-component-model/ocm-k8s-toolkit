@@ -24,7 +24,7 @@ const (
 	// ComponentFinalizer makes sure that the component is only deleted when it is no longer referenced by any other
 	// resource.
 	ComponentFinalizer = "finalizers.ocm.software/component"
-	// OCMRepositoryFinalizer makes sure that the OCM repository is only deleted when it is no longer referenced by any
+	// RepositoryFinalizer makes sure that the OCM repository is only deleted when it is no longer referenced by any
 	// other component.
-	OCMRepositoryFinalizer = "finalizers.ocm.software/ocmrepository"
+	RepositoryFinalizer = "finalizers.ocm.software/repository"
 )

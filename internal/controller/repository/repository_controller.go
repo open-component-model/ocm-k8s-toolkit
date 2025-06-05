@@ -1,4 +1,4 @@
-package ocmrepository
+package repository
 
 import (
 	"context"
@@ -28,7 +28,7 @@ import (
 
 var repositoryKey = ".spec.repositoryRef"
 
-// OCMRepositoryReconciler reconciles a OCMRepository object.
+// Reconciler reconciles a Repository object.
 type Reconciler struct {
 	*ocm.BaseReconciler
 }
@@ -49,7 +49,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&v1alpha1.OCMRepository{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&v1alpha1.Repository{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(
 			// Ensure to reconcile the OCM repository when an component changes that references this OCM repository.
 			// We want to reconcile because the OCM repository-finalizer makes sure that the OCM repository is only
@@ -63,7 +63,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 					return []reconcile.Request{}
 				}
 
-				repo := &v1alpha1.OCMRepository{}
+				repo := &v1alpha1.Repository{}
 				if err := r.Get(ctx, client.ObjectKey{
 					Namespace: component.GetNamespace(),
 					Name:      component.Spec.RepositoryRef.Name,
@@ -86,15 +86,15 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 		Complete(r)
 }
 
-// +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmrepositories,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmrepositories/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=delivery.ocm.software,resources=ocmrepositories/finalizers,verbs=update
+// +kubebuilder:rbac:groups=delivery.ocm.software,resources=repositories,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=delivery.ocm.software,resources=repositories/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=delivery.ocm.software,resources=repositories/finalizers,verbs=update
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("starting reconciliation")
 
-	ocmRepo := &v1alpha1.OCMRepository{}
+	ocmRepo := &v1alpha1.Repository{}
 	if err := r.Get(ctx, req.NamespacedName, ocmRepo); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -105,7 +105,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}(ctx)
 
 	if !ocmRepo.GetDeletionTimestamp().IsZero() {
-		if !controllerutil.ContainsFinalizer(ocmRepo, v1alpha1.OCMRepositoryFinalizer) {
+		if !controllerutil.ContainsFinalizer(ocmRepo, v1alpha1.RepositoryFinalizer) {
 			return ctrl.Result{}, nil
 		}
 
@@ -119,7 +119,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	// AddFinalizer if not present already.
-	if added := controllerutil.AddFinalizer(ocmRepo, v1alpha1.OCMRepositoryFinalizer); added {
+	if added := controllerutil.AddFinalizer(ocmRepo, v1alpha1.RepositoryFinalizer); added {
 		err := r.Update(ctx, ocmRepo)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
@@ -129,7 +129,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	if ocmRepo.Spec.Suspend {
-		logger.Info("OCMRepository is suspended, skipping reconciliation")
+		logger.Info("Repository is suspended, skipping reconciliation")
 
 		return ctrl.Result{}, nil
 	}
@@ -159,7 +159,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	err = r.validate(octx, session, ocmRepo)
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.GetOCMRepositoryFailedReason, err.Error())
+		status.MarkNotReady(r.EventRecorder, ocmRepo, v1alpha1.GetRepositoryFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to validate ocm repository: %w", err)
 	}
@@ -171,7 +171,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	return ctrl.Result{RequeueAfter: ocmRepo.GetRequeueAfter()}, nil
 }
 
-func (r *Reconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRepo *v1alpha1.OCMRepository) error {
+func (r *Reconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRepo *v1alpha1.Repository) error {
 	spec, err := octx.RepositorySpecForConfig(ocmRepo.Spec.RepositorySpec.Raw, nil)
 	if err != nil {
 		return fmt.Errorf("cannot create RepositorySpec from raw data: %w", err)
@@ -189,13 +189,13 @@ func (r *Reconciler) validate(octx ocmctx.Context, session ocmctx.Session, ocmRe
 	return nil
 }
 
-func (r *Reconciler) fillRepoStatusFromSpec(ocmRepo *v1alpha1.OCMRepository,
+func (r *Reconciler) fillRepoStatusFromSpec(ocmRepo *v1alpha1.Repository,
 	configs []v1alpha1.OCMConfiguration,
 ) {
 	ocmRepo.Status.EffectiveOCMConfig = configs
 }
 
-func (r *Reconciler) deleteRepository(ctx context.Context, obj *v1alpha1.OCMRepository) error {
+func (r *Reconciler) deleteRepository(ctx context.Context, obj *v1alpha1.Repository) error {
 	componentList := &v1alpha1.ComponentList{}
 	if err := r.List(ctx, componentList, &client.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(repositoryKey, client.ObjectKeyFromObject(obj).Name),
@@ -220,7 +220,7 @@ func (r *Reconciler) deleteRepository(ctx context.Context, obj *v1alpha1.OCMRepo
 		return errors.New(msg)
 	}
 
-	if updated := controllerutil.RemoveFinalizer(obj, v1alpha1.OCMRepositoryFinalizer); updated {
+	if updated := controllerutil.RemoveFinalizer(obj, v1alpha1.RepositoryFinalizer); updated {
 		if err := r.Update(ctx, obj); err != nil {
 			status.MarkNotReady(r.EventRecorder, obj, v1alpha1.DeletionFailedReason, err.Error())
 

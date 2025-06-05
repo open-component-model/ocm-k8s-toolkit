@@ -40,7 +40,7 @@ var resourceIndex = ".spec.componentRef.Name"
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	// Create index for ocmrepository reference name from components to make sure to reconcile, when the base ocm-
+	// Create index for repository reference name from components to make sure to reconcile, when the base ocm-
 	// repository changes.
 	const fieldName = "spec.repositoryRef.name"
 	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Component{}, fieldName, func(obj client.Object) []string {
@@ -70,20 +70,20 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Component{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(
-			&v1alpha1.OCMRepository{},
+			&v1alpha1.Repository{},
 			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
-				ocmRepository, ok := obj.(*v1alpha1.OCMRepository)
+				repository, ok := obj.(*v1alpha1.Repository)
 				if !ok {
 					return []reconcile.Request{}
 				}
 
-				// Get list of components that reference the ocmrepository
+				// Get list of components that reference the repository
 				list := &v1alpha1.ComponentList{}
-				if err := r.List(ctx, list, client.MatchingFields{fieldName: ocmRepository.GetName()}); err != nil {
+				if err := r.List(ctx, list, client.MatchingFields{fieldName: repository.GetName()}); err != nil {
 					return []reconcile.Request{}
 				}
 
-				// For every component that references the ocmrepository create a reconciliation request for that
+				// For every component that references the repository create a reconciliation request for that
 				// component
 				requests := make([]reconcile.Request, 0, len(list.Items))
 				for _, component := range list.Items {
@@ -220,15 +220,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	logger.Info("prepare reconciling component")
-	repo, err := util.GetReadyObject[v1alpha1.OCMRepository, *v1alpha1.OCMRepository](ctx, r.Client, client.ObjectKey{
+	repo, err := util.GetReadyObject[v1alpha1.Repository, *v1alpha1.Repository](ctx, r.Client, client.ObjectKey{
 		Namespace: component.GetNamespace(),
 		Name:      component.Spec.RepositoryRef.Name,
 	})
 	if err != nil {
-		// Note: Marking the component as not ready, when the ocmrepository is not ready is not completely valid. As the
-		// component was potentially ready, then the ocmrepository changed, but that does not necessarily mean that the
+		// Note: Marking the component as not ready, when the repository is not ready is not completely valid. As the
+		// component was potentially ready, then the repository changed, but that does not necessarily mean that the
 		// component is not ready as well.
-		// However, as the component is hard-dependant on the ocmrepository, we decided to mark it not ready as well.
+		// However, as the component is hard-dependant on the repository, we decided to mark it not ready as well.
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetResourceFailedReason, "OCM Repository is not ready")
 
 		if errors.Is(err, util.NotReadyError{}) || errors.Is(err, util.DeletionError{}) {
@@ -238,7 +238,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 			return ctrl.Result{}, nil
 		}
 
-		return ctrl.Result{}, fmt.Errorf("failed to get ready ocmrepository: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get ready repository: %w", err)
 	}
 
 	logger.Info("reconciling component")

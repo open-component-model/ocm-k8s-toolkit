@@ -57,7 +57,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Replication{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&v1alpha1.Component{}, handler.EnqueueRequestsFromMapFunc(r.replicationMapFunc)).
-		Watches(&v1alpha1.OCMRepository{}, handler.EnqueueRequestsFromMapFunc(r.replicationMapFunc)).
+		Watches(&v1alpha1.Repository{}, handler.EnqueueRequestsFromMapFunc(r.replicationMapFunc)).
 		Complete(r)
 }
 
@@ -120,7 +120,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		repoNamespace = replication.GetNamespace()
 	}
 
-	repo, err := util.GetReadyObject[v1alpha1.OCMRepository, *v1alpha1.OCMRepository](ctx, r.GetClient(), client.ObjectKey{
+	repo, err := util.GetReadyObject[v1alpha1.Repository, *v1alpha1.Repository](ctx, r.GetClient(), client.ObjectKey{
 		Namespace: repoNamespace,
 		Name:      replication.Spec.TargetRepositoryRef.Name,
 	})
@@ -171,7 +171,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 }
 
 func (r *Reconciler) transfer(ctx context.Context, configs []v1alpha1.OCMConfiguration,
-	replication *v1alpha1.Replication, comp *v1alpha1.Component, targetOCMRepo *v1alpha1.OCMRepository,
+	replication *v1alpha1.Replication, comp *v1alpha1.Component, targetOCMRepo *v1alpha1.Repository,
 ) (historyRecord v1alpha1.TransferStatus, retErr error) {
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
 	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
@@ -303,7 +303,7 @@ func (r *Reconciler) replicationMapFunc(ctx context.Context, obj client.Object) 
 	component, ok := obj.(*v1alpha1.Component)
 	if ok {
 		fields = client.MatchingFields{componentIndexField: component.GetName()}
-	} else if repo, ok := obj.(*v1alpha1.OCMRepository); ok {
+	} else if repo, ok := obj.(*v1alpha1.Repository); ok {
 		fields = client.MatchingFields{targetRepoIndexField: repo.GetName()}
 	} else {
 		return []reconcile.Request{}

@@ -13,8 +13,8 @@ const (
 	// ReplicationFailedReason is used when the referenced component is not Ready yet.
 	ReplicationFailedReason = "ReplicationFailed"
 
-	// GetOCMRepositoryFailedReason is used when the OCM repository cannot be fetched.
-	GetOCMRepositoryFailedReason = "GetOCMRepositoryFailed"
+	// GetRepositoryFailedReason is used when the OCM repository cannot be fetched.
+	GetRepositoryFailedReason = "GetRepositoryFailed"
 
 	// GetComponentVersionFailedReason is used when the component cannot be fetched.
 	GetComponentVersionFailedReason = "GetComponentVersionFailed"

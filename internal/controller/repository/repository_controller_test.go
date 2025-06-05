@@ -1,4 +1,4 @@
-package ocmrepository
+package repository
 
 import (
 	"context"
@@ -28,16 +28,16 @@ import (
 )
 
 const (
-	TestNamespaceOCMRepo = "test-namespace-ocmrepository"
-	TestOCMRepositoryObj = "test-ocmrepository"
+	TestNamespaceOCMRepo = "test-namespace-repository"
+	TestRepositoryObj    = "test-repository"
 )
 
-var _ = Describe("OCMRepository Controller", func() {
+var _ = Describe("Repository Controller", func() {
 	var (
 		ctx       context.Context
 		cancel    context.CancelFunc
 		namespace *corev1.Namespace
-		ocmRepo   *v1alpha1.OCMRepository
+		ocmRepo   *v1alpha1.Repository
 		env       *Builder
 	)
 
@@ -71,13 +71,13 @@ var _ = Describe("OCMRepository Controller", func() {
 	Describe("Reconciling with different RepositorySpec specifications", func() {
 
 		Context("When correct RepositorySpec is provided", func() {
-			It("OCMRepository can be reconciled", func() {
+			It("Repository can be reconciled", func() {
 
 				By("creating a OCI repository with existing host")
 				spec := ocireg.NewRepositorySpec("ghcr.io/open-component-model")
 				specdata := Must(spec.MarshalJSON())
-				repoName := TestOCMRepositoryObj + "-passing"
-				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, repoName, &specdata)
+				repoName := TestRepositoryObj + "-passing"
+				ocmRepo = newTestRepository(TestNamespaceOCMRepo, repoName, &specdata)
 				Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
 
 				By("check that repository status has been updated successfully")
@@ -95,8 +95,8 @@ var _ = Describe("OCMRepository Controller", func() {
 				By("creating a OCI repository with non-existing host")
 				spec := ocireg.NewRepositorySpec("https://doesnotexist")
 				specdata := Must(spec.MarshalJSON())
-				repoName := TestOCMRepositoryObj + "-no-host"
-				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, repoName, &specdata)
+				repoName := TestRepositoryObj + "-no-host"
+				ocmRepo = newTestRepository(TestNamespaceOCMRepo, repoName, &specdata)
 				Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
 
 				By("check that repository status has NOT been updated successfully")
@@ -113,8 +113,8 @@ var _ = Describe("OCMRepository Controller", func() {
 
 				By("creating a OCI repository from invalid json")
 				specdata := []byte("not a json")
-				repoName := TestOCMRepositoryObj + "-invalid-json"
-				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, repoName, &specdata)
+				repoName := TestRepositoryObj + "-invalid-json"
+				ocmRepo = newTestRepository(TestNamespaceOCMRepo, repoName, &specdata)
 				Expect(k8sClient.Create(ctx, ocmRepo)).NotTo(Succeed())
 			})
 		})
@@ -124,8 +124,8 @@ var _ = Describe("OCMRepository Controller", func() {
 
 				By("creating a OCI repository from a valid json but invalid RepositorySpec")
 				specdata := []byte(`{"json":"not a valid RepositorySpec"}`)
-				repoName := TestOCMRepositoryObj + "-invalid-spec"
-				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, repoName, &specdata)
+				repoName := TestRepositoryObj + "-invalid-spec"
+				ocmRepo = newTestRepository(TestNamespaceOCMRepo, repoName, &specdata)
 				Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
 
 				By("check that repository status has NOT been updated successfully")
@@ -138,10 +138,10 @@ var _ = Describe("OCMRepository Controller", func() {
 		})
 	})
 
-	Describe("Reconciling a valid OCMRepository", func() {
+	Describe("Reconciling a valid Repository", func() {
 
 		Context("When ConfigRefs properly set", func() {
-			It("OCMRepository can be reconciled", func() {
+			It("Repository can be reconciled", func() {
 
 				By("creating secret and config objects")
 				configs, secrets := createTestConfigsAndSecrets(ctx)
@@ -149,8 +149,8 @@ var _ = Describe("OCMRepository Controller", func() {
 				By("creating a OCI repository")
 				spec := ocireg.NewRepositorySpec("ghcr.io/open-component-model")
 				specdata := Must(spec.MarshalJSON())
-				repoName := TestOCMRepositoryObj + "-all-fields"
-				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, repoName, &specdata)
+				repoName := TestRepositoryObj + "-all-fields"
+				ocmRepo = newTestRepository(TestNamespaceOCMRepo, repoName, &specdata)
 
 				By("adding config and secret refs")
 				ocmRepo.Spec.OCMConfig = append(ocmRepo.Spec.OCMConfig, []v1alpha1.OCMConfiguration{
@@ -202,7 +202,7 @@ var _ = Describe("OCMRepository Controller", func() {
 					},
 				}...)
 
-				By("creating OCMRepository object")
+				By("creating Repository object")
 				Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
 
 				By("check that the ConfigRefs are in the status")
@@ -288,8 +288,8 @@ var _ = Describe("OCMRepository Controller", func() {
 				})
 				spec := Must(ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfpath))
 				specdata := Must(spec.MarshalJSON())
-				ocmRepoName := TestOCMRepositoryObj + "-deleted"
-				ocmRepo = newTestOCMRepository(TestNamespaceOCMRepo, ocmRepoName, &specdata)
+				ocmRepoName := TestRepositoryObj + "-deleted"
+				ocmRepo = newTestRepository(TestNamespaceOCMRepo, ocmRepoName, &specdata)
 
 				Expect(k8sClient.Create(ctx, ocmRepo)).To(Succeed())
 
@@ -341,13 +341,13 @@ var _ = Describe("OCMRepository Controller", func() {
 	})
 })
 
-func newTestOCMRepository(ns, name string, specdata *[]byte) *v1alpha1.OCMRepository {
-	return &v1alpha1.OCMRepository{
+func newTestRepository(ns, name string, specdata *[]byte) *v1alpha1.Repository {
+	return &v1alpha1.Repository{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: ns,
 			Name:      name,
 		},
-		Spec: v1alpha1.OCMRepositorySpec{
+		Spec: v1alpha1.RepositorySpec{
 			RepositorySpec: &apiextensionsv1.JSON{
 				Raw: *specdata,
 			},

@@ -20,7 +20,7 @@ const KindComponent = "Component"
 
 // ComponentSpec defines the desired state of Component.
 type ComponentSpec struct {
-	// RepositoryRef is a reference to a OCMRepository.
+	// RepositoryRef is a reference to a Repository.
 	// +required
 	RepositoryRef corev1.LocalObjectReference `json:"repositoryRef"`
 
