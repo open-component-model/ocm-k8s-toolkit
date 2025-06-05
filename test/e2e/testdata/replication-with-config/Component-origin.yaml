@@ -10,7 +10,7 @@ spec:
     name: origin-repository
   ocmConfig:
     - apiVersion: delivery.ocm.software/v1alpha1
-      kind: OCMRepository
+      kind: Repository
       name: origin-repository
       namespace: e2e-replication-controller-test
       policy: Propagate

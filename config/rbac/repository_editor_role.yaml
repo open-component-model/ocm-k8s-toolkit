@@ -1,23 +1,27 @@
-# permissions for end users to view ocmrepositories.
+# permissions for end users to edit repositories.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: ocm-k8s-toolkit
     app.kubernetes.io/managed-by: kustomize
-  name: ocmrepository-viewer-role
+  name: repository-editor-role
 rules:
 - apiGroups:
   - delivery.ocm.software
   resources:
-  - ocmrepositories
+  - repositories
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - delivery.ocm.software
   resources:
-  - ocmrepositories/status
+  - repositories/status
   verbs:
   - get

@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: ocmrepositories.delivery.ocm.software
+  name: repositories.delivery.ocm.software
 spec:
   group: delivery.ocm.software
   names:
-    kind: OCMRepository
-    listKind: OCMRepositoryList
-    plural: ocmrepositories
-    singular: ocmrepository
+    kind: Repository
+    listKind: RepositoryList
+    plural: repositories
+    singular: repository
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: OCMRepository is the Schema for the ocmrepositories API.
+        description: Repository is the Schema for the repositories API.
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: OCMRepositorySpec defines the desired state of OCMRepository.
+            description: RepositorySpec defines the desired state of Repository.
             properties:
               interval:
                 description: |-
@@ -90,8 +90,8 @@ spec:
                     rule: ((!has(self.apiVersion) || self.apiVersion == "" || self.apiVersion
                       == "v1") && (self.kind == "Secret" || self.kind == "ConfigMap"))
                       || (self.apiVersion == "delivery.ocm.software/v1alpha1" && (self.kind
-                      == "OCMRepository" || self.kind == "Component" || self.kind
-                      == "Resource" || self.kind == "Replication"))
+                      == "Repository" || self.kind == "Component" || self.kind ==
+                      "Resource" || self.kind == "Replication"))
                 type: array
               repositorySpec:
                 description: |-
@@ -103,17 +103,17 @@ spec:
               suspend:
                 description: |-
                   Suspend tells the controller to suspend the reconciliation of this
-                  OCMRepository.
+                  Repository.
                 type: boolean
             required:
             - interval
             - repositorySpec
             type: object
           status:
-            description: OCMRepositoryStatus defines the observed state of OCMRepository.
+            description: RepositoryStatus defines the observed state of Repository.
             properties:
               conditions:
-                description: Conditions holds the conditions for the OCMRepository.
+                description: Conditions holds the conditions for the Repository.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -172,7 +172,7 @@ spec:
               effectiveOCMConfig:
                 description: |-
                   EffectiveOCMConfig specifies the entirety of config maps and secrets
-                  whose configuration data was applied to the OCMRepository reconciliation,
+                  whose configuration data was applied to the Repository reconciliation,
                   in the order the configuration data was applied.
                 items:
                   description: |-
@@ -216,12 +216,12 @@ spec:
                     rule: ((!has(self.apiVersion) || self.apiVersion == "" || self.apiVersion
                       == "v1") && (self.kind == "Secret" || self.kind == "ConfigMap"))
                       || (self.apiVersion == "delivery.ocm.software/v1alpha1" && (self.kind
-                      == "OCMRepository" || self.kind == "Component" || self.kind
-                      == "Resource" || self.kind == "Replication"))
+                      == "Repository" || self.kind == "Component" || self.kind ==
+                      "Resource" || self.kind == "Replication"))
                 type: array
               observedGeneration:
                 description: |-
-                  ObservedGeneration is the last observed generation of the OCMRepository
+                  ObservedGeneration is the last observed generation of the Repository
                   object.
                 format: int64
                 type: integer

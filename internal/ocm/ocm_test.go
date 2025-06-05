@@ -396,8 +396,8 @@ consumers:
 			specdata, err := ocireg.NewRepositorySpec("ocm.software/mock-repo-spec").MarshalJSON()
 			Expect(err).ToNot(HaveOccurred())
 
-			repo := v1alpha1.OCMRepository{
-				Spec: v1alpha1.OCMRepositorySpec{
+			repo := v1alpha1.Repository{
+				Spec: v1alpha1.RepositorySpec{
 					RepositorySpec: &apiextensionsv1.JSON{Raw: specdata},
 				},
 			}
@@ -442,8 +442,8 @@ consumers:
 					Policy: v1alpha1.ConfigurationPolicyPropagate,
 				},
 			}
-			repo := v1alpha1.OCMRepository{
-				Spec: v1alpha1.OCMRepositorySpec{
+			repo := v1alpha1.Repository{
+				Spec: v1alpha1.RepositorySpec{
 					RepositorySpec: &apiextensionsv1.JSON{Raw: specdata},
 					OCMConfig:      ocmConfig,
 				},
@@ -457,8 +457,8 @@ consumers:
 		})
 
 		It("api version defaulting for configmaps", func() {
-			repo := v1alpha1.OCMRepository{
-				Spec: v1alpha1.OCMRepositorySpec{
+			repo := v1alpha1.Repository{
+				Spec: v1alpha1.RepositorySpec{
 					OCMConfig: []v1alpha1.OCMConfiguration{
 						{
 							NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
@@ -477,8 +477,8 @@ consumers:
 		})
 
 		It("api version defaulting for secrets", func() {
-			repo := v1alpha1.OCMRepository{
-				Spec: v1alpha1.OCMRepositorySpec{
+			repo := v1alpha1.Repository{
+				Spec: v1alpha1.RepositorySpec{
 					OCMConfig: []v1alpha1.OCMConfiguration{
 						{
 							NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
@@ -497,12 +497,12 @@ consumers:
 		})
 
 		It("empty api version for ocm controller kinds", func() {
-			repo := v1alpha1.OCMRepository{
-				Spec: v1alpha1.OCMRepositorySpec{
+			repo := v1alpha1.Repository{
+				Spec: v1alpha1.RepositorySpec{
 					OCMConfig: []v1alpha1.OCMConfiguration{
 						{
 							NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
-								Kind:      v1alpha1.KindOCMRepository,
+								Kind:      v1alpha1.KindRepository,
 								Namespace: Namespace,
 								Name:      Secret,
 							},
@@ -517,8 +517,8 @@ consumers:
 		})
 
 		It("unsupported api version", func() {
-			repo := v1alpha1.OCMRepository{
-				Spec: v1alpha1.OCMRepositorySpec{
+			repo := v1alpha1.Repository{
+				Spec: v1alpha1.RepositorySpec{
 					OCMConfig: []v1alpha1.OCMConfiguration{
 						{
 							NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
@@ -562,19 +562,19 @@ consumers:
 					Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
 				},
 			}
-			repo := v1alpha1.OCMRepository{
+			repo := v1alpha1.Repository{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: v1alpha1.GroupVersion.String(),
-					Kind:       v1alpha1.KindOCMRepository,
+					Kind:       v1alpha1.KindRepository,
 				},
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: Namespace,
 					Name:      Repository,
 				},
-				Spec: v1alpha1.OCMRepositorySpec{
+				Spec: v1alpha1.RepositorySpec{
 					OCMConfig: ocmConfig,
 				},
-				Status: v1alpha1.OCMRepositoryStatus{
+				Status: v1alpha1.RepositoryStatus{
 					EffectiveOCMConfig: ocmConfig,
 				},
 			}
@@ -629,19 +629,19 @@ consumers:
 					Policy: v1alpha1.ConfigurationPolicyDoNotPropagate,
 				},
 			}
-			repo := v1alpha1.OCMRepository{
+			repo := v1alpha1.Repository{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: v1alpha1.GroupVersion.String(),
-					Kind:       v1alpha1.KindOCMRepository,
+					Kind:       v1alpha1.KindRepository,
 				},
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: Namespace,
 					Name:      Repository,
 				},
-				Spec: v1alpha1.OCMRepositorySpec{
+				Spec: v1alpha1.RepositorySpec{
 					OCMConfig: ocmConfig,
 				},
-				Status: v1alpha1.OCMRepositoryStatus{
+				Status: v1alpha1.RepositoryStatus{
 					EffectiveOCMConfig: ocmConfig,
 				},
 			}
@@ -696,19 +696,19 @@ consumers:
 					Policy: v1alpha1.ConfigurationPolicyPropagate,
 				},
 			}
-			repo := v1alpha1.OCMRepository{
+			repo := v1alpha1.Repository{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: v1alpha1.GroupVersion.String(),
-					Kind:       v1alpha1.KindOCMRepository,
+					Kind:       v1alpha1.KindRepository,
 				},
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: Namespace,
 					Name:      Repository,
 				},
-				Spec: v1alpha1.OCMRepositorySpec{
+				Spec: v1alpha1.RepositorySpec{
 					OCMConfig: ocmConfig,
 				},
-				Status: v1alpha1.OCMRepositoryStatus{
+				Status: v1alpha1.RepositoryStatus{
 					EffectiveOCMConfig: ocmConfig,
 				},
 			}

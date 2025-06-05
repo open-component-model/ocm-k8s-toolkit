@@ -103,8 +103,8 @@ spec:
                     rule: ((!has(self.apiVersion) || self.apiVersion == "" || self.apiVersion
                       == "v1") && (self.kind == "Secret" || self.kind == "ConfigMap"))
                       || (self.apiVersion == "delivery.ocm.software/v1alpha1" && (self.kind
-                      == "OCMRepository" || self.kind == "Component" || self.kind
-                      == "Resource" || self.kind == "Replication"))
+                      == "Repository" || self.kind == "Component" || self.kind ==
+                      "Resource" || self.kind == "Replication"))
                 type: array
               suspend:
                 description: |-
@@ -112,8 +112,8 @@ spec:
                   Replication.
                 type: boolean
               targetRepositoryRef:
-                description: targetRepositoryRef is a reference to an OCMRepository
-                  the component to be replicated to.
+                description: targetRepositoryRef is a reference to an Repository the
+                  component to be replicated to.
                 properties:
                   name:
                     type: string
@@ -269,8 +269,8 @@ spec:
                     rule: ((!has(self.apiVersion) || self.apiVersion == "" || self.apiVersion
                       == "v1") && (self.kind == "Secret" || self.kind == "ConfigMap"))
                       || (self.apiVersion == "delivery.ocm.software/v1alpha1" && (self.kind
-                      == "OCMRepository" || self.kind == "Component" || self.kind
-                      == "Resource" || self.kind == "Replication"))
+                      == "Repository" || self.kind == "Component" || self.kind ==
+                      "Resource" || self.kind == "Replication"))
                 type: array
               history:
                 description: History holds the history of individual 'ocm transfer'

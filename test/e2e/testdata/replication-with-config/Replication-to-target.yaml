@@ -11,7 +11,7 @@ spec:
     - kind: ConfigMap
       name: transfer-options
     - apiVersion: delivery.ocm.software/v1alpha1
-      kind: OCMRepository
+      kind: Repository
       name: destination-repository
       namespace: e2e-replication-controller-test
     - apiVersion: delivery.ocm.software/v1alpha1

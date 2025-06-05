@@ -187,8 +187,8 @@ func GetEffectiveConfig(ctx context.Context, client ctrl.Client, obj v1alpha1.Co
 			}
 
 			switch config.Kind {
-			case v1alpha1.KindOCMRepository:
-				resource = &v1alpha1.OCMRepository{}
+			case v1alpha1.KindRepository:
+				resource = &v1alpha1.Repository{}
 			case v1alpha1.KindComponent:
 				resource = &v1alpha1.Component{}
 			case v1alpha1.KindResource:

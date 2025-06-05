@@ -8,10 +8,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const KindOCMRepository = "OCMRepository"
+const KindRepository = "Repository"
 
-// OCMRepositorySpec defines the desired state of OCMRepository.
-type OCMRepositorySpec struct {
+// RepositorySpec defines the desired state of Repository.
+type RepositorySpec struct {
 	// RepositorySpec is the config of an ocm repository containing component
 	// versions. This config has to be a valid ocm repository implementation
 	// specification
@@ -30,55 +30,55 @@ type OCMRepositorySpec struct {
 	Interval metav1.Duration `json:"interval"`
 
 	// Suspend tells the controller to suspend the reconciliation of this
-	// OCMRepository.
+	// Repository.
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
 }
 
-// OCMRepositoryStatus defines the observed state of OCMRepository.
-type OCMRepositoryStatus struct {
-	// ObservedGeneration is the last observed generation of the OCMRepository
+// RepositoryStatus defines the observed state of Repository.
+type RepositoryStatus struct {
+	// ObservedGeneration is the last observed generation of the Repository
 	// object.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
-	// Conditions holds the conditions for the OCMRepository.
+	// Conditions holds the conditions for the Repository.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// EffectiveOCMConfig specifies the entirety of config maps and secrets
-	// whose configuration data was applied to the OCMRepository reconciliation,
+	// whose configuration data was applied to the Repository reconciliation,
 	// in the order the configuration data was applied.
 	// +optional
 	EffectiveOCMConfig []OCMConfiguration `json:"effectiveOCMConfig,omitempty"`
 }
 
-// GetConditions returns the conditions of the OCMRepository.
-func (in *OCMRepository) GetConditions() []metav1.Condition {
+// GetConditions returns the conditions of the Repository.
+func (in *Repository) GetConditions() []metav1.Condition {
 	return in.Status.Conditions
 }
 
-// SetConditions sets the conditions of the OCMRepository.
-func (in *OCMRepository) SetConditions(conditions []metav1.Condition) {
+// SetConditions sets the conditions of the Repository.
+func (in *Repository) SetConditions(conditions []metav1.Condition) {
 	in.Status.Conditions = conditions
 }
 
 // GetRequeueAfter returns the duration after which the ComponentVersion must be
 // reconciled again.
-func (in OCMRepository) GetRequeueAfter() time.Duration {
+func (in Repository) GetRequeueAfter() time.Duration {
 	return in.Spec.Interval.Duration
 }
 
-func (in *OCMRepository) GetSpecifiedOCMConfig() []OCMConfiguration {
+func (in *Repository) GetSpecifiedOCMConfig() []OCMConfiguration {
 	return in.Spec.OCMConfig
 }
 
-func (in *OCMRepository) GetEffectiveOCMConfig() []OCMConfiguration {
+func (in *Repository) GetEffectiveOCMConfig() []OCMConfiguration {
 	return in.Status.EffectiveOCMConfig
 }
 
 // GetVID unique identifier of the object.
-func (in *OCMRepository) GetVID() map[string]string {
+func (in *Repository) GetVID() map[string]string {
 	vid := fmt.Sprintf("%s:%s", in.Namespace, in.Name)
 	metadata := make(map[string]string)
 	metadata[GroupVersion.Group+"/repository"] = vid
@@ -86,31 +86,31 @@ func (in *OCMRepository) GetVID() map[string]string {
 	return metadata
 }
 
-func (in *OCMRepository) SetObservedGeneration(v int64) {
+func (in *Repository) SetObservedGeneration(v int64) {
 	in.Status.ObservedGeneration = v
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// OCMRepository is the Schema for the ocmrepositories API.
-type OCMRepository struct {
+// Repository is the Schema for the repositories API.
+type Repository struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   OCMRepositorySpec   `json:"spec"`
-	Status OCMRepositoryStatus `json:"status,omitempty"`
+	Spec   RepositorySpec   `json:"spec"`
+	Status RepositoryStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// OCMRepositoryList contains a list of OCMRepository.
-type OCMRepositoryList struct {
+// RepositoryList contains a list of Repository.
+type RepositoryList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []OCMRepository `json:"items"`
+	Items           []Repository `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&OCMRepository{}, &OCMRepositoryList{})
+	SchemeBuilder.Register(&Repository{}, &RepositoryList{})
 }

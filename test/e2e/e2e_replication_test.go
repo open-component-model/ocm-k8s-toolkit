@@ -46,9 +46,9 @@ var _ = Describe("Replication Controller", func() {
 		It("should be possible to transfer the test component from its external location to configured OCI registry", func() {
 			By("Apply manifests to the cluster")
 			manifestDir := filepath.Join(os.Getenv("PROJECT_DIR"), "test/e2e/testdata/replication-no-config")
-			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "OCMRepository-source.yaml"), "condition=Ready", timeout)).To(Succeed())
+			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "Repository-source.yaml"), "condition=Ready", timeout)).To(Succeed())
 			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "Component.yaml"), "condition=Ready", timeout)).To(Succeed())
-			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "OCMRepository-target.yaml"), "condition=Ready", timeout)).To(Succeed())
+			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "Repository-target.yaml"), "condition=Ready", timeout)).To(Succeed())
 			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "Replication.yaml"), "condition=Ready", timeout)).To(Succeed())
 
 			By("Double-check that copied component version is present in the target repository")
@@ -84,9 +84,9 @@ var _ = Describe("Replication Controller", func() {
 			manifestDir := filepath.Join(os.Getenv("PROJECT_DIR"), "test/e2e/testdata/replication-with-config")
 			Expect(utils.DeployResource(filepath.Join(manifestDir, "ConfigMap-transfer-opt.yaml"))).To(Succeed())
 			Expect(utils.DeployResource(filepath.Join(manifestDir, "ConfigMap-creds1.yaml"))).To(Succeed())
-			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "OCMRepository-source.yaml"), "condition=Ready", timeout)).To(Succeed())
+			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "Repository-source.yaml"), "condition=Ready", timeout)).To(Succeed())
 			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "Component-origin.yaml"), "condition=Ready", timeout)).To(Succeed())
-			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "OCMRepository-intermediate.yaml"), "condition=Ready", timeout)).To(Succeed())
+			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "Repository-intermediate.yaml"), "condition=Ready", timeout)).To(Succeed())
 			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "Replication-to-intermediate.yaml"), "condition=Ready", timeout)).To(Succeed())
 
 			By("Double-check that copied component version is present in the intermediate registry")
@@ -100,7 +100,7 @@ var _ = Describe("Replication Controller", func() {
 			// The intermediate repo is now the new source. Btw., the resource already exists in the cluster.
 			Expect(utils.DeployResource(filepath.Join(manifestDir, "ConfigMap-creds2.yaml"))).To(Succeed())
 			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "Component-intermediate.yaml"), "condition=Ready", timeout)).To(Succeed())
-			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "OCMRepository-target.yaml"), "condition=Ready", timeout)).To(Succeed())
+			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "Repository-target.yaml"), "condition=Ready", timeout)).To(Succeed())
 			Expect(utils.DeployAndWaitForResource(filepath.Join(manifestDir, "Replication-to-target.yaml"), "condition=Ready", timeout)).To(Succeed())
 
 			By("Double-check that copied component version is present in the target registry")

@@ -47,7 +47,7 @@ var _ = Describe("Component Controller", func() {
 	})
 
 	Context("component controller", func() {
-		var repositoryObj *v1alpha1.OCMRepository
+		var repositoryObj *v1alpha1.Repository
 		var namespace *corev1.Namespace
 		var componentName, repositoryName string
 
@@ -98,7 +98,7 @@ var _ = Describe("Component Controller", func() {
 			specData := Must(spec.MarshalJSON())
 
 			By("mocking an ocm repository")
-			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+			repositoryObj = test.SetupRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
 
 			By("creating a component")
 			component := &v1alpha1.Component{
@@ -139,7 +139,7 @@ var _ = Describe("Component Controller", func() {
 			specData := Must(spec.MarshalJSON())
 
 			By("mocking an ocm repository")
-			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+			repositoryObj = test.SetupRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
 
 			By("marking the repository as not ready")
 			conditions.MarkFalse(repositoryObj, "Ready", "notReady", "reason")
@@ -182,7 +182,7 @@ var _ = Describe("Component Controller", func() {
 			specData := Must(spec.MarshalJSON())
 
 			By("mocking an ocm repository")
-			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+			repositoryObj = test.SetupRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
 
 			By("marking the repository as not ready")
 			conditions.MarkFalse(repositoryObj, "Ready", "notReady", "reason")
@@ -234,7 +234,7 @@ var _ = Describe("Component Controller", func() {
 			specData := Must(spec.MarshalJSON())
 
 			By("mocking an ocm repository")
-			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+			repositoryObj = test.SetupRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
 
 			By("creating a component")
 			component := &v1alpha1.Component{
@@ -294,7 +294,7 @@ var _ = Describe("Component Controller", func() {
 			specData := Must(spec.MarshalJSON())
 
 			By("mocking an ocm repository")
-			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+			repositoryObj = test.SetupRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
 
 			By("creating a component")
 			component := &v1alpha1.Component{
@@ -349,7 +349,7 @@ var _ = Describe("Component Controller", func() {
 			specData := Must(spec.MarshalJSON())
 
 			By("mocking an ocm repository")
-			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+			repositoryObj = test.SetupRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
 
 			By("creating a component")
 			component := &v1alpha1.Component{
@@ -411,7 +411,7 @@ var _ = Describe("Component Controller", func() {
 			specData := Must(spec.MarshalJSON())
 
 			By("mocking an ocm repository")
-			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+			repositoryObj = test.SetupRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
 
 			By("creating a component")
 			component := &v1alpha1.Component{
@@ -465,7 +465,7 @@ var _ = Describe("Component Controller", func() {
 			specData := Must(spec.MarshalJSON())
 
 			By("mocking an ocm repository")
-			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+			repositoryObj = test.SetupRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
 
 			By("creating a component in CTF repository")
 			env.OCMCommonTransport(ctfpath, accessio.FormatDirectory, func() {
@@ -513,7 +513,7 @@ var _ = Describe("Component Controller", func() {
 			specData := Must(spec.MarshalJSON())
 
 			By("mocking an ocm repository")
-			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+			repositoryObj = test.SetupRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
 
 			By("creating a component")
 			component := &v1alpha1.Component{
@@ -585,7 +585,7 @@ var _ = Describe("Component Controller", func() {
 			specData := Must(spec.MarshalJSON())
 
 			By("mocking an ocm repository")
-			repositoryObj = test.SetupOCMRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
+			repositoryObj = test.SetupRepositoryWithSpecData(ctx, k8sClient, namespace.GetName(), repositoryName, specData)
 
 			By("creating a component")
 			component := &v1alpha1.Component{
@@ -618,7 +618,7 @@ var _ = Describe("Component Controller", func() {
 			configs       []*corev1.ConfigMap
 			secrets       []*corev1.Secret
 			namespace     *corev1.Namespace
-			repositoryObj *v1alpha1.OCMRepository
+			repositoryObj *v1alpha1.Repository
 			componentName string
 		)
 
@@ -646,12 +646,12 @@ var _ = Describe("Component Controller", func() {
 			configs, secrets = createTestConfigsAndSecrets(ctx, namespace.GetName())
 
 			repositoryName := "repository"
-			repositoryObj = &v1alpha1.OCMRepository{
+			repositoryObj = &v1alpha1.Repository{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: namespace.GetName(),
 					Name:      repositoryName,
 				},
-				Spec: v1alpha1.OCMRepositorySpec{
+				Spec: v1alpha1.RepositorySpec{
 					RepositorySpec: &apiextensionsv1.JSON{
 						Raw: specdata,
 					},
@@ -709,7 +709,7 @@ var _ = Describe("Component Controller", func() {
 
 			Expect(k8sClient.Create(ctx, repositoryObj)).To(Succeed())
 
-			repositoryObj.Status = v1alpha1.OCMRepositoryStatus{
+			repositoryObj.Status = v1alpha1.RepositoryStatus{
 				EffectiveOCMConfig: []v1alpha1.OCMConfiguration{
 					{
 						NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
@@ -817,7 +817,7 @@ var _ = Describe("Component Controller", func() {
 						{
 							NamespacedObjectKindReference: meta.NamespacedObjectKindReference{
 								APIVersion: v1alpha1.GroupVersion.String(),
-								Kind:       v1alpha1.KindOCMRepository,
+								Kind:       v1alpha1.KindRepository,
 								Namespace:  namespace.GetName(),
 								Name:       repositoryObj.GetName(),
 							},

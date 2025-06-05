@@ -1,4 +1,4 @@
-package ocmrepository
+package repository
 
 import (
 	"context"

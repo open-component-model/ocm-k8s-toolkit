@@ -1,5 +1,5 @@
 apiVersion: delivery.ocm.software/v1alpha1
-kind: OCMRepository
+kind: Repository
 metadata:
   namespace: default
   name: ocm-repo

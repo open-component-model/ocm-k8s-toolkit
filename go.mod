@@ -22,7 +22,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.33.1
 	k8s.io/apimachinery v0.33.1
 	k8s.io/client-go v0.33.1
-	ocm.software/ocm v0.15.1-0.20250526114422-022684fe4af0
+	ocm.software/ocm v0.25.0-rc.6
 	sigs.k8s.io/controller-runtime v0.21.0
 	sigs.k8s.io/yaml v1.4.0
 )

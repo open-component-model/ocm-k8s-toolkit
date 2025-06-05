@@ -19,7 +19,7 @@ able to get the OCI artifact reference through a reference to that resource by a
 
 The deployer must make it easy for the user to deploy the resources from the OCM component version. It is easy if the
 structure of the deployer is simple and easy to understand, e.g. not requiring a lot of different resources for a
-deployment (like `OCMRepository`, `Component`, `Resource`, `OCIRepository`, `HelmRelease`, `Kustomization`, ...).
+deployment (like `Repository`, `Component`, `Resource`, `OCIRepository`, `HelmRelease`, `Kustomization`, ...).
 
 However, the deployer must also be flexible enough to deploy different kinds of resources and reference several
 resources of an OCM component version. It must be possible to configure these resources and dynamically configure
@@ -29,7 +29,7 @@ to-be-deployed resources.
 Essentially, the requirements can be breakdown to:
 * We need to dynamically create a deployer specific custom resource, e.g. FluxCDs `OCIRepository`, that is filled with
   information provided by the status of a Kubernetes resource OCM `Resource`.
-* Simplify the deployment of the building block custom resources (`OCMRepository`, `Component`, `Resource`, ...)
+* Simplify the deployment of the building block custom resources (`Repository`, `Component`, `Resource`, ...)
 
 ## Decision Drivers
 
@@ -135,12 +135,12 @@ spec:
     spec:
       releaseName: string | default="helm-simple"
   resources:
-    - id: ocmRepository
+    - id: repository
       template:
         apiVersion: delivery.ocm.software/v1alpha1
-        kind: OCMRepository
+        kind: Repository
         metadata:
-          name: "helm-simple-ocmrepository"
+          name: "helm-simple-repository"
         spec:
           repositorySpec:
             baseUrl: ghcr.io/<your-org>
@@ -155,7 +155,7 @@ spec:
         spec:
           component: ocm.software/ocm-k8s-toolkit/helm-simple
           repositoryRef:
-            name: "${ocmRepository.metadata.name}"
+            name: "${repository.metadata.name}"
           semver: 1.0.0
           interval: 10m
     - id: resourceChart
@@ -243,7 +243,7 @@ the component constructor, and a `ResourceGraphDefinition`. In the example, all 
 component version and transferred to an OCM repository.
 
 To deploy the application into a Kubernetes cluster, it is required to bootstrap the `ResourceGraphDefinition` by
-* deploying an `OCMRepository` that points to the OCM repository in which the OCM component version is stored,
+* deploying an `Repository` that points to the OCM repository in which the OCM component version is stored,
 * deploying a `Component` that points to the OCM component version in that OCM repository,
 * deploying a `Resource` that points to the `ResourceGraphDefinition` in the component version, and
 * deploying an `OCMDeployer` that points to the `Resource` and applies the `ResourceGraphDefinition` to the cluster.
@@ -378,9 +378,9 @@ spec:
 
 `bootstrap.yaml`
 ```yaml
-# OCMRepository contains information about the location where the component version is stored
+# Repository contains information about the location where the component version is stored
 apiVersion: delivery.ocm.software/v1alpha1
-kind: OCMRepository
+kind: Repository
 metadata:
   name: repository-name
 spec:

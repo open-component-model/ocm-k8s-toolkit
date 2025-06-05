@@ -25,8 +25,8 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/component"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/deployer"
-	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/ocmrepository"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/replication"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/repository"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/resource"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/ocm"
 )
@@ -130,14 +130,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&ocmrepository.Reconciler{
+	if err = (&repository.Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client:        mgr.GetClient(),
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
 	}).SetupWithManager(ctx, mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "OCMRepository")
+		setupLog.Error(err, "unable to create controller", "controller", "Repository")
 		os.Exit(1)
 	}
 

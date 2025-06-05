@@ -74,7 +74,7 @@ flowchart TB
             subgraph kroRGD[kro]
                 subgraph rgd[RGD: Simple]
                     direction LR
-                    rgdOCMRepository[OCMRepository]
+                    rgdRepository[Repository]
                     rgdComponent[Component]
                     rgdResourceHelm[Resource: HelmChart]
                     rgdSource[FluxCD: OCI Repository]
@@ -84,7 +84,7 @@ flowchart TB
             subgraph kroInstance[kro]
                 subgraph instanceSimple[Instance: Simple]
                     subgraph ocmK8sToolkit[OCM K8s Toolkit]
-                        k8sRepo[OCMRepository] --> k8sComponent[Component] --> k8sResource[Resource: HelmChart]
+                        k8sRepo[Repository] --> k8sComponent[Component] --> k8sResource[Resource: HelmChart]
                     end
                     subgraph fluxCD[FluxCD]
                         source[OCI Repository] --> helmRelease[HelmRelease]
@@ -105,7 +105,7 @@ flowchart TB
 
     class start1,end1,start2,end2,start3,end3,start4,end4,start5,end5,start6,end6 legendStartEnd;
     class references,creates,instanceOf legendItems;
-    class templateOf,rgdOCMRepository,rgdComponent,rgdResourceHelm,rgdSource,rgdHelmRelease information;
+    class templateOf,rgdRepository,rgdComponent,rgdResourceHelm,rgdSource,rgdHelmRelease information;
     class reconciledBy,ocmK8sToolkit,fluxCD,kroRGD,kroInstance reconciledBy;
     class k8sObject,rgd,k8sRepo,k8sComponent,k8sResource,source,helmRelease,deployment,crdSimple,instanceSimple k8sObject;
     class ocmRepo,ocmCV,ocmResource ocm;
@@ -120,8 +120,8 @@ In the `Kubernetes Cluster` we can see several Kubernetes (custom) resources. Th
 (`RGD: Simple`) contains the template of all the resources for deploying the Helm chart into the Kubernetes cluster.
 kro creates a Custom Resource Definition (CRD) `Simple` based on that `ResourceGraphDefinition`. By creating an instance
 of this CRD (`Instance: Simple`), the resources are created and reconciled by the respective controllers:
-- `OCMRepository`: Points to the OCM repository and checks if it is reachable by pinging it.
-- `Component`: Refers to the `OCMRepository` and downloads and verifies the OCM component version descriptor.
+- `Repository`: Points to the OCM repository and checks if it is reachable by pinging it.
+- `Component`: Refers to the `Repository` and downloads and verifies the OCM component version descriptor.
 - `Resource`: Points to the `Component`, downloads the OCM component version descriptor from which it gets the location
 of the OCM resource. It then downloads the resource to verify its signature (optional) and publishes the location of the
 resource in its status.
