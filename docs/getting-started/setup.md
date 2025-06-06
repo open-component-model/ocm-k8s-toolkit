@@ -17,14 +17,15 @@ directory or the [getting-started guides](../getting-started).
 - [ocm](https://ocm.software/docs/getting-started/installation/) (`ocm` will not be used in this guide, but 
 is needed to follow the examples and getting-started guides)
 
-## Start a local Kubernetes cluster with KinD
+## Start a local Kubernetes cluster with kind
 
 > [!NOTE]
-> You don't need to run KinD if you are using a remote Kubernetes cluster you have access to. If so, you can skip this.
+> You don't need to run kind if you are using a remote Kubernetes cluster you have access to. If so, you can skip this.
 
-For download and installation instructions, see the [KinD documentation](https://kind.sigs.k8s.io/docs/user/quick-start).
+For download and installation instructions, see the
+[kind documentation](https://kind.sigs.k8s.io/docs/user/quick-start).
 
-To create a local KinD cluster run the following command:
+To create a local kind cluster run the following command:
 
 ```bash
 kind create cluster
