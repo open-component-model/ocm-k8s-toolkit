@@ -206,9 +206,9 @@ spec:
     apiVersion: v1alpha1
     kind: Bootstrap
   resources:
-    # In this guide, we will not create a "Repository" and "Component" in this ResourceGraphDefinition. Those
-    # resources will be created to bootstrap the ResourceGraphDefinition itself and are already present to be
-    # referenced by the following resources.
+    # In this guide, we will not create a "Repository" and "Component" resource in this ResourceGraphDefinition. Those
+    # resources will be created to bootstrap the ResourceGraphDefinition itself and will be present in the Kubernetes
+    # cluster to be referenced by the following resources (see the bootstrap resource in one of the following sections).
 
     # This resource refers to the resource "helm-resource" defined in the OCM component version. It will be downloaded,
     # verified, and its location is made available in the status of the resource.
