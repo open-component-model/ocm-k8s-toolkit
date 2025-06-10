@@ -197,7 +197,7 @@ spec:
 >
 > Be aware that FluxCD's `OCIRepository` also needs access to the OCI registry that contains the Helm chart. However,
 > `OCIRepository` only accepts
-> [ìmagePullSecrets](https://fluxcd.io/flux/components/source/ocirepositories/#secret-reference) in the same namespace.
+> [`imagePullSecrets`](https://fluxcd.io/flux/components/source/ocirepositories/#secret-reference) in the same namespace.
 > If you want to use the same credentials for FluxCD and for the OCM K8s Toolkit resources, create a
 > [Kubernetes secret of type `dockerconfigjson`](credentials.md#create-a-kubernetes-secret-of-type-dockerconfigjson-to-access-private-ocm-repositories)
 > and keep all the resources in the same namespace.
