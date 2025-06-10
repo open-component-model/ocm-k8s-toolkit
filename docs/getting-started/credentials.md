@@ -53,8 +53,8 @@ first place.
 > [!NOTE]
 > Usually, the `.ocmconfig` file is located in your home directory. However, this `.ocmconfig` could contain more
 > configurations than just the credentials for accessing private OCM repositories. As this `.ocmconfig` will be used
-> to create a Kubernetes secret or configmap to which other users have access to, you have to make sure that it only
-> contains the configuration you want to share.
+> to create a Kubernetes secret or configmap to which other users might have access to, you have to make sure that it
+> only contains the configuration you want to share.
 >
 > We recommend to create a new `.ocmconfig` file that only contains the credentials for accessing the private OCM
 > repository.
