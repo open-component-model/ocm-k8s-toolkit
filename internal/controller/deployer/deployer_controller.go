@@ -9,8 +9,8 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
-	"ocm.software/ocm/api/ocm/compdesc"
 	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
+	"ocm.software/ocm/api/ocm/resolvers"
 	"ocm.software/ocm/api/ocm/tools/signing"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -200,12 +200,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
 	}
 
-	a := cv.GetDescriptor()
+	resolver := resolvers.NewCompoundResolver(repo, octx.GetResolver())
 	resourceAccess, _, err := ocm.GetResourceAccessForComponentVersion(
 		ctx,
 		cv,
 		resourceReference,
-		&ocm.Descriptors{List: []*compdesc.ComponentDescriptor{a}},
+		resolver,
 		resource.Spec.SkipVerify,
 	)
 	if err != nil {
