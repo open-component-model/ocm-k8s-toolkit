@@ -440,6 +440,12 @@ spec:
   # ocmConfig:
 ```
 
+> [!NOTE]
+> Again, if your OCM component version is stored in a private registry, you need to provide credentials for the OCM K8s
+> Toolkit resources to access the OCM repository. You can do so by specifying the `ocmConfig` field in the `Repository`,
+> `Component`, `Resource`, and `Deployer` resources. For more information on how to set up credentials, please refer to
+> the [OCM K8s Toolkit credentials guide](credentials.md).
+
 Afterwards, apply the `bootstrap.yaml` to the cluster:
 
 ```bash
