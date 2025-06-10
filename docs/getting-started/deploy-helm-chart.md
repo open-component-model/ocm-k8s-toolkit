@@ -189,6 +189,19 @@ spec:
               message: ${schema.spec.message}
 ```
 
+> [!NOTE]
+> If you pushed the OCM component version to a private registry, you need to set up the credentials for the OCM K8s
+> Toolkit resources. You can do this by uncommenting the `ocmConfig` fields in the `Repository`, `Component`, and
+> `Resource` resources and providing the necessary credentials. For more information on how to set up and pass the
+> credentials, please check out the guide [configure credentials for OCM K8s Toolkit resources](credentials.md).
+>
+> Be aware that FluxCD's `OCIRepository` also needs access to the OCI registry that contains the Helm chart. However,
+> `OCIRepository` only accepts
+> [ìmagePullSecrets](https://fluxcd.io/flux/components/source/ocirepositories/#secret-reference) in the same namespace.
+> If you want to use the same credentials for FluxCD and for the OCM K8s Toolkit resources, create a
+> [Kubernetes secret of type `dockerconfigjson`](credentials.md#create-a-kubernetes-secret-of-type-dockerconfigjson-to-access-private-ocm-repositories)
+> and keep all the resources in the same namespace.
+
 After creating the file `rgd.yaml` with the above content and adjusting Repository's `baseUrl` to point to your OCM
 repository, you can apply the `ResourceGraphDefinition` to your Kubernetes cluster:
 
@@ -211,13 +224,6 @@ This creates a Kubernetes Custom Resource Definition (CRD) `Simple` that can be 
 instance of the CRD will create all resources defined in the `ResourceGraphDefinition`.
 
 ### Create an Instance of "Simple"
-
-> [!NOTE]
-> Creating the instance will apply the resources that require access to the OCM component version stored in the
-> registry you chose in the beginning. If you chose GitHub's container registry, make sure that the OCM component
-> is public or set up the respective credentials for the OCM K8s Toolkit resources. For more information on how
-> to set up and pass the credentials, please check out the guide
-> [configure credentials for OCM K8s Toolkit resources](credentials.md).
 
 To create an instance of the `Simple` CRD, create a file named `instance.yaml` and add the following content:
 
@@ -275,6 +281,18 @@ bar
 
 You now have successfully created an OCM component version containing a Helm chart and deployed as well as configured it
 using the OCM K8s Toolkit, kro, and FluxCD.
+
+#### Troubleshooting
+
+One common issue, when using GitHub's container registry, is that the transferred OCM component is by default a
+private package. If so, you might see an error like the following:
+
+```console
+failed to list versions: failed to list tags: GET "https://ghcr.io/v2...": response status code 401: unauthorized: authentication required
+```
+
+You can resolve this issue by making the package public or by [providing credentials](credentials.md) to the
+respective resources.
 
 
 [ocm-doc]: https://ocm.software/docs/getting-started/create-component-version/

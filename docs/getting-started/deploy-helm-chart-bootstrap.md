@@ -291,6 +291,15 @@ spec:
               tag: ${resourceImage.status.reference.tag}
 ```
 
+> [!NOTE]
+> If you plan to push your OCM component version to a private registry, you need to provide credentials for the OCM
+> K8s Toolkit and FluxCDs `OCIRepository` (if the Helm chart is also stored in a private registry). Accordingly, you
+> have to specify the `ocmConfig` field in the `Resource` resources and the `secretRef` field in the `OCIRepository`.
+>
+> If you want to use the same credentials for FluxCD and for the OCM K8s Toolkit resources, create a
+> [Kubernetes secret of type `dockerconfigjson`](credentials.md#create-a-kubernetes-secret-of-type-dockerconfigjson-to-access-private-ocm-repositories)
+> and keep all the resources in the same namespace.
+
 After creating both files, we can create the OCM component version using the following command:
 
 ```bash
