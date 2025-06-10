@@ -670,5 +670,81 @@ var _ = Describe("Resource Controller", func() {
 			By("deleting the resource")
 			test.DeleteObject(ctx, k8sClient, resourceObj)
 		})
+
+		It("reconcile a nested component by reference path", func(ctx SpecContext) {
+			By("creating a CTF")
+			ctfName := "nested-component"
+			env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
+				env.Component(componentName, func() {
+					env.Version(componentVersion, func() {
+						env.Reference("reference", "ocm.software/other-name", componentVersion, func() {})
+					})
+				})
+				env.Component("ocm.software/other-name", func() {
+					env.Version(componentVersion, func() {
+						env.Resource(resourceName, "1.0.0", artifacttypes.OCI_ARTIFACT, ocmmetav1.ExternalRelation, func() {
+							env.Access(ocmociartifact.New("ghcr.io/open-component-model/ocm/ocm.software/ocmcli/ocmcli-image:0.23.0"))
+						})
+					})
+				})
+			})
+
+			ctfPath := filepath.Join(tempDir, ctfName)
+			spec, err := ctf.NewRepositorySpec(ctf.ACC_READONLY, ctfPath)
+			Expect(err).NotTo(HaveOccurred())
+			specData, err := spec.MarshalJSON()
+			Expect(err).NotTo(HaveOccurred())
+
+			By("mocking a component")
+			componentObj = test.MockComponent(
+				ctx,
+				componentObjName,
+				namespace.GetName(),
+				&test.MockComponentOptions{
+					Client:   k8sClient,
+					Recorder: recorder,
+					Info: v1alpha1.ComponentInfo{
+						Component:      componentName,
+						Version:        componentVersion,
+						RepositorySpec: &apiextensionsv1.JSON{Raw: specData},
+					},
+					Repository: repositoryName,
+				},
+			)
+
+			By("creating a resource")
+			resourceObj := &v1alpha1.Resource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: namespace.GetName(),
+				},
+				Spec: v1alpha1.ResourceSpec{
+					ComponentRef: corev1.LocalObjectReference{
+						Name: componentObj.GetName(),
+					},
+					Resource: v1alpha1.ResourceID{
+						ByReference: v1alpha1.ResourceReference{
+							Resource:      ocmmetav1.NewIdentity(resourceName),
+							ReferencePath: []ocmmetav1.Identity{ocmmetav1.NewIdentity("reference")},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
+
+			By("checking that the resource has been reconciled successfully")
+			expectedSourceRef := &v1alpha1.SourceReference{
+				Registry:   "ghcr.io",
+				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
+				Tag:        "0.23.0",
+			}
+			test.WaitForReadyObject(ctx, k8sClient, resourceObj, map[string]any{
+				"Status.Reference": expectedSourceRef,
+			})
+
+			By("deleting the resource")
+			test.DeleteObject(ctx, k8sClient, resourceObj)
+		})
+
 	})
 })
