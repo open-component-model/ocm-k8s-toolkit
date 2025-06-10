@@ -127,7 +127,7 @@ of the OCM resource. It then downloads the resource to verify its signature (opt
 resource in its status.
 
 > [!IMPORTANT]
-> With FluxCD, this only works if the OCM resource has ab access for which FluxCD has a corresponding Source type (e.g.
+> With FluxCD, this only works if the OCM resource has an access for which FluxCD has a corresponding Source type (e.g.
 > an OCI or a GitHub repository)
 
 As a result, FluxCD can now consume the information of the `Resource` and deploy the Helm chart:
