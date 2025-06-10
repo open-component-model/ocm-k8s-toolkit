@@ -124,9 +124,13 @@ of this CRD (`Instance: Simple`), the resources are created and reconciled by th
 - `Component`: Refers to the `Repository` and downloads and verifies the OCM component version descriptor.
 - `Resource`: Points to the `Component`, downloads the OCM component version descriptor from which it gets the location
 of the OCM resource. It then downloads the resource to verify its signature (optional) and publishes the location of the
-resource in its status (Of course, only if the resource has remote access, e.g., an OCI or a GitHub repository).
+resource in its status.
 
-As a result, FluxCDs can now consume the information of the `Resource` and deploy the Helm chart:
+> [!IMPORTANT]
+> With FluxCD, this only works if the OCM resource has an access for which FluxCD has a corresponding Source type (e.g.
+> an OCI or a GitHub repository)
+
+As a result, FluxCD can now consume the information of the `Resource` and deploy the Helm chart:
 - `OCIRepository`: Watches and downloads the resource from the location provided by the `Resource` status.
 - `HelmRelease`: Refers to the `OCIRepository`, lets you configure the Helm chart, and creates the deployment into the
 Kubernetes cluster.
@@ -152,9 +156,9 @@ kubectl apply -k https://github.com/open-component-model/ocm-k8s-toolkit/config/
 ```
 
 > [!IMPORTANT]
-> OCM K8s Toolkit requires kro and a deployer, e.g. FluxCD, to deploy an OCM resource into a Kubernetes cluster.
-> The OCM K8s Toolkit deployment, however, does not contain kro or any deployer. Please refer to the respective
-> installation guides for these tools:
+> While the OCM K8s Toolkit technically can be used standalone, it requires kro and a deployer, e.g. FluxCD, to deploy
+> an OCM resource into a Kubernetes cluster. The OCM K8s Toolkit deployment, however, does not contain kro or any
+> deployer. Please refer to the respective installation guides for these tools:
 > - [kro](https://kro.run/docs/getting-started/Installation/)
 > - [FluxCD](https://fluxcd.io/docs/installation/)
 
@@ -164,7 +168,6 @@ kubectl apply -k https://github.com/open-component-model/ocm-k8s-toolkit/config/
 - [Deploying a Helm chart using a `ResourceGraphDefinition` with FluxCD](docs/getting-started/deploy-helm-chart.md)
 - [Deploying a Helm chart using a `ResourceGraphDefinition` inside the OCM component version (bootstrap) with FluxCD](docs/getting-started/deploy-helm-chart-bootstrap.md)
 - [Configuring credentials for OCM K8s Toolkit resources to access private OCM repositories](docs/getting-started/credentials.md)
-- [Transfer OCM component versions](docs/getting-started/transfer.md)
 
 ## Contributing
 
