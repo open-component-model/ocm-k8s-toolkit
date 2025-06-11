@@ -70,6 +70,7 @@ func VerifyComponentVersion(ctx context.Context, cv ocm.ComponentVersionAccess, 
 
 	if len(sigs) == 0 || cv == nil {
 		logger.Info("no signatures passed, skipping validation")
+
 		return nil
 	}
 	octx := cv.GetContext()

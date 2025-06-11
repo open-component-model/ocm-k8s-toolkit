@@ -674,13 +674,15 @@ var _ = Describe("Resource Controller", func() {
 		It("reconcile a nested component by reference path", func(ctx SpecContext) {
 			By("creating a CTF")
 			ctfName := "nested-component"
+			nestedComponentName := "ocm.software/nested-component"
+			nestedComponentReference := "some-reference"
 			env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
 				env.Component(componentName, func() {
 					env.Version(componentVersion, func() {
-						env.Reference("reference", "ocm.software/other-name", componentVersion, func() {})
+						env.Reference(nestedComponentReference, nestedComponentName, componentVersion, func() {})
 					})
 				})
-				env.Component("ocm.software/other-name", func() {
+				env.Component(nestedComponentName, func() {
 					env.Version(componentVersion, func() {
 						env.Resource(resourceName, "1.0.0", artifacttypes.OCI_ARTIFACT, ocmmetav1.ExternalRelation, func() {
 							env.Access(ocmociartifact.New("ghcr.io/open-component-model/ocm/ocm.software/ocmcli/ocmcli-image:0.23.0"))
@@ -725,7 +727,7 @@ var _ = Describe("Resource Controller", func() {
 					Resource: v1alpha1.ResourceID{
 						ByReference: v1alpha1.ResourceReference{
 							Resource:      ocmmetav1.NewIdentity(resourceName),
-							ReferencePath: []ocmmetav1.Identity{ocmmetav1.NewIdentity("reference")},
+							ReferencePath: []ocmmetav1.Identity{ocmmetav1.NewIdentity(nestedComponentReference)},
 						},
 					},
 				},
@@ -739,7 +741,9 @@ var _ = Describe("Resource Controller", func() {
 				Tag:        "0.23.0",
 			}
 			test.WaitForReadyObject(ctx, k8sClient, resourceObj, map[string]any{
-				"Status.Reference": expectedSourceRef,
+				"Status.Reference":           expectedSourceRef,
+				"Status.Component.Component": nestedComponentName,
+				"Status.Component.Version":   componentVersion,
 			})
 
 			By("deleting the resource")
