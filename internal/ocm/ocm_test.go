@@ -62,9 +62,6 @@ const (
 	Secret1 = "secret1"
 	Secret2 = "secret2"
 	Secret3 = "secret3"
-
-	SignSecret1 = "signsecret1"
-	SignSecret2 = "signsecret2"
 )
 
 var _ = Describe("ocm utils", func() {
@@ -846,12 +843,7 @@ consumers:
 			MustBeSuccessful(VerifyComponentVersion(ctx, cv, []string{Signature1, Signature2, Signature3}))
 		})
 		It("with retrieving descriptors", func() {
-			descriptors := Must(VerifyComponentVersion(ctx, cv, []string{Signature1, Signature2, Signature3}))
-			Expect(descriptors.List).To(HaveLen(2))
-		})
-		It("list component versions without verification", func() {
-			descriptors := Must(ListComponentDescriptors(ctx, cv, repo))
-			Expect(descriptors.List).To(HaveLen(2))
+			MustBeSuccessful(VerifyComponentVersion(ctx, cv, []string{Signature1, Signature2, Signature3}))
 		})
 	})
 

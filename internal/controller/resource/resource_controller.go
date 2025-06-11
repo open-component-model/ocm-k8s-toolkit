@@ -299,10 +299,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to lookup component version: %w", err)
 	}
 
-	_, err = ocm.VerifyComponentVersionAndListDescriptors(ctx, octx, cv, sliceutils.Transform(component.Spec.Verify, func(verify v1alpha1.Verification) string {
+	if err := ocm.VerifyComponentVersion(ctx, cv, sliceutils.Transform(component.Spec.Verify, func(verify v1alpha1.Verification) string {
 		return verify.Signature
-	}))
-	if err != nil {
+	})); err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentVersionFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to list verified descriptors: %w", err)
