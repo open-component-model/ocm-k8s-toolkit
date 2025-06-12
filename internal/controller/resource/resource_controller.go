@@ -299,9 +299,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to lookup component version: %w", err)
 	}
 
-	if err := ocm.VerifyComponentVersion(ctx, cv, sliceutils.Transform(component.Spec.Verify, func(verify v1alpha1.Verification) string {
+	cds, err := ocm.VerifyComponentVersionAndListDescriptors(ctx, octx, cv, sliceutils.Transform(component.Spec.Verify, func(verify v1alpha1.Verification) string {
 		return verify.Signature
-	})); err != nil {
+	}))
+	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentVersionFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to list verified descriptors: %w", err)
@@ -312,12 +313,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
 	}
 
-	resolver := resolvers.NewCompoundResolver(repo, octx.GetResolver())
-	resourceAccess, resCompVers, err := ocm.GetResourceAccessForComponentVersion(
+	resourceAccess, resourceCompDesc, err := ocm.GetResourceAccessForComponentVersion(
 		ctx,
 		cv,
 		resourceReference,
-		resolver,
+		cds,
 		resource.Spec.SkipVerify,
 	)
 	if err != nil {
@@ -325,9 +325,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 		return ctrl.Result{}, fmt.Errorf("failed to get resource access: %w", err)
 	}
-	defer func() {
-		err = resCompVers.Close()
-	}()
 
 	accSpec, err := resourceAccess.Access()
 	if err != nil {
@@ -346,6 +343,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	// Get repository spec of actual component descriptor of the referenced resource
+	resolver := resolvers.NewCompoundResolver(repo, octx.GetResolver())
+	resCompVers, err := session.LookupComponentVersion(resolver, resourceCompDesc.GetName(), resourceCompDesc.GetVersion())
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentVersionFailedReason, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to get component version of resource: %w", err)
+	}
+
 	resCompVersRepoSpec := resCompVers.Repository().GetSpecification()
 	resCompVersRepoSpecData, err := json.Marshal(resCompVersRepoSpec)
 	if err != nil {

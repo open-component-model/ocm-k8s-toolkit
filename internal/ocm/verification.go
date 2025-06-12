@@ -65,13 +65,13 @@ func GetVerifications(ctx context.Context, client ctrl.Client,
 	return v, nil
 }
 
-func VerifyComponentVersion(ctx context.Context, cv ocm.ComponentVersionAccess, sigs []string) error {
+func VerifyComponentVersion(ctx context.Context, cv ocm.ComponentVersionAccess, sigs []string) (*Descriptors, error) {
 	logger := log.FromContext(ctx).WithName("signature-validation")
 
 	if len(sigs) == 0 || cv == nil {
 		logger.Info("no signatures passed, skipping validation")
 
-		return nil
+		return nil, nil
 	}
 	octx := cv.GetContext()
 
@@ -90,9 +90,31 @@ func VerifyComponentVersion(ctx context.Context, cv ocm.ComponentVersionAccess, 
 	ws := signing.DefaultWalkingState(cv.GetContext())
 	_, err := signing.Apply(nil, ws, cv, opts)
 	if err != nil {
-		return fmt.Errorf("failed to verify component signatures %s: %w", strings.Join(sigs, ", "), err)
+		return nil, fmt.Errorf("failed to verify component signatures %s: %w", strings.Join(sigs, ", "), err)
 	}
 	logger.Info("successfully verified component signature")
 
-	return nil
+	return &Descriptors{List: signing.ListComponentDescriptors(cv, ws)}, nil
+}
+
+func VerifyComponentVersionAndListDescriptors(
+	ctx context.Context,
+	octx ocm.Context,
+	cv ocm.ComponentVersionAccess,
+	sigs []string,
+) (*Descriptors, error) {
+	descriptors, err := VerifyComponentVersion(ctx, cv, sigs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify component: %w", err)
+	}
+
+	// if the component descriptors were not collected during signature validation, collect them now
+	if descriptors == nil || len(descriptors.List) == 0 {
+		descriptors, err = ListComponentDescriptors(ctx, cv, resolvers.NewCompoundResolver(cv.Repository(), octx.GetResolver()))
+		if err != nil {
+			return nil, fmt.Errorf("failed to list component descriptors: %w", err)
+		}
+	}
+
+	return descriptors, nil
 }

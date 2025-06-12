@@ -9,8 +9,8 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	"k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
+	"ocm.software/ocm/api/ocm/compdesc"
 	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
-	"ocm.software/ocm/api/ocm/resolvers"
 	"ocm.software/ocm/api/ocm/tools/signing"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -200,12 +200,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
 	}
 
-	resolver := resolvers.NewCompoundResolver(repo, octx.GetResolver())
-	resourceAccess, resCompVers, err := ocm.GetResourceAccessForComponentVersion(
+	resourceAccess, _, err := ocm.GetResourceAccessForComponentVersion(
 		ctx,
 		cv,
 		resourceReference,
-		resolver,
+		&ocm.Descriptors{List: []*compdesc.ComponentDescriptor{cv.GetDescriptor()}},
 		resource.Spec.SkipVerify,
 	)
 	if err != nil {
@@ -213,9 +212,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 		return ctrl.Result{}, fmt.Errorf("failed to get resource access: %w", err)
 	}
-	defer func() {
-		err = resCompVers.Close()
-	}()
 
 	// Get the resource graph definition manifest and its digest. Compare the digest to the one in the resource to make
 	// sure the resource is up to date.

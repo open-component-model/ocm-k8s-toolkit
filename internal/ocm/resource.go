@@ -5,7 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"ocm.software/ocm/api/ocm/resourcerefs"
+	"ocm.software/ocm/api/ocm/compdesc"
+	"ocm.software/ocm/api/ocm/selectors"
 	"ocm.software/ocm/api/ocm/tools/signing"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -17,25 +18,40 @@ func GetResourceAccessForComponentVersion(
 	ctx context.Context,
 	cv ocmctx.ComponentVersionAccess,
 	reference v1.ResourceReference,
-	resolver ocmctx.ComponentVersionResolver,
+	cdSet *Descriptors,
 	skipVerification bool,
-) (ocmctx.ResourceAccess, ocmctx.ComponentVersionAccess, error) {
+) (ocmctx.ResourceAccess, *compdesc.ComponentDescriptor, error) {
 	logger := log.FromContext(ctx)
 	// Resolve resource resourceReference to get resource and its component descriptor
-	resourceAccess, resCV, err := resourcerefs.ResolveResourceReference(cv, reference, resolver)
+	resourceDesc, resourceCompDesc, err := compdesc.ResolveResourceReference(cv.GetDescriptor(), reference, compdesc.NewComponentVersionSet(cdSet.List...))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to resolve resource reference: %w", err)
 	}
 
+	resourceAccesses, err := cv.SelectResources(selectors.Identity(resourceDesc.GetIdentity(resourceCompDesc.GetResources())))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to select resources: %w", err)
+	}
+
+	var resourceAccess ocmctx.ResourceAccess
+	switch len(resourceAccesses) {
+	case 0:
+		return nil, nil, errors.New("no resources selected")
+	case 1:
+		resourceAccess = resourceAccesses[0]
+	default:
+		return nil, nil, errors.New("cannot determine the resource access unambiguously")
+	}
+
 	if !skipVerification {
-		if err := verifyResource(resourceAccess, resCV); err != nil {
-			return nil, nil, errors.Join(err, resCV.Close())
+		if err := verifyResource(resourceAccess, cv); err != nil {
+			return nil, nil, fmt.Errorf("failed to verify resource: %w", err)
 		}
 	} else {
 		logger.V(1).Info("skipping resource verification")
 	}
 
-	return resourceAccess, resCV, nil
+	return resourceAccess, resourceCompDesc, nil
 }
 
 // verifyResource verifies the resource digest with the digest from the component version access and component descriptor.
