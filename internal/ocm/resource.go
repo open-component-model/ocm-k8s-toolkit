@@ -29,7 +29,7 @@ func GetResourceAccessForComponentVersion(
 
 	if !skipVerification {
 		if err := verifyResource(resourceAccess, resCV); err != nil {
-			return nil, nil, err
+			return nil, nil, errors.Join(err, resCV.Close())
 		}
 	} else {
 		logger.V(1).Info("skipping resource verification")
