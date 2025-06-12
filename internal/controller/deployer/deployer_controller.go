@@ -201,7 +201,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	resolver := resolvers.NewCompoundResolver(repo, octx.GetResolver())
-	resourceAccess, _, err := ocm.GetResourceAccessForComponentVersion(
+	resourceAccess, resCompVers, err := ocm.GetResourceAccessForComponentVersion(
 		ctx,
 		cv,
 		resourceReference,
@@ -213,6 +213,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 		return ctrl.Result{}, fmt.Errorf("failed to get resource access: %w", err)
 	}
+	defer func() {
+		err = resCompVers.Close()
+	}()
 
 	// Get the resource graph definition manifest and its digest. Compare the digest to the one in the resource to make
 	// sure the resource is up to date.
