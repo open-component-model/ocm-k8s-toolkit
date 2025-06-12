@@ -16,11 +16,13 @@ import (
 
 func GetResourceAccessForComponentVersion(
 	ctx context.Context,
+	session ocmctx.Session,
 	cv ocmctx.ComponentVersionAccess,
 	reference v1.ResourceReference,
 	cdSet *Descriptors,
+	resolver ocmctx.ComponentVersionResolver,
 	skipVerification bool,
-) (ocmctx.ResourceAccess, *compdesc.ComponentDescriptor, error) {
+) (ocmctx.ResourceAccess, ocmctx.ComponentVersionAccess, error) {
 	logger := log.FromContext(ctx)
 	// Resolve resource resourceReference to get resource and its component descriptor
 	resourceDesc, resourceCompDesc, err := compdesc.ResolveResourceReference(cv.GetDescriptor(), reference, compdesc.NewComponentVersionSet(cdSet.List...))
@@ -28,7 +30,12 @@ func GetResourceAccessForComponentVersion(
 		return nil, nil, fmt.Errorf("failed to resolve resource reference: %w", err)
 	}
 
-	resourceAccesses, err := cv.SelectResources(selectors.Identity(resourceDesc.GetIdentity(resourceCompDesc.GetResources())))
+	resourceCV, err := session.LookupComponentVersion(resolver, resourceCompDesc.GetName(), resourceCompDesc.GetVersion())
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to lookup component version for resource: %w", err)
+	}
+
+	resourceAccesses, err := resourceCV.SelectResources(selectors.Identity(resourceDesc.GetIdentity(resourceCompDesc.GetResources())))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to select resources: %w", err)
 	}
@@ -44,14 +51,14 @@ func GetResourceAccessForComponentVersion(
 	}
 
 	if !skipVerification {
-		if err := verifyResource(resourceAccess, cv); err != nil {
+		if err := verifyResource(resourceAccess, resourceCV); err != nil {
 			return nil, nil, fmt.Errorf("failed to verify resource: %w", err)
 		}
 	} else {
 		logger.V(1).Info("skipping resource verification")
 	}
 
-	return resourceAccess, resourceCompDesc, nil
+	return resourceAccess, resourceCV, nil
 }
 
 // verifyResource verifies the resource digest with the digest from the component version access and component descriptor.

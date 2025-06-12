@@ -671,7 +671,7 @@ var _ = Describe("Resource Controller", func() {
 			test.DeleteObject(ctx, k8sClient, resourceObj)
 		})
 
-		PIt("reconcile a nested component by reference path", func(ctx SpecContext) {
+		It("reconcile a nested component by reference path", func(ctx SpecContext) {
 			By("creating a CTF")
 			ctfName := "nested-component"
 			nestedComponentName := "ocm.software/nested-component"

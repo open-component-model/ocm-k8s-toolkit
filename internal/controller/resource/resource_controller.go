@@ -313,11 +313,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
 	}
 
-	resourceAccess, resourceCompDesc, err := ocm.GetResourceAccessForComponentVersion(
+	resourceAccess, resourceCV, err := ocm.GetResourceAccessForComponentVersion(
 		ctx,
+		session,
 		cv,
 		resourceReference,
 		cds,
+		resolvers.NewCompoundResolver(repo, octx.GetResolver()),
 		resource.Spec.SkipVerify,
 	)
 	if err != nil {
@@ -343,15 +345,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	// Get repository spec of actual component descriptor of the referenced resource
-	resolver := resolvers.NewCompoundResolver(repo, octx.GetResolver())
-	resCompVers, err := session.LookupComponentVersion(resolver, resourceCompDesc.GetName(), resourceCompDesc.GetVersion())
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetComponentVersionFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to get component version of resource: %w", err)
-	}
-
-	resCompVersRepoSpec := resCompVers.Repository().GetSpecification()
+	resCompVersRepoSpec := resourceCV.Repository().GetSpecification()
 	resCompVersRepoSpecData, err := json.Marshal(resCompVersRepoSpec)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.MarshalFailedReason, err.Error())
@@ -362,8 +356,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	// Update status
 	if err = setResourceStatus(ctx, configs, resource, resourceAccess, sourceRef, &v1alpha1.ComponentInfo{
 		RepositorySpec: &apiextensionsv1.JSON{Raw: resCompVersRepoSpecData},
-		Component:      resCompVers.GetName(),
-		Version:        resCompVers.GetVersion(),
+		Component:      resourceCV.GetName(),
+		Version:        resourceCV.GetVersion(),
 	}); err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.StatusSetFailedReason, err.Error())
 

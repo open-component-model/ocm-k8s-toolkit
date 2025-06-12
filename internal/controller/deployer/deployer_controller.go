@@ -11,6 +11,7 @@ import (
 	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/compdesc"
 	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
+	"ocm.software/ocm/api/ocm/resolvers"
 	"ocm.software/ocm/api/ocm/tools/signing"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -202,9 +203,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	resourceAccess, _, err := ocm.GetResourceAccessForComponentVersion(
 		ctx,
+		session,
 		cv,
 		resourceReference,
 		&ocm.Descriptors{List: []*compdesc.ComponentDescriptor{cv.GetDescriptor()}},
+		resolvers.NewCompoundResolver(repo, octx.GetResolver()),
 		resource.Spec.SkipVerify,
 	)
 	if err != nil {
