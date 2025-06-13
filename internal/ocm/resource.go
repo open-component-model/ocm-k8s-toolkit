@@ -16,11 +16,13 @@ import (
 
 func GetResourceAccessForComponentVersion(
 	ctx context.Context,
+	session ocmctx.Session,
 	cv ocmctx.ComponentVersionAccess,
 	reference v1.ResourceReference,
 	cdSet *Descriptors,
+	resolver ocmctx.ComponentVersionResolver,
 	skipVerification bool,
-) (ocmctx.ResourceAccess, *compdesc.ComponentDescriptor, error) {
+) (ocmctx.ResourceAccess, ocmctx.ComponentVersionAccess, error) {
 	logger := log.FromContext(ctx)
 	// Resolve resource resourceReference to get resource and its component descriptor
 	resourceDesc, resourceCompDesc, err := compdesc.ResolveResourceReference(cv.GetDescriptor(), reference, compdesc.NewComponentVersionSet(cdSet.List...))
@@ -28,34 +30,39 @@ func GetResourceAccessForComponentVersion(
 		return nil, nil, fmt.Errorf("failed to resolve resource reference: %w", err)
 	}
 
-	resAccesses, err := cv.SelectResources(selectors.Identity(resourceDesc.GetIdentity(resourceCompDesc.GetResources())))
+	resourceCV, err := session.LookupComponentVersion(resolver, resourceCompDesc.GetName(), resourceCompDesc.GetVersion())
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to lookup component version for resource: %w", err)
+	}
+
+	resourceAccesses, err := resourceCV.SelectResources(selectors.Identity(resourceDesc.GetIdentity(resourceCompDesc.GetResources())))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to select resources: %w", err)
 	}
 
 	var resourceAccess ocmctx.ResourceAccess
-	switch len(resAccesses) {
+	switch len(resourceAccesses) {
 	case 0:
 		return nil, nil, errors.New("no resources selected")
 	case 1:
-		resourceAccess = resAccesses[0]
+		resourceAccess = resourceAccesses[0]
 	default:
 		return nil, nil, errors.New("cannot determine the resource access unambiguously")
 	}
 
 	if !skipVerification {
-		if err := verifyResource(resourceAccess, cv, cv.GetDescriptor()); err != nil {
-			return nil, nil, err
+		if err := verifyResource(resourceAccess, resourceCV); err != nil {
+			return nil, nil, fmt.Errorf("failed to verify resource: %w", err)
 		}
 	} else {
 		logger.V(1).Info("skipping resource verification")
 	}
 
-	return resourceAccess, resourceCompDesc, nil
+	return resourceAccess, resourceCV, nil
 }
 
 // verifyResource verifies the resource digest with the digest from the component version access and component descriptor.
-func verifyResource(access ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAccess, cd *compdesc.ComponentDescriptor) error {
+func verifyResource(access ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAccess) error {
 	// Create data access
 	accessMethod, err := access.AccessMethod()
 	if err != nil {
@@ -65,7 +72,7 @@ func verifyResource(access ocmctx.ResourceAccess, cv ocmctx.ComponentVersionAcce
 	// Add the component descriptor to the local verified store, so its digest will be compared with the digest from the
 	// component version access
 	store := signing.NewLocalVerifiedStore()
-	store.Add(cd)
+	store.Add(cv.GetDescriptor())
 
 	ok, err := signing.VerifyResourceDigestByResourceAccess(cv, access, accessMethod.AsBlobAccess(), store)
 	if !ok {

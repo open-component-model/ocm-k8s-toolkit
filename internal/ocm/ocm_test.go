@@ -62,9 +62,6 @@ const (
 	Secret1 = "secret1"
 	Secret2 = "secret2"
 	Secret3 = "secret3"
-
-	SignSecret1 = "signsecret1"
-	SignSecret2 = "signsecret2"
 )
 
 var _ = Describe("ocm utils", func() {
