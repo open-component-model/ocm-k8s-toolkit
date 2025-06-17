@@ -10,7 +10,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/chainguard-dev/git-urls v1.0.2
 	github.com/fluxcd/pkg/apis/event v0.17.0
-	github.com/fluxcd/pkg/apis/meta v1.12.0
+	github.com/fluxcd/pkg/apis/meta v1.13.0
 	github.com/fluxcd/pkg/runtime v0.60.0
 	github.com/kro-run/kro v0.3.0
 	github.com/mandelsoft/goutils v0.0.0-20241227142622-83a787399095
