@@ -94,12 +94,17 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 				},
 			}
 		},
+		30*time.Minute,
 		func(options *metav1.ListOptions) {
 			options.LabelSelector = sel.String()
 		},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create dynamic informer manager: %w", err)
+	}
+
+	if err := mgr.Add(resourceManager); err != nil {
+		return fmt.Errorf("failed to add dynamic informer manager to controller manager: %w", err)
 	}
 
 	r.registerResourceWatchChannel = resourceManager.RegisterChannel()
@@ -131,7 +136,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&deliveryv1alpha1.Deployer{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		WatchesRawSource(resourceManager).
+		WatchesRawSource(resourceManager.RawSource()).
 		// Watch for events from OCM resources that are referenced by the deployer
 		Watches(
 			&deliveryv1alpha1.Resource{},

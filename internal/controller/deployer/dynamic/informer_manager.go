@@ -2,6 +2,7 @@ package dynamic
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -19,10 +20,12 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-var _ source.TypedSource[ctrl.Request] = &InformerManager{}
+var _ manager.Runnable = &InformerManager{}
 
 type InformerManager struct {
 	ctx    context.Context
@@ -30,11 +33,15 @@ type InformerManager struct {
 	clnt   dynamic.Interface
 
 	register, unregister chan client.Object
-	queue                workqueue.TypedRateLimitingInterface[ctrl.Request]
-	tasks                sync.Map
+
+	queueMu sync.Mutex // protects the queue from concurrent access
+	queue   workqueue.TypedRateLimitingInterface[ctrl.Request]
+
+	tasks sync.Map
 
 	handler.MapFunc
 
+	resyncPeriod     time.Duration
 	tweakListOptions dynamicinformer.TweakListOptionsFunc
 }
 
@@ -43,7 +50,7 @@ type key struct {
 	namespace string
 }
 
-type task struct {
+type watchTask struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	mu           sync.Mutex
@@ -55,6 +62,7 @@ type task struct {
 func NewInformerManager(
 	mapper meta.RESTMapper,
 	mapFunc handler.MapFunc,
+	resyncPeriod time.Duration,
 	tweakListOptions dynamicinformer.TweakListOptionsFunc,
 ) (*InformerManager, error) {
 	cfg, err := ctrl.GetConfig()
@@ -78,16 +86,29 @@ func NewInformerManager(
 		register:         make(chan client.Object),
 		unregister:       make(chan client.Object),
 		MapFunc:          mapFunc,
+		resyncPeriod:     resyncPeriod,
 		tweakListOptions: tweakListOptions,
 	}, nil
 }
 
-func (mgr *InformerManager) Start(ctx context.Context, queue workqueue.TypedRateLimitingInterface[ctrl.Request]) error {
-	mgr.ctx = ctx
-	mgr.queue = queue
+func (mgr *InformerManager) RawSource() source.TypedSource[reconcile.Request] {
+	return source.Func(func(ctx context.Context, w workqueue.TypedRateLimitingInterface[ctrl.Request]) error {
+		// this dynamically binds the given queue to the informer manager
+		// this means that from this point on, the queue will receive events for all registered watches
+		mgr.queueMu.Lock()
+		defer mgr.queueMu.Unlock()
+		if mgr.queue != nil {
+			return fmt.Errorf("another queue is already registered with the informer manager")
+		}
+		mgr.queue = w
+		return nil
+	})
+}
 
-	go mgr.registerWorker(ctx)
-	return nil
+func (mgr *InformerManager) Start(ctx context.Context) error {
+	ctrl.LoggerFrom(ctx).Info("Starting Dynamic Informer Manager")
+	mgr.ctx = ctx
+	return mgr.work(ctx)
 }
 
 // --- Public State Helpers ---
@@ -104,13 +125,12 @@ func (mgr *InformerManager) HasWatchRegisteredAndIsSynced(obj runtime.Object) bo
 
 // --- Register / Unregister ---
 
-func (mgr *InformerManager) registerWorker(ctx context.Context) {
+func (mgr *InformerManager) work(ctx context.Context) error {
 	logger := ctrl.LoggerFrom(ctx)
 	for {
 		select {
 		case <-ctx.Done():
-			mgr.stopAllTasks()
-			return
+			return mgr.stopAllTasks()
 		case obj := <-mgr.register:
 			if err := mgr.Register(obj); err != nil {
 				logger.Error(err, "register failed", "object", obj)
@@ -142,12 +162,12 @@ func (mgr *InformerManager) Register(obj runtime.Object) error {
 	}
 
 	inf := dynamicinformer.NewFilteredDynamicInformer(
-		mgr.clnt, gvr, ns, 60*time.Second,
+		mgr.clnt, gvr, ns, mgr.resyncPeriod,
 		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, mgr.tweakListOptions,
 	)
-	t := &task{gvr: gvr, informer: inf, eventHandler: mgr.eventHandler()}
+	t := &watchTask{gvr: gvr, informer: inf, eventHandler: mgr.eventHandler()}
 
-	if err := t.RunAsync(mgr.ctx); err != nil {
+	if err := t.RunWithContext(mgr.ctx); err != nil {
 		return err
 	}
 
@@ -165,12 +185,12 @@ func (mgr *InformerManager) Unregister(obj runtime.Object) error {
 	if !ok {
 		return nil
 	}
-	return mgr.stopTask(k, value.(*task))
+	return mgr.stopTask(mgr.ctx, k, value.(*watchTask))
 }
 
 // --- Private Helpers ---
 
-func (mgr *InformerManager) getTask(obj runtime.Object) (*task, schema.GroupVersionResource, string) {
+func (mgr *InformerManager) getTask(obj runtime.Object) (*watchTask, schema.GroupVersionResource, string) {
 	k, gvr, ns, err := mgr.resolveKey(obj)
 	if err != nil {
 		return nil, gvr, ns
@@ -180,7 +200,7 @@ func (mgr *InformerManager) getTask(obj runtime.Object) (*task, schema.GroupVers
 	if !ok {
 		return nil, gvr, ns
 	}
-	return t.(*task), gvr, ns
+	return t.(*watchTask), gvr, ns
 }
 
 func (mgr *InformerManager) resolveKey(obj runtime.Object) (key, schema.GroupVersionResource, string, error) {
@@ -205,20 +225,20 @@ func (mgr *InformerManager) resolveKey(obj runtime.Object) (key, schema.GroupVer
 	return key{mapping.Resource, ns}, mapping.Resource, ns, nil
 }
 
-func (mgr *InformerManager) stopAllTasks() {
-	var wg sync.WaitGroup
+func (mgr *InformerManager) stopAllTasks() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var err error
 	mgr.tasks.Range(func(k, v any) bool {
-		wg.Add(1)
-		go func(k key, t *task) {
-			defer wg.Done()
-			_ = mgr.stopTask(k, t)
-		}(k.(key), v.(*task))
+		err = errors.Join(err, mgr.stopTask(ctx, k.(key), v.(*watchTask)))
 		return true
 	})
-	wg.Wait()
+
+	return err
 }
 
-func (mgr *InformerManager) stopTask(k key, t *task) error {
+func (mgr *InformerManager) stopTask(ctx context.Context, k key, t *watchTask) error {
 	t.cancel()
 
 	ticker := time.NewTicker(100 * time.Millisecond)
@@ -226,10 +246,11 @@ func (mgr *InformerManager) stopTask(k key, t *task) error {
 
 	for {
 		select {
-		case <-mgr.ctx.Done():
-			return mgr.ctx.Err()
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled while stopping watchTask for %s", k.gvr)
 		case <-ticker.C:
 			if t.informer.Informer().IsStopped() {
+				ctrl.LoggerFrom(ctx).Info("stopped watch watchTask", "gvr", t.gvr, "namespace", k.namespace)
 				mgr.tasks.Delete(k)
 				return nil
 			}
@@ -253,7 +274,7 @@ func (mgr *InformerManager) enqueue(obj interface{}) {
 	}
 }
 
-func (t *task) RunAsync(ctx context.Context) error {
+func (t *watchTask) RunWithContext(ctx context.Context) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
