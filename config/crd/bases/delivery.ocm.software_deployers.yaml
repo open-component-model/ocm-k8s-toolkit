@@ -167,6 +167,44 @@ spec:
                   - type
                   type: object
                 type: array
+              deployed:
+                description: |-
+                  Deployed contains references to the objects that have been deployed by the Deployer through
+                  the Resource.
+                items:
+                  description: |-
+                    DeployedObjectReference is a reference to an object that has been deployed by the Deployer.
+                    It contains the API version, kind, name, and optionally the namespace of the deployed object.
+                  properties:
+                    apiVersion:
+                      description: API version of the referent.
+                      type: string
+                    kind:
+                      description: |-
+                        Kind of the referent.
+                        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                      type: string
+                    name:
+                      description: |-
+                        Name of the referent.
+                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      type: string
+                    namespace:
+                      description: |-
+                        Namespace of the referent.
+                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+                      type: string
+                    uid:
+                      description: |-
+                        UID of the referent.
+                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
+                      type: string
+                  required:
+                  - apiVersion
+                  - kind
+                  - name
+                  type: object
+                type: array
               effectiveOCMConfig:
                 description: |-
                   EffectiveOCMConfig specifies the entirety of config maps and secrets

@@ -39,4 +39,7 @@ const (
 
 	// DeletionFailedReason is used when we fail to delete the resource.
 	DeletionFailedReason = "DeletionFailed"
+
+	// ResourceNotSynced is used when the referenced resource is not yet synced.
+	ResourceNotSynced = "ResourceNotSynced"
 )
