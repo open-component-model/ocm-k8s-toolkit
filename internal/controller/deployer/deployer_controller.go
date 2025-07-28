@@ -12,10 +12,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -54,9 +54,9 @@ const manager = "deployer.ocm.software"
 type Reconciler struct {
 	*ocm.BaseReconciler
 
-	registerResourceWatchChannel, unregisterResourceWatchChannel chan client.Object
-	resourceHasWatchRegisteredAndIsSynced                        func(obj runtime.Object) bool
-	resourceWatchIsStopped                                       func(obj runtime.Object) bool
+	resourceWatchChannel, stopResourceWatchChannel chan client.Object
+	resourceWatchHasSynced                         func(obj client.Object) bool
+	resourceWatchIsStopped                         func(obj client.Object) bool
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -68,49 +68,10 @@ var _ ocm.Reconciler = (*Reconciler)(nil)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-	sel, err := labels.Parse(fmt.Sprintf("%s=%s", managedByLabel, manager))
+	informerManager, err := r.setupDynamicResourceWatcherWithManager(mgr)
 	if err != nil {
-		return fmt.Errorf("failed to parse label selector: %w", err)
+		return err
 	}
-
-	// For Registering and Unregistering watches, we use a dynamic informer manager.
-	// To buffer pending registrations and unregistrations, we use channels.
-	resourceManager, err := dynamic.NewInformerManager(
-		mgr.GetRESTMapper(),
-		func(ctx context.Context, object client.Object) []reconcile.Request {
-			ctrl.LoggerFrom(ctx).Info("received update from deployed resource", "name", object.GetName(), "gvk", object.GetObjectKind().GroupVersionKind().String())
-			controller := metav1.GetControllerOfNoCopy(object)
-			if controller == nil ||
-				controller.APIVersion != deliveryv1alpha1.GroupVersion.String() ||
-				controller.Kind != "Deployer" {
-				return nil
-			}
-			return []reconcile.Request{
-				{
-					NamespacedName: types.NamespacedName{
-						Namespace: object.GetNamespace(),
-						Name:      controller.Name,
-					},
-				},
-			}
-		},
-		30*time.Minute,
-		func(options *metav1.ListOptions) {
-			options.LabelSelector = sel.String()
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create dynamic informer manager: %w", err)
-	}
-
-	if err := mgr.Add(resourceManager); err != nil {
-		return fmt.Errorf("failed to add dynamic informer manager to controller manager: %w", err)
-	}
-
-	r.registerResourceWatchChannel = resourceManager.RegisterChannel()
-	r.unregisterResourceWatchChannel = resourceManager.UnregisterChannel()
-	r.resourceHasWatchRegisteredAndIsSynced = resourceManager.HasWatchRegisteredAndIsSynced
-	r.resourceWatchIsStopped = resourceManager.IsStopped
 
 	// Build index for deployers that reference a resource to get notified about resource changes.
 	const fieldName = ".spec.resourceRef"
@@ -136,7 +97,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&deliveryv1alpha1.Deployer{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		WatchesRawSource(resourceManager.RawSource()).
+		WatchesRawSource(informerManager.Source()).
 		// Watch for events from OCM resources that are referenced by the deployer
 		Watches(
 			&deliveryv1alpha1.Resource{},
@@ -172,6 +133,74 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 		Complete(r)
 }
 
+func (r *Reconciler) setupDynamicResourceWatcherWithManager(mgr ctrl.Manager) (*dynamic.InformerManager, error) {
+	// only register watches for resources that are managed by the deployer controller
+	sel, err := labels.Parse(fmt.Sprintf("%s=%s", managedByLabel, manager))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse label selector: %w", err)
+	}
+	// Create an event handler that will enqueue requests for deployers when a resource is updated.
+	// This is used to trigger a reconciliation of the deployer when a resource is updated that is referenced by the deployer.
+	eventHandler := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, object client.Object) []reconcile.Request {
+		ctrl.LoggerFrom(ctx).Info("received update from deployed resource",
+			"name", object.GetName(),
+			"gvk", object.GetObjectKind().GroupVersionKind().String(),
+		)
+		controller := metav1.GetControllerOfNoCopy(object)
+		if controller == nil ||
+			controller.APIVersion != deliveryv1alpha1.GroupVersion.String() ||
+			controller.Kind != "Deployer" {
+			return nil
+		}
+		return []reconcile.Request{
+			{
+				NamespacedName: types.NamespacedName{
+					Namespace: object.GetNamespace(),
+					Name:      controller.Name,
+				},
+			},
+		}
+	})
+
+	// Here we store the dynamic resource informer manager cache.
+	// This is separate from the controller manager cache, so we can use it to register and unregister watches for resources
+	// that are referenced by the deployer dynamically.
+	resourceManagerCache, err := cache.New(mgr.GetConfig(), cache.Options{
+		HTTPClient:                   mgr.GetHTTPClient(),
+		Scheme:                       mgr.GetScheme(),
+		Mapper:                       mgr.GetRESTMapper(),
+		ReaderFailOnMissingInformer:  true,
+		DefaultLabelSelector:         sel,
+		DefaultTransform:             dynamic.TransformPartialObjectMetadata,
+		DefaultUnsafeDisableDeepCopy: ptr.To(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cache for dynamic resource informer manager: %w", err)
+	}
+
+	if err := mgr.Add(resourceManagerCache); err != nil {
+		return nil, fmt.Errorf("failed to add dynamic informer manager cache to controller manager: %w", err)
+	}
+
+	// For Registering and Unregistering watches, we use a dynamic informer manager.
+	// To buffer pending registrations and unregistrations, we use channels.
+	informerManager := dynamic.NewInformerManager(resourceManagerCache, eventHandler)
+	// this channel is used to register watches for resources that are referenced by the deployer.
+	r.resourceWatchChannel = informerManager.RegisterChannel()
+	// this channel is used to unregister watches for resources that are referenced by the deployer.
+	r.stopResourceWatchChannel = informerManager.UnregisterChannel()
+	// The resourceWatchHasSynced function is used to check if a resource is already registered and synced once requested.
+	r.resourceWatchHasSynced = informerManager.HasSynced
+	// The resourceWatchIsStopped function is used to check if a resource watch is stopped. useful for cleanup purposes.
+	r.resourceWatchIsStopped = informerManager.IsStopped
+	// Add the dynamic informer manager to the controller manager. This will make the dynamic informer manager start
+	// its registration and unregistration workers once the controller manager is started.
+	if err := mgr.Add(informerManager); err != nil {
+		return nil, fmt.Errorf("failed to add dynamic informer manager to controller manager: %w", err)
+	}
+	return informerManager, nil
+}
+
 //nolint:funlen // we do not want to cut the function at arbitrary points
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
@@ -197,7 +226,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 			obj := deployedObjectReferenceToObject(deployed)
 			if !r.resourceWatchIsStopped(obj) {
 				logger.Info("unregistering resource watch for deployer", "name", deployer.GetName())
-				r.unregisterResourceWatchChannel <- obj
+				r.stopResourceWatchChannel <- obj
 				return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
 			}
 			removed := controllerutil.RemoveFinalizer(deployer, resourceWatchFinalizer+"/"+string(obj.GetUID()))
@@ -327,39 +356,39 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 		return ctrl.Result{}, fmt.Errorf("failed to unmarshal manifest: %w", err)
 	}
-	if r.resourceHasWatchRegisteredAndIsSynced(obj) {
+	if r.resourceWatchHasSynced(obj) {
 		logger.Info("resource graph definition is already registered and synced, skipping registration")
 	} else {
 		logger.Info("registering watch from deployer", "obj", obj.GetName())
-		r.registerResourceWatchChannel <- obj
+		r.resourceWatchChannel <- obj
 		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.ResourceNotSynced, "resource is not registered and synced")
 
 		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
 
 	// TODO: Improve deployer maturity (@frewilhelm)
-	//  - https://github.com/open-component-model/ocm-k8s-toolkit/issues/194 (@frewilhelm)
 	//  - https://github.com/open-component-model/ocm-k8s-toolkit/issues/195 (@frewilhelm)
-	//  - https://github.com/open-component-model/ocm-k8s-toolkit/issues/196 (@frewilhelm)
 
 	if err := controllerutil.SetControllerReference(deployer, obj, r.Scheme); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set controller reference on resource graph definition: %w", err)
 	}
 
-	var labels map[string]string
+	var lbls map[string]string
 	if obj.GetLabels() != nil {
-		labels = obj.GetLabels()
+		lbls = obj.GetLabels()
 	} else {
-		labels = make(map[string]string)
+		lbls = make(map[string]string)
 	}
 
-	labels[nameLabel] = resource.Status.Resource.Name
-	labels[versionLabel] = resource.Status.Resource.Version
-	labels[instanceLabel] = string(deployer.GetUID())
-	labels[partOfLabel] = deployer.GetName()
-	labels[managedByLabel] = manager
-	obj.SetLabels(labels)
+	lbls[nameLabel] = resource.Status.Resource.Name
+	lbls[versionLabel] = resource.Status.Resource.Version
+	lbls[instanceLabel] = string(deployer.GetUID())
+	lbls[partOfLabel] = deployer.GetName()
+	lbls[managedByLabel] = manager
+	obj.SetLabels(lbls)
 
+	// TODO: We may want to compute a diff here based on the cache content. This would allow us to only apply the changes
+	//       instead of applying the whole object every time, as this can be expensive for large objects on the API server.
 	if err := r.GetClient().Patch(ctx, obj, client.Apply, &client.PatchOptions{
 		Force:           ptr.To(true),
 		FieldManager:    fmt.Sprintf("%s/%s", manager, deployer.UID),

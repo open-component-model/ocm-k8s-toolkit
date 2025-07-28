@@ -7,18 +7,18 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/meta"
+	"golang.org/x/sync/errgroup"
+
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/dynamic/dynamicinformer"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
+
+	toolscache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -28,9 +28,7 @@ import (
 var _ manager.Runnable = &InformerManager{}
 
 type InformerManager struct {
-	ctx    context.Context
-	mapper meta.RESTMapper
-	clnt   dynamic.Interface
+	cache cache.Cache
 
 	register, unregister chan client.Object
 
@@ -39,59 +37,35 @@ type InformerManager struct {
 
 	tasks sync.Map
 
-	handler.MapFunc
+	handler handler.EventHandler
 
-	resyncPeriod     time.Duration
-	tweakListOptions dynamicinformer.TweakListOptionsFunc
+	resyncPeriod time.Duration
 }
 
-type key struct {
-	gvr       schema.GroupVersionResource
+type watchTaskKey struct {
+	gvk       schema.GroupVersionKind
 	namespace string
 }
 
 type watchTask struct {
-	ctx          context.Context
-	cancel       context.CancelFunc
-	mu           sync.Mutex
-	gvr          schema.GroupVersionResource
-	informer     informers.GenericInformer
-	eventHandler cache.ResourceEventHandler
+	informer     cache.Informer
+	registration toolscache.ResourceEventHandlerRegistration
 }
 
 func NewInformerManager(
-	mapper meta.RESTMapper,
-	mapFunc handler.MapFunc,
-	resyncPeriod time.Duration,
-	tweakListOptions dynamicinformer.TweakListOptionsFunc,
-) (*InformerManager, error) {
-	cfg, err := ctrl.GetConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get rest config: %w", err)
-	}
-
-	httpClient, err := rest.HTTPClientFor(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create REST client: %w", err)
-	}
-
-	dynClient, err := dynamic.NewForConfigAndClient(cfg, httpClient)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create dynamic client: %w", err)
-	}
-
+	cache cache.Cache,
+	handler handler.EventHandler,
+) *InformerManager {
 	return &InformerManager{
-		mapper:           mapper,
-		clnt:             dynClient,
-		register:         make(chan client.Object),
-		unregister:       make(chan client.Object),
-		MapFunc:          mapFunc,
-		resyncPeriod:     resyncPeriod,
-		tweakListOptions: tweakListOptions,
-	}, nil
+		cache: cache,
+		// TODO: consider making the channels buffered
+		register:   make(chan client.Object),
+		unregister: make(chan client.Object),
+		handler:    handler,
+	}
 }
 
-func (mgr *InformerManager) RawSource() source.TypedSource[reconcile.Request] {
+func (mgr *InformerManager) Source() source.TypedSource[reconcile.Request] {
 	return source.Func(func(ctx context.Context, w workqueue.TypedRateLimitingInterface[ctrl.Request]) error {
 		// this dynamically binds the given queue to the informer manager
 		// this means that from this point on, the queue will receive events for all registered watches
@@ -105,22 +79,34 @@ func (mgr *InformerManager) RawSource() source.TypedSource[reconcile.Request] {
 	})
 }
 
+func (mgr *InformerManager) NeedLeaderElection() bool {
+	// this manager does need leader election, as it is designed to run in a single instance
+	// this is to ensure that the dynamic informers are not started multiple times across different controller instances
+	return true
+}
+
 func (mgr *InformerManager) Start(ctx context.Context) error {
 	ctrl.LoggerFrom(ctx).Info("Starting Dynamic Informer Manager")
-	mgr.ctx = ctx
-	return mgr.work(ctx)
+
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		// TODO: add a worker pool here
+		return mgr.work(ctx)
+	})
+
+	return eg.Wait()
 }
 
 // --- Public State Helpers ---
 
-func (mgr *InformerManager) IsStopped(obj runtime.Object) bool {
-	task, _, _ := mgr.getTask(obj)
-	return task == nil || task.informer.Informer().IsStopped()
+func (mgr *InformerManager) IsStopped(obj client.Object) bool {
+	task := mgr.getTask(obj)
+	return task == nil || task.informer.IsStopped()
 }
 
-func (mgr *InformerManager) HasWatchRegisteredAndIsSynced(obj runtime.Object) bool {
-	task, _, _ := mgr.getTask(obj)
-	return task != nil && task.informer.Informer().HasSynced()
+func (mgr *InformerManager) HasSynced(obj client.Object) bool {
+	task := mgr.getTask(obj)
+	return task != nil && task.informer.HasSynced() && task.registration.HasSynced()
 }
 
 // --- Register / Unregister ---
@@ -132,11 +118,11 @@ func (mgr *InformerManager) work(ctx context.Context) error {
 		case <-ctx.Done():
 			return mgr.stopAllTasks()
 		case obj := <-mgr.register:
-			if err := mgr.Register(obj); err != nil {
+			if err := mgr.Register(ctx, obj); err != nil {
 				logger.Error(err, "register failed", "object", obj)
 			}
 		case obj := <-mgr.unregister:
-			if err := mgr.Unregister(obj); err != nil {
+			if err := mgr.Unregister(ctx, obj); err != nil {
 				logger.Error(err, "unregister failed", "object", obj)
 			}
 		}
@@ -151,78 +137,72 @@ func (mgr *InformerManager) UnregisterChannel() chan client.Object {
 	return mgr.unregister
 }
 
-func (mgr *InformerManager) Register(obj runtime.Object) error {
-	_, gvr, ns, err := mgr.resolveKey(obj)
-	if err != nil {
-		return err
-	}
-
-	if _, ok := mgr.tasks.Load(key{gvr, ns}); ok {
+func (mgr *InformerManager) Register(ctx context.Context, obj client.Object) error {
+	key := mgr.key(obj)
+	if _, ok := mgr.tasks.Load(key); ok {
 		return nil // already registered
 	}
 
-	inf := dynamicinformer.NewFilteredDynamicInformer(
-		mgr.clnt, gvr, ns, mgr.resyncPeriod,
-		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, mgr.tweakListOptions,
-	)
-	t := &watchTask{gvr: gvr, informer: inf, eventHandler: mgr.eventHandler()}
-
-	if err := t.RunWithContext(mgr.ctx); err != nil {
-		return err
+	inf, err := mgr.cache.GetInformer(ctx, obj)
+	if err != nil {
+		return fmt.Errorf("failed to get informer for %s: %w", obj.GetName(), err)
+	}
+	logger := ctrl.LoggerFrom(ctx)
+	reg, err := inf.AddEventHandlerWithOptions(toolscache.ResourceEventHandlerDetailedFuncs{
+		AddFunc: func(obj any, isInInitialList bool) {
+			mgr.handler.Create(ctx, event.TypedCreateEvent[client.Object]{
+				Object:          obj.(client.Object),
+				IsInInitialList: isInInitialList,
+			}, mgr.queue)
+		},
+		UpdateFunc: func(old, new any) {
+			mgr.handler.Update(ctx, event.TypedUpdateEvent[client.Object]{
+				ObjectNew: new.(client.Object),
+				ObjectOld: old.(client.Object),
+			}, mgr.queue)
+		},
+		DeleteFunc: func(obj any) {
+			mgr.handler.Delete(ctx, event.TypedDeleteEvent[client.Object]{
+				Object: obj.(client.Object),
+			}, mgr.queue)
+		},
+	}, toolscache.HandlerOptions{
+		Logger: &logger,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to add event handler for %s: %w", obj.GetName(), err)
 	}
 
-	mgr.tasks.Store(key{gvr, ns}, t)
+	t := &watchTask{informer: inf, registration: reg}
+
+	mgr.tasks.Store(key, t)
 	return nil
 }
 
-func (mgr *InformerManager) Unregister(obj runtime.Object) error {
-	k, _, _, err := mgr.resolveKey(obj)
-	if err != nil {
-		return err
-	}
+func (mgr *InformerManager) key(obj client.Object) watchTaskKey {
+	return watchTaskKey{obj.GetObjectKind().GroupVersionKind(), obj.GetNamespace()}
+}
 
-	value, ok := mgr.tasks.Load(k)
+func (mgr *InformerManager) Unregister(ctx context.Context, obj client.Object) error {
+	key := mgr.key(obj)
+
+	value, ok := mgr.tasks.Load(key)
 	if !ok {
 		return nil
 	}
-	return mgr.stopTask(mgr.ctx, k, value.(*watchTask))
+
+	return mgr.stopTask(ctx, key, value.(*watchTask))
 }
 
 // --- Private Helpers ---
 
-func (mgr *InformerManager) getTask(obj runtime.Object) (*watchTask, schema.GroupVersionResource, string) {
-	k, gvr, ns, err := mgr.resolveKey(obj)
-	if err != nil {
-		return nil, gvr, ns
-	}
-
-	t, ok := mgr.tasks.Load(k)
+func (mgr *InformerManager) getTask(obj client.Object) *watchTask {
+	key := mgr.key(obj)
+	t, ok := mgr.tasks.Load(key)
 	if !ok {
-		return nil, gvr, ns
+		return nil
 	}
-	return t.(*watchTask), gvr, ns
-}
-
-func (mgr *InformerManager) resolveKey(obj runtime.Object) (key, schema.GroupVersionResource, string, error) {
-	if mgr.ctx == nil {
-		return key{}, schema.GroupVersionResource{}, "", fmt.Errorf("manager not started")
-	}
-
-	gvk := obj.GetObjectKind().GroupVersionKind()
-	mapping, err := mgr.mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
-	if err != nil {
-		return key{}, schema.GroupVersionResource{}, "", err
-	}
-
-	ns := ""
-	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
-		metaObj, err := meta.Accessor(obj)
-		if err != nil {
-			return key{}, mapping.Resource, "", err
-		}
-		ns = metaObj.GetNamespace()
-	}
-	return key{mapping.Resource, ns}, mapping.Resource, ns, nil
+	return t.(*watchTask)
 }
 
 func (mgr *InformerManager) stopAllTasks() error {
@@ -231,86 +211,24 @@ func (mgr *InformerManager) stopAllTasks() error {
 
 	var err error
 	mgr.tasks.Range(func(k, v any) bool {
-		err = errors.Join(err, mgr.stopTask(ctx, k.(key), v.(*watchTask)))
+		err = errors.Join(err, mgr.stopTask(ctx, k.(watchTaskKey), v.(*watchTask)))
 		return true
 	})
 
 	return err
 }
 
-func (mgr *InformerManager) stopTask(ctx context.Context, k key, t *watchTask) error {
-	t.cancel()
-
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("context cancelled while stopping watchTask for %s", k.gvr)
-		case <-ticker.C:
-			if t.informer.Informer().IsStopped() {
-				ctrl.LoggerFrom(ctx).Info("stopped watch watchTask", "gvr", t.gvr, "namespace", k.namespace)
-				mgr.tasks.Delete(k)
-				return nil
-			}
-		}
-	}
-}
-
-func (mgr *InformerManager) eventHandler() cache.ResourceEventHandler {
-	return cache.ResourceEventHandlerFuncs{
-		AddFunc:    mgr.enqueue,
-		UpdateFunc: func(_, newObj interface{}) { mgr.enqueue(newObj) },
-		DeleteFunc: mgr.enqueue,
-	}
-}
-
-func (mgr *InformerManager) enqueue(obj interface{}) {
-	if m, ok := obj.(client.Object); ok {
-		for _, req := range mgr.MapFunc(mgr.ctx, m) {
-			mgr.queue.Add(req)
-		}
-	}
-}
-
-func (t *watchTask) RunWithContext(ctx context.Context) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if t.ctx != nil {
-		return fmt.Errorf("informer already running")
+func (mgr *InformerManager) stopTask(ctx context.Context, k watchTaskKey, t *watchTask) error {
+	ctrl.LoggerFrom(ctx).Info("Stopping dynamic watch task", "gvk", k.gvk, "namespace", k.namespace)
+	if err := t.informer.RemoveEventHandler(t.registration); err != nil {
+		return fmt.Errorf("failed to remove event handler for %s: %w", k.gvk, err)
 	}
 
-	t.ctx, t.cancel = context.WithCancel(ctx)
-	if _, err := t.informer.Informer().AddEventHandler(t.eventHandler); err != nil {
-		return err
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(k.gvk)
+	if err := mgr.cache.RemoveInformer(ctx, obj); err != nil {
+		return fmt.Errorf("failed to remove informer for %s: %w", k.gvk, err)
 	}
-	if err := t.informer.Informer().SetTransform(partialObjectMetadataFromUnstructured); err != nil {
-		return fmt.Errorf("failed to set transform: %w", err)
-	}
-
-	go t.informer.Informer().RunWithContext(t.ctx)
+	mgr.tasks.Delete(k)
 	return nil
-}
-
-var allowedFieldsForPartialObjectMetadata = map[string]struct{}{
-	"apiVersion": {},
-	"kind":       {},
-	"metadata":   {},
-}
-
-// partialObjectMetaDataFromUnstructured returns a transform function that
-// strips all fields from an unstructured object except apiVersion, kind, and metadata.
-func partialObjectMetadataFromUnstructured(obj any) (any, error) {
-	u, ok := obj.(*unstructured.Unstructured)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type %T, expected *unstructured.Unstructured", obj)
-	}
-	for key := range u.Object {
-		if _, allowed := allowedFieldsForPartialObjectMetadata[key]; !allowed {
-			delete(u.Object, key)
-		}
-	}
-	return u, nil
 }
