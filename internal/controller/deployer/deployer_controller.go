@@ -11,6 +11,7 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/deployer/dynamic"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
@@ -41,6 +42,13 @@ import (
 )
 
 const resourceWatchFinalizer = "watch.delivery.ocm.software"
+const managedByLabel = "app.kubernetes.io/managed-by"
+const versionLabel = "app.kubernetes.io/version"
+const partOfLabel = "app.kubernetes.io/part-of"
+const componentLabel = "app.kubernetes.io/component"
+const instanceLabel = "app.kubernetes.io/instance"
+const nameLabel = "app.kubernetes.io/name"
+const manager = "deployer.ocm.software"
 
 // Reconciler reconciles a Deployer object.
 type Reconciler struct {
@@ -60,16 +68,15 @@ var _ ocm.Reconciler = (*Reconciler)(nil)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	sel, err := labels.Parse(fmt.Sprintf("%s=%s", managedByLabel, manager))
+	if err != nil {
+		return fmt.Errorf("failed to parse label selector: %w", err)
+	}
 
 	// For Registering and Unregistering watches, we use a dynamic informer manager.
 	// To buffer pending registrations and unregistrations, we use channels.
-	r.registerResourceWatchChannel = make(chan client.Object)
-	r.unregisterResourceWatchChannel = make(chan client.Object)
-
 	resourceManager, err := dynamic.NewInformerManager(
 		mgr.GetRESTMapper(),
-		r.registerResourceWatchChannel,
-		r.unregisterResourceWatchChannel,
 		func(ctx context.Context, object client.Object) []reconcile.Request {
 			ctrl.LoggerFrom(ctx).Info("received update from deployed resource", "name", object.GetName(), "gvk", object.GetObjectKind().GroupVersionKind().String())
 			controller := metav1.GetControllerOfNoCopy(object)
@@ -87,11 +94,16 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 				},
 			}
 		},
+		func(options *metav1.ListOptions) {
+			options.LabelSelector = sel.String()
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create dynamic informer manager: %w", err)
 	}
 
+	r.registerResourceWatchChannel = resourceManager.RegisterChannel()
+	r.unregisterResourceWatchChannel = resourceManager.UnregisterChannel()
 	r.resourceHasWatchRegisteredAndIsSynced = resourceManager.HasWatchRegisteredAndIsSynced
 	r.resourceWatchIsStopped = resourceManager.IsStopped
 
@@ -329,10 +341,23 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to set controller reference on resource graph definition: %w", err)
 	}
 
+	var labels map[string]string
+	if obj.GetLabels() != nil {
+		labels = obj.GetLabels()
+	} else {
+		labels = make(map[string]string)
+	}
+
+	labels[nameLabel] = resource.Status.Resource.Name
+	labels[versionLabel] = resource.Status.Resource.Version
+	labels[instanceLabel] = string(deployer.GetUID())
+	labels[partOfLabel] = deployer.GetName()
+	labels[managedByLabel] = manager
+	obj.SetLabels(labels)
+
 	if err := r.GetClient().Patch(ctx, obj, client.Apply, &client.PatchOptions{
-		DryRun:          nil,
 		Force:           ptr.To(true),
-		FieldManager:    fmt.Sprintf("ocm.software/deployer/%s", deployer.UID),
+		FieldManager:    fmt.Sprintf("%s/%s", manager, deployer.UID),
 		FieldValidation: metav1.FieldValidationWarn,
 	}); err != nil {
 		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.CreateOrUpdateFailedReason, err.Error())
