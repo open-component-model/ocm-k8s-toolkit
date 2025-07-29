@@ -438,6 +438,7 @@ spec:
   # ocmConfig is required, if the OCM repository requires credentials to access it.
   # (You also need to specify the namespace of the reference as the 'deployer' is cluster-scoped.)
   # ocmConfig:
+  interval: 10m
 ```
 
 > [!NOTE]
