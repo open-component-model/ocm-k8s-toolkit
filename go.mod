@@ -12,7 +12,6 @@ require (
 	github.com/fluxcd/pkg/apis/event v0.18.0
 	github.com/fluxcd/pkg/apis/meta v1.18.0
 	github.com/fluxcd/pkg/runtime v0.74.0
-	github.com/kro-run/kro v0.3.0
 	github.com/mandelsoft/goutils v0.0.0-20241227142622-83a787399095
 	github.com/mandelsoft/vfs v0.4.4
 	github.com/onsi/ginkgo/v2 v2.23.4

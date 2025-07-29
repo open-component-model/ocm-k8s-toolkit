@@ -340,9 +340,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 		return ctrl.Result{}, fmt.Errorf("failed to get resource graph definition manifest: %w", err)
 	}
-	defer func() {
-		err = errors.Join(err, manifest.Close())
-	}()
 
 	if resource.Status.Resource.Digest != digest {
 		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetOCMResourceFailedReason, "resource digest mismatch")
@@ -379,7 +376,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	return ctrl.Result{}, nil
 }
 
-func decodeObjectsFromManifest(manifest io.ReadCloser) ([]client.Object, error) {
+func decodeObjectsFromManifest(manifest io.ReadCloser) (_ []client.Object, err error) {
+	defer func() {
+		err = errors.Join(err, manifest.Close())
+	}()
+
 	const bufferSize = 4096
 	decoder := yaml.NewYAMLOrJSONDecoder(manifest, bufferSize)
 	var objs []client.Object
