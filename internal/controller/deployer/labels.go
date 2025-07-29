@@ -25,6 +25,13 @@ const (
 
 // These are common labels.
 func setOwnershipLabels(obj client.Object, resource *deliveryv1alpha1.Resource, deployer *deliveryv1alpha1.Deployer) {
+	limit := func(v string) string {
+		if len(v) > validation.LabelValueMaxLength {
+			return v[:validation.LabelValueMaxLength]
+		}
+		return v
+	}
+
 	var lbls map[string]string
 	if existing := obj.GetLabels(); existing != nil {
 		lbls = existing
@@ -35,22 +42,16 @@ func setOwnershipLabels(obj client.Object, resource *deliveryv1alpha1.Resource, 
 		obj.SetLabels(lbls)
 	}()
 
-	// the name of the deployed object is the name of the resource in k8s
-	lbls[nameLabel] = resource.GetName()
-	// the version of the resource determines the version of the deployed object.
-	ver := resource.Status.Resource.Version
-	if len(lbls) > validation.LabelValueMaxLength {
-		// If the version is too long, we truncate it to fit the label value length limit.
-		// This is a workaround for the label value length limit.
-		ver = ver[:validation.LabelValueMaxLength-len(lbls[nameLabel])-1]
-	}
-	lbls[versionLabel] = ver
-	// the actual resource instance also determines the object instance.
-	lbls[instanceLabel] = string(resource.GetUID())
 	// the component within the architecture is always the name of the resource in k8s.
-	lbls[componentLabel] = resource.GetName()
+	lbls[componentLabel] = limit(resource.GetName())
+	// the name of the deployed object is the name of the resource in k8s
+	lbls[nameLabel] = limit(resource.GetName())
+	// the version of the resource determines the version of the deployed object.
+	lbls[versionLabel] = limit(resource.Status.Resource.Version)
+	// the actual resource instance also determines the object instance.
+	lbls[instanceLabel] = limit(string(resource.GetUID()))
 	// the name of the higher level component the object is part of is always the deployer.
-	lbls[partOfLabel] = deployer.GetName()
+	lbls[partOfLabel] = limit(deployer.GetName())
 	// the object is always managed by the deployer controller.
 	lbls[managedByLabel] = deployerManager
 }
