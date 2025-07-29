@@ -10,14 +10,16 @@ import (
 
 	"github.com/fluxcd/pkg/runtime/patch"
 	"golang.org/x/sync/errgroup"
-
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/yaml"
-
 	"k8s.io/utils/ptr"
-
+	"ocm.software/ocm/api/datacontext"
+	"ocm.software/ocm/api/ocm/compdesc"
+	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
+	"ocm.software/ocm/api/ocm/resolvers"
+	"ocm.software/ocm/api/ocm/tools/signing"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -26,15 +28,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"ocm.software/ocm/api/datacontext"
-	ocmctx "ocm.software/ocm/api/ocm"
-	"ocm.software/ocm/api/ocm/compdesc"
-	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
-	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
-	"ocm.software/ocm/api/ocm/resolvers"
-	"ocm.software/ocm/api/ocm/tools/signing"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ocmctx "ocm.software/ocm/api/ocm"
+	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
