@@ -2,9 +2,11 @@ package v1alpha1
 
 import (
 	"fmt"
+	"time"
+
+	"k8s.io/apimachinery/pkg/types"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 )
 
 const KindDeployer = "Deployer"
@@ -24,6 +26,10 @@ type DeployerSpec struct {
 	// Resource.
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
+
+	// Interval at which the deployment will be checked for updates.
+	// +required
+	Interval metav1.Duration `json:"interval"`
 }
 
 // DeployerStatus defines the observed state of Deployer.
@@ -114,6 +120,12 @@ type Deployer struct {
 
 	Spec   DeployerSpec   `json:"spec,omitempty"`
 	Status DeployerStatus `json:"status,omitempty"`
+}
+
+// GetRequeueAfter returns the duration after which the ComponentVersion must be
+// reconciled again.
+func (in Deployer) GetRequeueAfter() time.Duration {
+	return in.Spec.Interval.Duration
 }
 
 // +kubebuilder:object:root=true

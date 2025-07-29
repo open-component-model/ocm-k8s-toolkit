@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/meta"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -18,6 +19,7 @@ func TransformPartialObjectMetadata(obj any) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to access type: %w", err)
 	}
+
 	return &metav1.PartialObjectMetadata{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       t.GetKind(),
