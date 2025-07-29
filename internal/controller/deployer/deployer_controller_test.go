@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	krov1alpha1 "github.com/kro-run/kro/api/v1alpha1"
 	"github.com/mandelsoft/vfs/pkg/osfs"
@@ -80,7 +81,7 @@ spec:
 		var namespace *corev1.Namespace
 		var ctfName, componentName, resourceName, deployerObjName string
 		var componentVersion string
-		//repositoryName := "ocm.software/test-repository"
+		// repositoryName := "ocm.software/test-repository"
 
 		BeforeEach(func(ctx SpecContext) {
 			ctfName = "ctf-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
@@ -179,6 +180,7 @@ spec:
 						Name:      resourceObj.GetName(),
 						Namespace: namespace.GetName(),
 					},
+					Interval: metav1.Duration{Duration: time.Minute},
 				},
 			}
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
@@ -191,11 +193,11 @@ spec:
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rgdObj), rgdObjApplied)).To(Succeed())
 			Expect(rgdObjApplied.Spec).To(Equal(rgdObj.Spec))
 
-			By("mocking the GC")
-			test.DeleteObject(ctx, k8sClient, rgdObj)
-
 			By("deleting the deployer")
 			test.DeleteObject(ctx, k8sClient, deployerObj)
+
+			By("mocking the GC")
+			test.DeleteObject(ctx, k8sClient, rgdObj)
 		})
 
 		It("does not reconcile a deployer with an invalid RGD", func(ctx SpecContext) {
@@ -256,6 +258,7 @@ spec:
 						Name:      resourceObj.GetName(),
 						Namespace: namespace.GetName(),
 					},
+					Interval: metav1.Duration{Duration: time.Minute},
 				},
 			}
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
@@ -311,6 +314,7 @@ spec:
 						Name:      resourceObj.GetName(),
 						Namespace: namespace.GetName(),
 					},
+					Interval: metav1.Duration{Duration: time.Minute},
 				},
 			}
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
@@ -377,6 +381,7 @@ spec:
 						Name:      resourceObj.GetName(),
 						Namespace: namespace.GetName(),
 					},
+					Interval: metav1.Duration{Duration: time.Minute},
 				},
 			}
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
@@ -445,6 +450,7 @@ spec:
 						Name:      resourceObj.GetName(),
 						Namespace: namespace.GetName(),
 					},
+					Interval: metav1.Duration{Duration: time.Minute},
 				},
 			}
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
@@ -501,11 +507,11 @@ spec:
 				g.Expect(rgdObjUpdated.Spec).To(Equal(rgdObjApplied.Spec))
 			}, "15s").WithContext(ctx).Should(Succeed())
 
-			By("mocking the GC")
-			test.DeleteObject(ctx, k8sClient, rgdObj)
-
 			By("deleting the deployer")
 			test.DeleteObject(ctx, k8sClient, deployerObj)
+
+			By("mocking the GC")
+			test.DeleteObject(ctx, k8sClient, rgdObj)
 		})
 
 		It("fails when the resource is updated with an invalid change", func(ctx SpecContext) {
@@ -565,12 +571,13 @@ spec:
 						Name:      resourceObj.GetName(),
 						Namespace: namespace.GetName(),
 					},
+					Interval: metav1.Duration{Duration: time.Minute},
 				},
 			}
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
 
 			By("checking that the deployer has been reconciled successfully")
-			test.WaitForReadyObject(ctx, k8sClient, deployerObj, map[string]any{})
+			test.WaitForReadyObject(ctx, k8sClient, deployerObj, nil)
 
 			By("checking that the deployed ResourceGraphDefinition is correct")
 			rgdObjApplied := &krov1alpha1.ResourceGraphDefinition{}
@@ -614,11 +621,11 @@ spec:
 			By("checking that the deployer gets reconciled again and fails")
 			test.WaitForNotReadyObject(ctx, k8sClient, deployerObj, v1alpha1.MarshalFailedReason)
 
-			By("mocking the GC")
-			test.DeleteObject(ctx, k8sClient, rgdObj)
-
 			By("deleting the deployer")
 			test.DeleteObject(ctx, k8sClient, deployerObj)
+
+			By("mocking the GC")
+			test.DeleteObject(ctx, k8sClient, rgdObj)
 		})
 	})
 })

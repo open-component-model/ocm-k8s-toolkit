@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"runtime"
 	"slices"
 
@@ -38,15 +39,6 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/status"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/util"
-)
-
-// see https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/#labels
-const (
-	managedByLabel = "app.kubernetes.io/managed-by"
-	versionLabel   = "app.kubernetes.io/version"
-	partOfLabel    = "app.kubernetes.io/part-of"
-	instanceLabel  = "app.kubernetes.io/instance"
-	nameLabel      = "app.kubernetes.io/name"
 )
 
 const (
@@ -465,6 +457,29 @@ func (r *Reconciler) getResource(cv ocmctx.ComponentVersionAccess, resourceAcces
 	return data, digest[0].String(), nil
 }
 
+// TODO(jakobmoellerdev): currently digests are stored as strings in resource status, we should really consider storing them natively...
+func digestSpec(s string) (v1.DigestSpec, error) {
+	pattern := regexp.MustCompile(`^(?P<algo>[\w\-]+):(?P<digest>[a-fA-F0-9]+)\[(?P<norm>[\w\/]+)\]$`)
+	matches := pattern.FindStringSubmatch(s)
+	if expectedMatches := 4; len(matches) != expectedMatches {
+		return v1.DigestSpec{}, fmt.Errorf("invalid digest spec format: %s", s)
+	}
+
+	digestSpec := v1.DigestSpec{}
+	for i, name := range pattern.SubexpNames() {
+		switch name {
+		case "algo":
+			digestSpec.HashAlgorithm = matches[i]
+		case "digest":
+			digestSpec.Value = matches[i]
+		case "norm":
+			digestSpec.NormalisationAlgorithm = matches[i]
+		}
+	}
+
+	return digestSpec, nil
+}
+
 // applyConcurrently applies the resource graph definition objects to the cluster concurrently.
 //
 // See Apply for more details on how the objects are applied.
@@ -485,6 +500,7 @@ func (r *Reconciler) applyConcurrently(ctx context.Context, resource *deliveryv1
 // applied object reference.
 func (r *Reconciler) apply(ctx context.Context, resource *deliveryv1alpha1.Resource, deployer *deliveryv1alpha1.Deployer, obj client.Object) error {
 	setOwnershipLabels(obj, resource, deployer)
+	setOwnershipAnnotations(obj, resource)
 	if err := controllerutil.SetControllerReference(deployer, obj, r.Scheme); err != nil {
 		return fmt.Errorf("failed to set controller reference on resource graph definition: %w", err)
 	}
@@ -537,23 +553,6 @@ func (r *Reconciler) track(ctx context.Context, deployer *deliveryv1alpha1.Deplo
 	}
 
 	return nil
-}
-
-// These are common labels.
-func setOwnershipLabels(obj client.Object, resource *deliveryv1alpha1.Resource, deployer *deliveryv1alpha1.Deployer) {
-	var lbls map[string]string
-	if obj.GetLabels() != nil {
-		lbls = obj.GetLabels()
-	} else {
-		lbls = make(map[string]string)
-	}
-
-	lbls[nameLabel] = resource.Status.Resource.Name
-	lbls[versionLabel] = resource.Status.Resource.Version
-	lbls[instanceLabel] = string(deployer.GetUID())
-	lbls[partOfLabel] = deployer.GetName()
-	lbls[managedByLabel] = deployerManager
-	obj.SetLabels(lbls)
 }
 
 func updateDeployedObjectStatusReferences(objs []client.Object, deployer *deliveryv1alpha1.Deployer) {
