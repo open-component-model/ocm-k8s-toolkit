@@ -29,6 +29,7 @@ func setOwnershipLabels(obj client.Object, resource *deliveryv1alpha1.Resource, 
 		if len(v) > validation.LabelValueMaxLength {
 			return v[:validation.LabelValueMaxLength]
 		}
+
 		return v
 	}
 
