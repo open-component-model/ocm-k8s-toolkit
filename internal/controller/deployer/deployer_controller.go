@@ -57,16 +57,16 @@ type Reconciler struct {
 	// It is used by the dynamic informer manager to register watches for resources deployed.
 	// stopResourceWatchChannel is used to unregister watches for resources that are referenced by the deployer.
 	// It is used by the dynamic informer manager to unregister watches when "undeploying" a resource.
-	resourceWatchChannel, stopResourceWatchChannel chan client.Object
+	resourceWatchChannel, stopResourceWatchChannel chan dynamic.Event
 	// resourceWatchHasSynced is used to check if a resource watch is already registered and synced.
-	resourceWatchHasSynced func(obj client.Object) bool
+	resourceWatchHasSynced func(parent, obj client.Object) bool
 	// resourceWatchIsStopped is used to check if a resource watch is stopped.
-	resourceWatchIsStopped func(obj client.Object) bool
+	resourceWatchIsStopped func(parent, obj client.Object) bool
 	// deployTracker is used to track the deployed objects and their resource watches.
 	// this is used to ensure that the resource watches are removed when the deployer is deleted.
 	// Note that technically we also store tracked objects in the status, but to stay idempotent
 	// we use a tracker so as to only write to the status, and not read from it.
-	deployTracker *dynamic.Tracker
+	resourceWatches func(parent client.Object) []client.Object
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -181,12 +181,12 @@ func (r *Reconciler) setupDynamicResourceWatcherWithManager(mgr ctrl.Manager) (*
 	r.resourceWatchHasSynced = informerManager.HasSynced
 	// The resourceWatchIsStopped function is used to check if a resource watch is stopped. useful for cleanup purposes.
 	r.resourceWatchIsStopped = informerManager.IsStopped
+	r.resourceWatches = informerManager.ActiveForParent
 	// Add the dynamic informer deployerManager to the controller deployerManager. This will make the dynamic informer deployerManager start
 	// its registration and unregistration workers once the controller deployerManager is started.
 	if err := mgr.Add(informerManager); err != nil {
 		return nil, fmt.Errorf("failed to add dynamic informer deployerManager to controller deployerManager: %w", err)
 	}
-	r.deployTracker = dynamic.NewTracker()
 
 	return informerManager, nil
 }
@@ -195,25 +195,22 @@ func (r *Reconciler) setupDynamicResourceWatcherWithManager(mgr ctrl.Manager) (*
 // It also removes the finalizer from the deployer if there are no more tracked objects.
 func (r *Reconciler) Untrack(ctx context.Context, deployer *deliveryv1alpha1.Deployer) error {
 	logger := log.FromContext(ctx)
-	tracked, err := r.deployTracker.GetTracked(deployer)
-	if err != nil {
-		return fmt.Errorf("failed to get tracked objects for deployer to delete watches: %w", err)
-	}
-	for _, obj := range tracked {
-		if !r.resourceWatchIsStopped(obj) {
+	var atLeastOneResourceNeededStopWatch bool
+	for _, obj := range r.resourceWatches(deployer) {
+		if !r.resourceWatchIsStopped(deployer, obj) {
 			logger.Info("unregistering resource watch for deployer", "name", deployer.GetName())
-			r.stopResourceWatchChannel <- obj
-
-			return fmt.Errorf("deployer is being deleted, waiting for resource watch to be removed")
-		}
-		if err := r.deployTracker.Untrack(deployer, obj); err != nil {
-			return fmt.Errorf("failed to untrack deployed object: %w", err)
+			r.stopResourceWatchChannel <- dynamic.Event{
+				Parent: deployer,
+				Child:  obj,
+			}
+			atLeastOneResourceNeededStopWatch = true
 		}
 	}
-
-	if len(tracked) == 0 {
-		controllerutil.RemoveFinalizer(deployer, resourceWatchFinalizer)
+	if atLeastOneResourceNeededStopWatch {
+		return fmt.Errorf("waiting for at least one resource watch to be removed")
 	}
+
+	controllerutil.RemoveFinalizer(deployer, resourceWatchFinalizer)
 
 	return nil
 }
@@ -367,13 +364,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	updateDeployedObjectStatusReferences(objs, deployer)
+	// TODO: move finalizer up because removal is anyhow idempotent
 	controllerutil.AddFinalizer(deployer, resourceWatchFinalizer)
 
 	// TODO: Status propagation of RGD status to deployer
 	//       (see https://github.com/open-component-model/ocm-k8s-toolkit/issues/192)
 	status.MarkReady(r.EventRecorder, deployer, "Applied version %s", resourceAccess.Meta().GetVersion())
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: deployer.GetRequeueAfter()}, nil
 }
 
 func decodeObjectsFromManifest(manifest io.ReadCloser) (_ []client.Object, err error) {
@@ -481,7 +479,7 @@ func digestSpec(s string) (v1.DigestSpec, error) {
 	return digestSpec, nil
 }
 
-// applyConcurrently applies the resource graph definition objects to the cluster concurrently.
+// applyConcurrently applies the resource objects to the cluster concurrently.
 //
 // See Apply for more details on how the objects are applied.
 func (r *Reconciler) applyConcurrently(ctx context.Context, resource *deliveryv1alpha1.Resource, deployer *deliveryv1alpha1.Deployer, objs []client.Object) error {
@@ -539,18 +537,16 @@ func (r *Reconciler) trackConcurrently(ctx context.Context, deployer *deliveryv1
 func (r *Reconciler) track(ctx context.Context, deployer *deliveryv1alpha1.Deployer, obj client.Object) error {
 	logger := log.FromContext(ctx)
 
-	if r.resourceWatchHasSynced(obj) {
+	if r.resourceWatchHasSynced(deployer, obj) {
 		logger.Info("resource graph definition is already registered and synced, skipping registration")
 	} else {
 		logger.Info("registering watch from deployer", "obj", obj.GetName())
-		r.resourceWatchChannel <- obj
+		r.resourceWatchChannel <- dynamic.Event{
+			Parent: deployer,
+			Child:  obj,
+		}
 
 		return fmt.Errorf("resource graph definition is not yet registered and synced, waiting for registration")
-	}
-	if err := r.deployTracker.Track(deployer, obj); err != nil {
-		err = fmt.Errorf("failed to track deployed object: %w", err)
-
-		return err
 	}
 
 	return nil

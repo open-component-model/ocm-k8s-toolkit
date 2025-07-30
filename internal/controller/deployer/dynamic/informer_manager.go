@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -27,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	toolscache "k8s.io/client-go/tools/cache"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
@@ -35,11 +35,16 @@ const DefaultShutdownTimeout = 30 * time.Second
 
 var _ manager.Runnable = &InformerManager{}
 
+type Event struct {
+	Parent client.Object
+	Child  client.Object
+}
+
 type InformerManager struct {
 	workers int
 	cache   cache.Cache
 
-	register, unregister chan client.Object
+	register, unregister chan Event
 
 	queueMu sync.RWMutex // protects the queue from concurrent access
 	queue   workqueue.TypedRateLimitingInterface[ctrl.Request]
@@ -53,6 +58,7 @@ type InformerManager struct {
 }
 
 type watchTaskKey struct {
+	parent    schema.GroupVersionKind
 	gvk       schema.GroupVersionKind
 	namespace string
 }
@@ -60,7 +66,6 @@ type watchTaskKey struct {
 type watchTask struct {
 	informer     cache.Informer
 	registration toolscache.ResourceEventHandlerRegistration
-	active       atomic.Int32
 }
 
 type Options struct {
@@ -119,8 +124,8 @@ func NewInformerManager(opts *Options) (*InformerManager, error) {
 
 	mgr := &InformerManager{
 		cache:           metadataCache,
-		register:        make(chan client.Object, opts.RegisterChannelBufferSize),
-		unregister:      make(chan client.Object, opts.UnregisterChannelBufferSize),
+		register:        make(chan Event, opts.RegisterChannelBufferSize),
+		unregister:      make(chan Event, opts.UnregisterChannelBufferSize),
 		handler:         opts.Handler,
 		workers:         workers,
 		metricsLabel:    opts.MetricsLabel,
@@ -134,14 +139,7 @@ func (mgr *InformerManager) Source() source.TypedSource[reconcile.Request] {
 	return source.Func(func(_ context.Context, w workqueue.TypedRateLimitingInterface[ctrl.Request]) error {
 		// this dynamically binds the given queue to the informer manager
 		// this means that from this point on, the queue will receive events for all registered watches
-		mgr.queueMu.Lock()
-		defer mgr.queueMu.Unlock()
-		if mgr.queue != nil {
-			return fmt.Errorf("another queue is already registered with the informer manager")
-		}
-		mgr.queue = w
-
-		return nil
+		return mgr.SetQueue(w)
 	})
 }
 
@@ -187,16 +185,16 @@ func (mgr *InformerManager) Start(ctx context.Context) error {
 
 // --- Public State Helpers ---
 
-func (mgr *InformerManager) IsStopped(obj client.Object) bool {
-	task := mgr.getTask(obj)
+func (mgr *InformerManager) IsStopped(parent, obj client.Object) bool {
+	_, task, ok := mgr.getTask(parent, obj)
 
-	return task == nil || task.informer.IsStopped()
+	return ok && task.informer.IsStopped()
 }
 
-func (mgr *InformerManager) HasSynced(obj client.Object) bool {
-	task := mgr.getTask(obj)
+func (mgr *InformerManager) HasSynced(parent, obj client.Object) bool {
+	_, task, ok := mgr.getTask(parent, obj)
 
-	return task != nil && task.informer.HasSynced() && task.registration.HasSynced()
+	return ok && task.informer.HasSynced() && task.registration.HasSynced()
 }
 
 // --- Register / Unregister ---
@@ -209,37 +207,66 @@ func (mgr *InformerManager) work(ctx context.Context) error {
 			return ctx.Err()
 		case obj := <-mgr.register:
 			timer := prometheus.NewTimer(workerOperationDuration.WithLabelValues(mgr.metricsLabel, "register"))
-			err := mgr.Register(ctx, obj)
+			err := mgr.Register(ctx, obj.Parent, obj.Child)
 			timer.ObserveDuration()
 			if err != nil {
-				logger.Error(err, "register failed", "object", obj)
+				logger.Error(err, "register failed", "Parent", obj, "Child", obj.Child)
 			}
 		case obj := <-mgr.unregister:
 			timer := prometheus.NewTimer(workerOperationDuration.WithLabelValues(mgr.metricsLabel, "unregister"))
-			err := mgr.Unregister(ctx, obj)
+			err := mgr.Unregister(ctx, obj.Parent, obj.Child)
 			timer.ObserveDuration()
 			if err != nil {
-				logger.Error(err, "unregister failed", "object", obj)
+				logger.Error(err, "unregister failed", "Parent", obj, "Child", obj.Child)
 			}
 		}
 	}
 }
 
-func (mgr *InformerManager) RegisterChannel() chan client.Object {
+func (mgr *InformerManager) RegisterChannel() chan Event {
 	return mgr.register
 }
 
-func (mgr *InformerManager) UnregisterChannel() chan client.Object {
+func (mgr *InformerManager) UnregisterChannel() chan Event {
 	return mgr.unregister
 }
 
-func (mgr *InformerManager) Register(ctx context.Context, obj client.Object) error {
+func (mgr *InformerManager) SetQueue(queue workqueue.TypedRateLimitingInterface[ctrl.Request]) error {
+	mgr.queueMu.Lock()
+	defer mgr.queueMu.Unlock()
+
+	if mgr.queue != nil {
+		return fmt.Errorf("another queue is already registered")
+	}
+
+	mgr.queue = queue
+
+	return nil
+}
+
+func (mgr *InformerManager) ActiveForParent(parent client.Object) []client.Object {
+	var active []client.Object
+	mgr.tasks.Range(func(k, _ any) bool {
+		key := k.(watchTaskKey) //nolint:forcetypeassert // we know the type is a watchTaskKey
+		if key.parent == parent.GetObjectKind().GroupVersionKind() {
+			obj := &v1.PartialObjectMetadata{}
+			obj.SetGroupVersionKind(key.gvk)
+			obj.SetNamespace(key.namespace)
+			active = append(active, obj)
+		}
+
+		return true // continue iterating
+	})
+
+	return active
+}
+
+func (mgr *InformerManager) Register(ctx context.Context, parent, obj client.Object) error {
 	logger := ctrl.LoggerFrom(ctx)
 
-	key := mgr.key(obj)
-	if t, ok := mgr.tasks.Load(key); ok {
-		logger.Info("Incrementing active count for already running dynamic watch task", "gvk", key.gvk, "namespace", key.namespace)
-		t.(*watchTask).active.Add(1) //nolint:forcetypeassert // we know the type is a task
+	key := mgr.key(parent, obj)
+	if _, ok := mgr.tasks.Load(key); ok {
+		logger.Info("watch is already active", "gvk", key.gvk, "namespace", key.namespace)
 
 		return nil // already registered
 	}
@@ -275,8 +302,7 @@ func (mgr *InformerManager) Register(ctx context.Context, obj client.Object) err
 				eventCount.WithLabelValues(mgr.metricsLabel, "update").Inc()
 				mgr.handler.Update(ctx, event.TypedUpdateEvent[client.Object]{
 					ObjectNew: newObject.(client.Object), //nolint:forcetypeassert // we know the type is client.Object
-					//nolint:forcetypeassert // we know the type is client.Object
-					ObjectOld: oldObject.(client.Object),
+					ObjectOld: oldObject.(client.Object), //nolint:forcetypeassert // we know the type is client.Object
 				}, queue)
 			})
 		},
@@ -296,7 +322,6 @@ func (mgr *InformerManager) Register(ctx context.Context, obj client.Object) err
 	}
 
 	t := &watchTask{informer: inf, registration: reg}
-	t.active.Store(1) // start with 1 active count
 	mgr.tasks.Store(key, t)
 	activeTasks.WithLabelValues(mgr.metricsLabel).Inc()
 	registerTotal.WithLabelValues(mgr.metricsLabel, key.gvk.Group, key.gvk.Version, key.gvk.Kind, key.namespace).Inc()
@@ -304,19 +329,21 @@ func (mgr *InformerManager) Register(ctx context.Context, obj client.Object) err
 	return nil
 }
 
-func (mgr *InformerManager) key(obj client.Object) watchTaskKey {
-	return watchTaskKey{obj.GetObjectKind().GroupVersionKind(), obj.GetNamespace()}
+func (mgr *InformerManager) key(parent, obj client.Object) watchTaskKey {
+	return watchTaskKey{
+		parent:    parent.GetObjectKind().GroupVersionKind(),
+		gvk:       obj.GetObjectKind().GroupVersionKind(),
+		namespace: obj.GetNamespace(),
+	}
 }
 
-func (mgr *InformerManager) Unregister(ctx context.Context, obj client.Object) error {
-	key := mgr.key(obj)
-
-	value, ok := mgr.tasks.Load(key)
+func (mgr *InformerManager) Unregister(ctx context.Context, parent, obj client.Object) error {
+	key, task, ok := mgr.getTask(parent, obj)
 	if !ok {
 		return nil
 	}
 
-	if err := mgr.stopTask(ctx, key, value.(*watchTask)); err != nil { //nolint:forcetypeassert // we know the type
+	if err := mgr.stopTask(ctx, key, task); err != nil {
 		return fmt.Errorf("failed to stop task for %s: %w", obj.GetName(), err)
 	}
 
@@ -327,16 +354,19 @@ func (mgr *InformerManager) Unregister(ctx context.Context, obj client.Object) e
 
 // --- Private Helpers ---
 
-func (mgr *InformerManager) getTask(obj client.Object) *watchTask {
-	key := mgr.key(obj)
-	t, ok := mgr.tasks.Load(key)
+func (mgr *InformerManager) getTask(parent, obj client.Object) (watchTaskKey, *watchTask, bool) {
+	k := mgr.key(parent, obj)
+	t, ok := mgr.tasks.Load(k)
 	if !ok {
-		return nil
+		return watchTaskKey{}, nil, false
 	}
 
-	task, _ := t.(*watchTask)
+	task, ok := t.(*watchTask)
+	if !ok {
+		return watchTaskKey{}, nil, false
+	}
 
-	return task
+	return k, task, true
 }
 
 func (mgr *InformerManager) GracefulShutdown(ctx context.Context, timeout time.Duration) error {
@@ -365,13 +395,22 @@ func (mgr *InformerManager) GracefulShutdown(ctx context.Context, timeout time.D
 func (mgr *InformerManager) stopTask(ctx context.Context, k watchTaskKey, t *watchTask) error {
 	logger := ctrl.LoggerFrom(ctx).WithValues("gvk", k.gvk, "namespace", k.namespace)
 
-	if t.active.Load() > 1 {
-		logger.Info("Decrementing active count for dynamic watch task")
-		t.active.Add(-1)
+	isLastWatch := true
+	mgr.tasks.Range(func(ek, _ any) bool {
+		existing := ek.(watchTaskKey) //nolint:forcetypeassert // we know the type is watchTaskKey
+		if existing.gvk == k.gvk && existing.namespace == k.namespace && existing.parent != k.parent {
+			isLastWatch = false
+		}
+
+		return true // continue iterating
+	})
+	if !isLastWatch {
+		logger.Info("Found another active watch task for the same GVK and namespace but differing Parent, not stopping yet")
 
 		return nil
 	}
-	logger.Info("Stopping dynamic watch task")
+
+	logger.Info("Stopping dynamic watch task as this was the last watch for the GVK and namespace")
 
 	if err := t.informer.RemoveEventHandler(t.registration); err != nil {
 		return fmt.Errorf("failed to remove event handler for %s: %w", k.gvk, err)
