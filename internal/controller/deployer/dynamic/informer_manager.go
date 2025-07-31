@@ -110,11 +110,9 @@ func NewInformerManager(opts *Options) (*InformerManager, error) {
 		return nil, fmt.Errorf("failed to create cache: %w", err)
 	}
 
-	var workers int
+	workers := 1 // default to 1 worker if not specified
 	if opts.Workers > 0 {
 		workers = opts.Workers
-	} else {
-		workers = 1 // default to 1 worker if not specified
 	}
 
 	shutdownTimeout := opts.ShutdownTimeout

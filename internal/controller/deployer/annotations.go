@@ -22,11 +22,9 @@ const (
 )
 
 func setOwnershipAnnotations(obj client.Object, resource *deliveryv1alpha1.Resource) {
-	var anns map[string]string
+	anns := map[string]string{}
 	if existing := obj.GetAnnotations(); existing != nil {
 		anns = existing
-	} else {
-		anns = make(map[string]string)
 	}
 	defer func() {
 		obj.SetAnnotations(anns)

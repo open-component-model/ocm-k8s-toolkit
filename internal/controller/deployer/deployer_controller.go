@@ -199,9 +199,13 @@ func (r *Reconciler) Untrack(ctx context.Context, deployer *deliveryv1alpha1.Dep
 	for _, obj := range r.resourceWatches(deployer) {
 		if !r.resourceWatchIsStopped(deployer, obj) {
 			logger.Info("unregistering resource watch for deployer", "name", deployer.GetName())
-			r.stopResourceWatchChannel <- dynamic.Event{
+			select {
+			case r.stopResourceWatchChannel <- dynamic.Event{
 				Parent: deployer,
 				Child:  obj,
+			}:
+			case <-ctx.Done():
+				return fmt.Errorf("context canceled while unregistering resource watch for deployer %s: %w", deployer.Name, ctx.Err())
 			}
 			atLeastOneResourceNeededStopWatch = true
 		}
@@ -245,7 +249,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	octx := ocmctx.New(datacontext.MODE_EXTENDED)
 	session := ocmctx.NewSession(datacontext.NewSession())
 	defer func() {
-		err = octx.Finalize()
+		err = errors.Join(err, octx.Finalize())
 	}()
 
 	// automatically close the session when the ocm context is closed in the above defer
@@ -457,16 +461,17 @@ func (r *Reconciler) getResource(cv ocmctx.ComponentVersionAccess, resourceAcces
 	return data, digest[0].String(), nil
 }
 
+var digestSpecStringPattern = regexp.MustCompile(`^(?P<algo>[\w\-]+):(?P<digest>[a-fA-F0-9]+)\[(?P<norm>[\w\/]+)\]$`)
+
 // TODO(jakobmoellerdev): currently digests are stored as strings in resource status, we should really consider storing them natively...
 func digestSpec(s string) (v1.DigestSpec, error) {
-	pattern := regexp.MustCompile(`^(?P<algo>[\w\-]+):(?P<digest>[a-fA-F0-9]+)\[(?P<norm>[\w\/]+)\]$`)
-	matches := pattern.FindStringSubmatch(s)
+	matches := digestSpecStringPattern.FindStringSubmatch(s)
 	if expectedMatches := 4; len(matches) != expectedMatches {
 		return v1.DigestSpec{}, fmt.Errorf("invalid digest spec format: %s", s)
 	}
 
 	digestSpec := v1.DigestSpec{}
-	for i, name := range pattern.SubexpNames() {
+	for i, name := range digestSpecStringPattern.SubexpNames() {
 		switch name {
 		case "algo":
 			digestSpec.HashAlgorithm = matches[i]
@@ -542,9 +547,13 @@ func (r *Reconciler) track(ctx context.Context, deployer *deliveryv1alpha1.Deplo
 		logger.Info("resource graph definition is already registered and synced, skipping registration")
 	} else {
 		logger.Info("registering watch from deployer", "obj", obj.GetName())
-		r.resourceWatchChannel <- dynamic.Event{
+		select {
+		case r.resourceWatchChannel <- dynamic.Event{
 			Parent: deployer,
 			Child:  obj,
+		}:
+		case <-ctx.Done():
+			return fmt.Errorf("context canceled while unregistering resource watch for deployer %s: %w", deployer.Name, ctx.Err())
 		}
 
 		return fmt.Errorf("resource graph definition is not yet registered and synced, waiting for registration")

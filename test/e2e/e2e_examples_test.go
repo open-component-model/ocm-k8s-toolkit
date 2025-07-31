@@ -90,7 +90,7 @@ var _ = Describe("controller", func() {
 				Expect(
 					utils.WaitForResource("condition=Ready=true", timeout, name)).To(
 					Succeed(),
-					"The final readiness condition was not set, which means KRO believes the RGD was not reconciled correctly", name,
+					"The final readiness condition was not set, which means KRO believes the RGD %s was not reconciled correctly", name,
 				)
 
 				By("creating an instance of the example")
