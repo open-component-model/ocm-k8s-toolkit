@@ -227,7 +227,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	patchHelper := patch.NewSerialPatcher(deployer, r.Client)
 	defer func(ctx context.Context) {
-		err = errors.Join(err, status.UpdateStatus(ctx, patchHelper, deployer, r.EventRecorder, deployer.GetRequeueAfter(), err))
+		err = errors.Join(err, status.UpdateStatus(ctx, patchHelper, deployer, r.EventRecorder, 0, err))
 	}(ctx)
 
 	if deployer.Spec.Suspend {
@@ -371,7 +371,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	//       (see https://github.com/open-component-model/ocm-k8s-toolkit/issues/192)
 	status.MarkReady(r.EventRecorder, deployer, "Applied version %s", resourceAccess.Meta().GetVersion())
 
-	return ctrl.Result{RequeueAfter: deployer.GetRequeueAfter()}, nil
+	// we requeue the deployer after the requeue time specified in the resource.
+	return ctrl.Result{RequeueAfter: resource.GetRequeueAfter()}, nil
 }
 
 func decodeObjectsFromManifest(manifest io.ReadCloser) (_ []client.Object, err error) {

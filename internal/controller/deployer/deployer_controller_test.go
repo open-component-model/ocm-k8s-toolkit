@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
-	"time"
 
 	"github.com/mandelsoft/vfs/pkg/osfs"
 	"github.com/mandelsoft/vfs/pkg/projectionfs"
@@ -182,7 +181,6 @@ spec:
 						Name:      resourceObj.GetName(),
 						Namespace: namespace.GetName(),
 					},
-					Interval: metav1.Duration{Duration: time.Minute},
 				},
 			}
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
@@ -261,7 +259,6 @@ spec:
 						Name:      resourceObj.GetName(),
 						Namespace: namespace.GetName(),
 					},
-					Interval: metav1.Duration{Duration: time.Minute},
 				},
 			}
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
@@ -317,7 +314,6 @@ spec:
 						Name:      resourceObj.GetName(),
 						Namespace: namespace.GetName(),
 					},
-					Interval: metav1.Duration{Duration: time.Minute},
 				},
 			}
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
@@ -384,7 +380,6 @@ spec:
 						Name:      resourceObj.GetName(),
 						Namespace: namespace.GetName(),
 					},
-					Interval: metav1.Duration{Duration: time.Minute},
 				},
 			}
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
@@ -453,7 +448,6 @@ spec:
 						Name:      resourceObj.GetName(),
 						Namespace: namespace.GetName(),
 					},
-					Interval: metav1.Duration{Duration: time.Minute},
 				},
 			}
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
@@ -583,7 +577,6 @@ spec:
 						Name:      resourceObj.GetName(),
 						Namespace: namespace.GetName(),
 					},
-					Interval: metav1.Duration{Duration: time.Minute},
 				},
 			}
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())

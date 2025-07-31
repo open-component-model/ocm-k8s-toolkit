@@ -41,4 +41,3 @@ spec:
   resourceRef:
     name: kustomize-simple-resource-rgd
     namespace: default
-  interval: 10m

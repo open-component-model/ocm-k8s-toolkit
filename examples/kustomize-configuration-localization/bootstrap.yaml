@@ -41,4 +41,3 @@ spec:
   resourceRef:
     name: kustomize-configuration-localization-resource-rgd
     namespace: default
-  interval: 10m

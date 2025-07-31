@@ -42,4 +42,3 @@ spec:
   resourceRef:
     name: helm-configuration-localization-resource-rgd
     namespace: default
-  interval: 10m
