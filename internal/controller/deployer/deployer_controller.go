@@ -35,6 +35,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/deployer/cache"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/deployer/dynamic"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/status"
@@ -67,6 +68,8 @@ type Reconciler struct {
 	// Note that technically we also store tracked objects in the status, but to stay idempotent
 	// we use a tracker so as to only write to the status, and not read from it.
 	resourceWatches func(parent client.Object) []client.Object
+
+	DownloadCache cache.DigestObjectCache[string, []client.Object]
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -219,7 +222,6 @@ func (r *Reconciler) Untrack(ctx context.Context, deployer *deliveryv1alpha1.Dep
 	return nil
 }
 
-//nolint:funlen // we do not want to cut the function at arbitrary points
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("starting reconciliation")
@@ -246,29 +248,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("deployer is being deleted, waiting for resource watches to be removed")
 	}
 
-	octx := ocmctx.New(datacontext.MODE_EXTENDED)
-	session := ocmctx.NewSession(datacontext.NewSession())
-	defer func() {
-		err = errors.Join(err, octx.Finalize())
-	}()
-
-	// automatically close the session when the ocm context is closed in the above defer
-	octx.Finalizer().Close(session)
-
-	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), deployer)
-	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), deployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to get effective config: %w", err)
-	}
-
-	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs)
-	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), deployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to configure context: %w", err)
-	}
-
 	resourceNamespace := deployer.Spec.ResourceRef.Namespace
 	if resourceNamespace == "" {
 		resourceNamespace = deployer.GetNamespace()
@@ -292,67 +271,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	// Download the resource
-	spec, err := octx.RepositorySpecForConfig(resource.Status.Component.RepositorySpec.Raw, nil)
+	key := resource.Status.Resource.Digest
+
+	objs, err := r.DownloadCache.Load(key, func() ([]client.Object, error) {
+		return r.DownloadResourceWithOCM(ctx, deployer, resource)
+	})
 	if err != nil {
-		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to get repository spec: %w", err)
-	}
-
-	repo, err := session.LookupRepository(octx, spec)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("invalid repository spec: %w", err)
-	}
-
-	cv, err := session.LookupComponentVersion(repo, resource.Status.Component.Component, resource.Status.Component.Version)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to get component version: %w", err)
-	}
-
-	resourceReference := v1.ResourceReference{
-		Resource:      resource.Spec.Resource.ByReference.Resource,
-		ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
-	}
-
-	resourceAccess, _, err := ocm.GetResourceAccessForComponentVersion(
-		ctx,
-		session,
-		cv,
-		resourceReference,
-		&ocm.Descriptors{List: []*compdesc.ComponentDescriptor{cv.GetDescriptor()}},
-		resolvers.NewCompoundResolver(repo, octx.GetResolver()),
-		resource.Spec.SkipVerify,
-	)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetOCMResourceFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to get resource access: %w", err)
-	}
-
-	// Get the resource graph definition manifest and its digest. Compare the digest to the one in the resource to make
-	// sure the resource is up to date.
-	manifest, digest, err := r.getResource(cv, resourceAccess)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetOCMResourceFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to get resource graph definition manifest: %w", err)
-	}
-
-	if resource.Status.Resource.Digest != digest {
-		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetOCMResourceFailedReason, "resource digest mismatch")
-
-		return ctrl.Result{}, fmt.Errorf("resource digest mismatch: expected %s, got %s", resource.Status.Resource.Digest, digest)
-	}
-
-	objs, err := decodeObjectsFromManifest(manifest)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.MarshalFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to decode objects: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to download resource from OCM or retrieve it from the cache: %w", err)
 	}
 
 	if err = r.applyConcurrently(ctx, resource, deployer, objs); err != nil {
@@ -373,17 +298,109 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	// TODO: Status propagation of RGD status to deployer
 	//       (see https://github.com/open-component-model/ocm-k8s-toolkit/issues/192)
-	status.MarkReady(r.EventRecorder, deployer, "Applied version %s", resourceAccess.Meta().GetVersion())
+	status.MarkReady(r.EventRecorder, deployer, "Applied version %s", resource.Status.Resource.Version)
 
 	// we requeue the deployer after the requeue time specified in the resource.
 	return ctrl.Result{RequeueAfter: resource.GetRequeueAfter()}, nil
 }
 
-func decodeObjectsFromManifest(manifest io.ReadCloser) (_ []client.Object, err error) {
+func (r *Reconciler) DownloadResourceWithOCM(
+	ctx context.Context,
+	deployer *deliveryv1alpha1.Deployer,
+	resource *deliveryv1alpha1.Resource,
+) (objs []client.Object, err error) {
+	octx := ocmctx.New(datacontext.MODE_EXTENDED)
+	session := ocmctx.NewSession(datacontext.NewSession())
+	defer func() {
+		err = errors.Join(err, octx.Finalize())
+	}()
+
+	// automatically close the session when the ocm context is closed in the above defer
+	octx.Finalizer().Close(session)
+
+	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), deployer)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), deployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return nil, fmt.Errorf("failed to get effective config: %w", err)
+	}
+
+	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), deployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return nil, fmt.Errorf("failed to configure context: %w", err)
+	}
+
+	spec, err := octx.RepositorySpecForConfig(resource.Status.Component.RepositorySpec.Raw, nil)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
+
+		return nil, fmt.Errorf("failed to get repository spec: %w", err)
+	}
+
+	repo, err := session.LookupRepository(octx, spec)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
+
+		return nil, fmt.Errorf("invalid repository spec: %w", err)
+	}
+
+	cv, err := session.LookupComponentVersion(repo, resource.Status.Component.Component, resource.Status.Component.Version)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
+
+		return nil, fmt.Errorf("failed to get component version: %w", err)
+	}
+
+	resourceReference := v1.ResourceReference{
+		Resource:      resource.Spec.Resource.ByReference.Resource,
+		ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
+	}
+
+	resourceAccess, _, err := ocm.GetResourceAccessForComponentVersion(
+		ctx,
+		session,
+		cv,
+		resourceReference,
+		&ocm.Descriptors{List: []*compdesc.ComponentDescriptor{cv.GetDescriptor()}},
+		resolvers.NewCompoundResolver(repo, octx.GetResolver()),
+		resource.Spec.SkipVerify,
+	)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetOCMResourceFailedReason, err.Error())
+
+		return nil, fmt.Errorf("failed to get resource access: %w", err)
+	}
+
+	// Get the resource graph definition manifest and its digest. Compare the digest to the one in the resource to make
+	// sure the resource is up to date.
+	manifest, digest, err := r.getResource(cv, resourceAccess)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetOCMResourceFailedReason, err.Error())
+
+		return nil, fmt.Errorf("failed to get resource graph definition manifest: %w", err)
+	}
 	defer func() {
 		err = errors.Join(err, manifest.Close())
 	}()
 
+	if resource.Status.Resource.Digest != digest {
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetOCMResourceFailedReason, "resource digest mismatch")
+
+		return nil, fmt.Errorf("resource digest mismatch: expected %s, got %s", resource.Status.Resource.Digest, digest)
+	}
+
+	if objs, err = decodeObjectsFromManifest(manifest); err != nil {
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.MarshalFailedReason, err.Error())
+
+		return nil, fmt.Errorf("failed to decode objects: %w", err)
+	}
+
+	return objs, nil
+}
+
+func decodeObjectsFromManifest(manifest io.ReadCloser) (_ []client.Object, err error) {
 	const bufferSize = 4096
 	decoder := yaml.NewYAMLOrJSONDecoder(manifest, bufferSize)
 	var objs []client.Object
@@ -493,7 +510,10 @@ func (r *Reconciler) applyConcurrently(ctx context.Context, resource *deliveryv1
 
 	for i := range objs {
 		eg.Go(func() error {
-			return r.apply(egctx, resource, deployer, objs[i])
+			//nolint:forcetypeassert // we know that objs[i] is a client.Object because we just cloned it
+			obj := objs[i].DeepCopyObject().(client.Object)
+
+			return r.apply(egctx, resource, deployer, obj)
 		})
 	}
 
