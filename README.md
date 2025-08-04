@@ -23,7 +23,7 @@ You should be familiar with the following concepts:
 > [!NOTE]
 > The following section provides a high-level overview of the OCM K8s Toolkit and its components regarding the
 > deployment of an OCM resource in a very basic scenario. To learn more about the *transfer* of OCM component versions,
-> please take a look at its [architecture document](docs/architecture/replication.md).
+> please take a look at its [architecture document](docs/adr/replication.md).
 
 The primary purpose of OCM K8s Toolkit is simple: Deploy an OCM resource from an OCM component version into a Kubernetes
 cluster.
