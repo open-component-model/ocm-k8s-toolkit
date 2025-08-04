@@ -2,7 +2,6 @@ package v1alpha1
 
 import (
 	"github.com/fluxcd/pkg/apis/meta"
-
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	ocmv1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
@@ -96,6 +95,30 @@ type ResourceInfo struct {
 	Access apiextensionsv1.JSON `json:"access,omitempty"`
 	// +required
 	Digest string `json:"digest,omitempty"`
+	// +optional
+	Labels []Label `json:"labels,omitempty"`
+}
+
+type Label struct {
+	// Name is the unique name of the label.
+	Name string `json:"name"`
+	// Value is the json/yaml data of the label
+	Value apiextensionsv1.JSON `json:"value"`
+	// Version is the optional specification version of the attribute value
+	Version string `json:"version,omitempty"`
+	// Signing describes whether the label should be included into the signature
+	Signing bool `json:"signing,omitempty"`
+	// MergeAlgorithm optionally describes the desired merge handling used to
+	// merge the label value during a transfer.
+	Merge *MergeAlgorithmSpecification `json:"merge,omitempty"`
+}
+
+type MergeAlgorithmSpecification struct {
+	// Algorithm optionally described the Merge algorithm used to
+	// merge the label value during a transfer.
+	Algorithm string `json:"algorithm"`
+	// Config contains optional config for the merge algorithm.
+	Config apiextensionsv1.JSON `json:"config,omitempty"`
 }
 
 type SourceReference struct {
