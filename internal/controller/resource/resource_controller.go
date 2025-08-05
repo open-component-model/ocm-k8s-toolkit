@@ -14,7 +14,6 @@ import (
 	"github.com/mandelsoft/goutils/sliceutils"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/fields"
-	k8stypes "k8s.io/apimachinery/pkg/types"
 	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/compdesc"
 	"ocm.software/ocm/api/ocm/resolvers"
@@ -27,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	ocmctx "ocm.software/ocm/api/ocm"
 	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -354,57 +354,32 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	return ctrl.Result{RequeueAfter: resource.GetRequeueAfter()}, nil
 }
 
-// setResourceStatus updates the resource status with the all required information.
+// setResourceStatus updates the resource status with all required information.
 func setResourceStatus(
 	ctx context.Context,
 	configs []v1alpha1.OCMConfiguration,
 	resource *v1alpha1.Resource,
-	resourceAccess ocmctx.ResourceAccess,
+	access ocmctx.ResourceAccess,
 	component *v1alpha1.ComponentInfo,
 ) error {
 	log.FromContext(ctx).V(1).Info("updating resource status")
 
-	// Get the access spec from the resource access
-	accessSpec, err := resourceAccess.Access()
+	spec, err := access.Access()
 	if err != nil {
-		return fmt.Errorf("failed to get access spec: %w", err)
+		return fmt.Errorf("getting access spec: %w", err)
 	}
 
-	accessData, err := json.Marshal(accessSpec)
+	info, err := buildResourceInfo(access, spec)
 	if err != nil {
-		return fmt.Errorf("failed to marshal access spec: %w", err)
+		return fmt.Errorf("building resource info: %w", err)
 	}
+	resource.Status.Resource = info
 
-	resource.Status.Resource = &v1alpha1.ResourceInfo{
-		Name:          resourceAccess.Meta().Name,
-		Type:          resourceAccess.Meta().Type,
-		Version:       resourceAccess.Meta().Version,
-		ExtraIdentity: resourceAccess.Meta().ExtraIdentity,
-		Access:        apiextensionsv1.JSON{Raw: accessData},
-		Digest:        resourceAccess.Meta().Digest.String(),
-		Labels:        make([]v1alpha1.Label, len(resourceAccess.Meta().Labels)),
-	}
-
-	for i, val := range resourceAccess.Meta().Labels {
-		resource.Status.Resource.Labels[i] = v1alpha1.Label{
-			Name:    val.Name,
-			Value:   apiextensionsv1.JSON{Raw: val.Value},
-			Version: val.Version,
-			Signing: val.Signing,
-		}
-		if val.Merge != nil {
-			resource.Status.Resource.Labels[i].Merge = &v1alpha1.MergeAlgorithmSpecification{
-				Algorithm: val.Merge.Algorithm,
-				Config:    apiextensionsv1.JSON{Raw: val.Merge.Config},
-			}
-		}
-	}
-
-	if err := evaluateAdditionalStatusFields(ctx, compdesc.Resource{
-		ResourceMeta: *resourceAccess.Meta(),
-		Access:       accessSpec,
+	if err := computeAdditionalStatusFields(ctx, compdesc.Resource{
+		ResourceMeta: *access.Meta(),
+		Access:       spec,
 	}, resource); err != nil {
-		return fmt.Errorf("failed to evaluate additional status fields: %w", err)
+		return fmt.Errorf("evaluating additional status fields: %w", err)
 	}
 
 	resource.Status.EffectiveOCMConfig = configs
@@ -413,53 +388,119 @@ func setResourceStatus(
 	return nil
 }
 
-func evaluateAdditionalStatusFields(ctx context.Context, variables any, resource *v1alpha1.Resource) error {
+// buildResourceInfo constructs a ResourceInfo from the access metadata and spec.
+func buildResourceInfo(
+	access ocmctx.ResourceAccess,
+	spec any,
+) (*v1alpha1.ResourceInfo, error) {
+	meta := access.Meta()
+	raw, err := json.Marshal(spec)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling access spec: %w", err)
+	}
+
+	labels := convertLabels(meta.Labels)
+
+	return &v1alpha1.ResourceInfo{
+		Name:          meta.Name,
+		Type:          meta.Type,
+		Version:       meta.Version,
+		ExtraIdentity: meta.ExtraIdentity,
+		Access:        apiextensionsv1.JSON{Raw: raw},
+		Digest:        meta.Digest.String(),
+		Labels:        labels,
+	}, nil
+}
+
+// convertLabels maps metadata labels to API Label objects.
+func convertLabels(in compdesc.Labels) []v1alpha1.Label {
+	out := make([]v1alpha1.Label, len(in))
+	for i, l := range in {
+		out[i] = v1alpha1.Label{
+			Name:    l.Name,
+			Value:   apiextensionsv1.JSON{Raw: l.Value},
+			Version: l.Version,
+			Signing: l.Signing,
+		}
+		if l.Merge != nil {
+			out[i].Merge = &v1alpha1.MergeAlgorithmSpecification{
+				Algorithm: l.Merge.Algorithm,
+				Config:    apiextensionsv1.JSON{Raw: l.Merge.Config},
+			}
+		}
+	}
+
+	return out
+}
+
+// computeAdditionalStatusFields compiles and evaluates CEL expressions for additional fields.
+func computeAdditionalStatusFields(
+	ctx context.Context,
+	res compdesc.Resource,
+	resource *v1alpha1.Resource,
+) error {
 	env, err := ocmcel.BaseEnv()
 	if err != nil {
-		return fmt.Errorf("failed to get base CEL environment: %w", err)
+		return fmt.Errorf("getting base CEL env: %w", err)
 	}
-	if env, err = env.Extend(cel.Variable("resource", cel.AnyType)); err != nil {
-		return fmt.Errorf("failed to extend CEL environment with resource variable: %w", err)
-	}
-
-	var anyResource map[string]any
-	variablesJSON, err := json.Marshal(variables)
+	env, err = env.Extend(
+		cel.Variable("resource", cel.AnyType),
+	)
 	if err != nil {
-		return fmt.Errorf("failed to marshal variable input for additional status fields: %w", err)
-	}
-	if err := json.Unmarshal(variablesJSON, &anyResource); err != nil {
-		return fmt.Errorf("failed to unmarshal variable input into generic map: %w", err)
+		return fmt.Errorf("extending CEL env: %w", err)
 	}
 
-	resource.Status.Additional = make(map[string]apiextensionsv1.JSON, len(resource.Spec.AdditionalStatusFields))
+	resourceMap, err := toGenericMapViaJSON(res)
+	if err != nil {
+		return fmt.Errorf("preparing CEL variables: %w", err)
+	}
+
+	fields := resource.Spec.AdditionalStatusFields
+	resource.Status.Additional = make(map[string]apiextensionsv1.JSON, len(fields))
+
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.SetLimit(runtime.NumCPU())
-	mu := &sync.Mutex{}
-	for name, field := range resource.Spec.AdditionalStatusFields {
+	var mu sync.Mutex // use a mutex to serialize concurrent writes to resource status
+
+	for name, expr := range fields {
 		eg.Go(func() error {
-			ast, issues := env.Compile(field)
-			if err := issues.Err(); err != nil {
-				return fmt.Errorf("failed to compile CEL expression for field %s: %w", name, err)
+			ast, issues := env.Compile(expr)
+			if issues.Err() != nil {
+				return fmt.Errorf("compiling CEL %q: %w", name, issues.Err())
 			}
 			prog, err := env.Program(ast)
 			if err != nil {
-				return fmt.Errorf("failed to create CEL program for field %s: %w", name, err)
+				return fmt.Errorf("building CEL program %q: %w", name, err)
 			}
-			value, _, err := prog.ContextEval(ctx, map[string]interface{}{
-				"resource": anyResource,
-			})
+			val, _, err := prog.ContextEval(ctx, map[string]interface{}{"resource": resourceMap})
 			if err != nil {
-				return fmt.Errorf("failed to evaluate CEL expression for field %s: %w", name, err)
+				return fmt.Errorf("evaluating CEL %q: %w", name, err)
 			}
-			valueJSON, err := json.Marshal(value)
+			raw, err := json.Marshal(val)
 			if err != nil {
-				return fmt.Errorf("failed to marshal value for field %s: %w", name, err)
+				return fmt.Errorf("marshaling CEL result %q: %w", name, err)
 			}
 			mu.Lock()
 			defer mu.Unlock()
-			resource.Status.Additional[name] = apiextensionsv1.JSON{Raw: valueJSON}
+			resource.Status.Additional[name] = apiextensionsv1.JSON{Raw: raw}
+
 			return nil
 		})
 	}
+
 	return eg.Wait()
+}
+
+// toGenericMapViaJSON marshals and unmarshals a struct into a generic map representation through JSON tags.
+func toGenericMapViaJSON(v interface{}) (map[string]interface{}, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+
+	return m, nil
 }

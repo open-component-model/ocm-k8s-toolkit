@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	"github.com/fluxcd/pkg/apis/meta"
+
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	ocmv1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
@@ -119,17 +120,4 @@ type MergeAlgorithmSpecification struct {
 	Algorithm string `json:"algorithm"`
 	// Config contains optional config for the merge algorithm.
 	Config apiextensionsv1.JSON `json:"config,omitempty"`
-}
-
-type SourceReference struct {
-	// +required
-	Registry string `json:"registry"`
-	// +required
-	Repository string `json:"repository"`
-	// +optional
-	Reference string `json:"reference"`
-	// +optional
-	Digest string `json:"digest"`
-	// +optional
-	Tag string `json:"tag"`
 }

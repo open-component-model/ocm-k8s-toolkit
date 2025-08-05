@@ -26,7 +26,6 @@ require (
 	k8s.io/client-go v0.33.3
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
 	ocm.software/ocm v0.26.0
-	oras.land/oras-go/v2 v2.6.0
 	sigs.k8s.io/controller-runtime v0.21.0
 	sigs.k8s.io/yaml v1.5.0
 )
@@ -510,6 +509,7 @@ require (
 	k8s.io/kubectl v0.33.2 // indirect
 	mvdan.cc/gofumpt v0.8.0 // indirect
 	mvdan.cc/unparam v0.0.0-20250301125049-0df0534333a4 // indirect
+	oras.land/oras-go/v2 v2.6.0 // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/kustomize/api v0.20.0 // indirect
 	sigs.k8s.io/kustomize/kyaml v0.20.0 // indirect
