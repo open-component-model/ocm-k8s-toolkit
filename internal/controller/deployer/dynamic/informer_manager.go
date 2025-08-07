@@ -1,3 +1,6 @@
+// Package dynamic provides a dynamic informer manager that can register and unregister
+// informers at runtime for arbitrary Kubernetes resources. It leverages controller-runtime
+// cache and client-go workqueue to dispatch events dynamically per parent-child relationships.
 package dynamic
 
 import (
@@ -31,62 +34,95 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
+// DefaultShutdownTimeout is the default duration to wait for informers to shut down gracefully.
 const DefaultShutdownTimeout = 30 * time.Second
 
-var _ manager.Runnable = &InformerManager{}
-
+// Event pairs a parent object with a child resource to register or unregister watches dynamically.
 type Event struct {
+	// Parent is the owning resource triggering the dynamic watch.
 	Parent client.Object
-	Child  client.Object
+	// Child is the resource type to watch under the parent.
+	Child client.Object
 }
 
-type InformerManager struct {
-	workers int
-	cache   cache.Cache
+// InformerManager implements manager.Runnable and allows dynamic registration
+// of informers for arbitrary Kubernetes resources at runtime but needs to be started through the controller manager.
+var _ manager.Runnable = &InformerManager{}
 
+// InformerManager dynamically manages informer lifecycles for Kubernetes resources.
+// It allows controllers to register and unregister watches at runtime based on parent-child relations,
+// dispatching events through a workqueue to a supplied EventHandler.
+//
+// Usage:
+//  1. Instantiate via NewInformerManager with desired handler, label selectors, and options.
+//  2. Add InformerManager as a manager.Runnable to your controller manager: Source yields a redirection of events to a controller queue.
+//  3. Use RegisterChannel to enqueue Event{Parent, Child} when you need to start watching a resource under a parent.
+//  4. Use UnregisterChannel to enqueue Event{Parent, Child} to stop watching when cleanup is needed.
+//  5. Start your controller manager, lifecycle is managed by the controller manager.
+//
+// Internally, it maintains:
+// - A controller-runtime cache for metadata-only informers.
+// - Buffered channels for registration/unregistration requests.
+// - A synchronized workqueue bound to reconcile.Request processing.
+// - A concurrent map of active informer tasks.
+// - Calls to prometheus metrics for operations and active watches.
+type InformerManager struct {
+	// Number of worker goroutines processing register / unregister events.
+	workers int
+
+	// Metadata-only cache hosting dynamic informers for arbitrary GVKs.
+	cache cache.Cache
+
+	// Channels for enqueuing dynamic watch Event requests.
+	// Sends Parent/Child pairs to register or unregister watches.
 	register, unregister chan Event
 
-	queueMu sync.RWMutex // protects the queue from concurrent access
-	queue   workqueue.TypedRateLimitingInterface[ctrl.Request]
+	// Protects access to the bound workqueue reference.
+	queueMu sync.RWMutex
+	// The workqueue receiving reconcile.Requests emitted by informer events.
+	queue workqueue.TypedRateLimitingInterface[ctrl.Request]
 
-	tasks sync.Map
+	// Concurrent map of active informer tasks keyed by (parent GVK, child GVK, namespace).
+	tasks sync.Map // map[watchTaskKey]*watchTask
 
+	// Handler invoked with Create/Update/Delete event notifications.
 	handler handler.EventHandler
 
-	metricsLabel    string
+	// Label used to group Prometheus metrics for this manager instance.
+	metricsLabel string
+
+	// Timeout duration for graceful shutdown of all informers.
 	shutdownTimeout time.Duration
 }
 
-type watchTaskKey struct {
-	parent    schema.GroupVersionKind
-	gvk       schema.GroupVersionKind
-	namespace string
-}
-
+// watchTask holds the informer and its registration handle.
 type watchTask struct {
 	informer     cache.Informer
 	registration toolscache.ResourceEventHandlerRegistration
 }
 
+// Options configures the InformerManager.
 type Options struct {
-	Config     *rest.Config
-	HTTPClient *http.Client
-	RESTMapper meta.RESTMapper // if nil, a dynamic REST mapper will be created
+	Config     *rest.Config    // Kubernetes REST client config
+	HTTPClient *http.Client    // HTTP client for cache retrieval
+	RESTMapper meta.RESTMapper // RESTMapper for GVK discovery (optional)
 
-	Handler handler.EventHandler
+	Handler handler.EventHandler // event handler for dynamic events
 
-	DefaultLabelSelector labels.Selector
+	DefaultLabelSelector labels.Selector // default label filter for informers
 
-	Workers int
+	Workers int // number of worker goroutines for register/unregister processing
 
-	RegisterChannelBufferSize   int
-	UnregisterChannelBufferSize int
+	RegisterChannelBufferSize   int // buffer size for RegisterChannel
+	UnregisterChannelBufferSize int // buffer size for UnregisterChannel
 
-	ShutdownTimeout time.Duration
+	ShutdownTimeout time.Duration // graceful shutdown timeout
 
-	MetricsLabel string
+	MetricsLabel string // label for metrics grouping
 }
 
+// NewInformerManager constructs an InformerManager with the given options.
+// It creates a controller-runtime cache for metadata-only informers.
 func NewInformerManager(opts *Options) (*InformerManager, error) {
 	mapper := opts.RESTMapper
 	if mapper == nil {
@@ -262,7 +298,7 @@ func (mgr *InformerManager) ActiveForParent(parent client.Object) []client.Objec
 func (mgr *InformerManager) Register(ctx context.Context, parent, obj client.Object) error {
 	logger := ctrl.LoggerFrom(ctx)
 
-	key := mgr.key(parent, obj)
+	key := key(parent, obj)
 	if _, ok := mgr.tasks.Load(key); ok {
 		logger.Info("watch is already active", "gvk", key.gvk, "namespace", key.namespace)
 
@@ -327,14 +363,6 @@ func (mgr *InformerManager) Register(ctx context.Context, parent, obj client.Obj
 	return nil
 }
 
-func (mgr *InformerManager) key(parent, obj client.Object) watchTaskKey {
-	return watchTaskKey{
-		parent:    parent.GetObjectKind().GroupVersionKind(),
-		gvk:       obj.GetObjectKind().GroupVersionKind(),
-		namespace: obj.GetNamespace(),
-	}
-}
-
 func (mgr *InformerManager) Unregister(ctx context.Context, parent, obj client.Object) error {
 	key, task, ok := mgr.getTask(parent, obj)
 	if !ok {
@@ -352,8 +380,27 @@ func (mgr *InformerManager) Unregister(ctx context.Context, parent, obj client.O
 
 // --- Private Helpers ---
 
+// watchTaskKey uniquely identifies a dynamic watch by parent GVK, resource GVK, and namespace.
+type watchTaskKey struct {
+	// parent is the GVK of the parent object that owns this watch.
+	parent schema.GroupVersionKind
+	// gvk is the GVK of the child object being watched.
+	gvk schema.GroupVersionKind
+	// namespace is an optional namespace for the child object for a namespaced watch.
+	namespace string
+}
+
+// key generates a watchTaskKey for the given parent and child object.
+func key(parent, obj client.Object) watchTaskKey {
+	return watchTaskKey{
+		parent:    parent.GetObjectKind().GroupVersionKind(),
+		gvk:       obj.GetObjectKind().GroupVersionKind(),
+		namespace: obj.GetNamespace(),
+	}
+}
+
 func (mgr *InformerManager) getTask(parent, obj client.Object) (watchTaskKey, *watchTask, bool) {
-	k := mgr.key(parent, obj)
+	k := key(parent, obj)
 	t, ok := mgr.tasks.Load(k)
 	if !ok {
 		return watchTaskKey{}, nil, false

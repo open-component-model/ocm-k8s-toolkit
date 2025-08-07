@@ -19,7 +19,7 @@ const (
 	instanceLabel = "app.kubernetes.io/instance"
 	// The name of the application.
 	nameLabel = "app.kubernetes.io/name"
-	// 	The component within the architecture.
+	// The component within the architecture.
 	componentLabel = "app.kubernetes.io/component"
 )
 

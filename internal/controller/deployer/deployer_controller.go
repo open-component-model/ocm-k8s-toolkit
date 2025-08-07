@@ -63,7 +63,7 @@ type Reconciler struct {
 	resourceWatchHasSynced func(parent, obj client.Object) bool
 	// resourceWatchIsStopped is used to check if a resource watch is stopped.
 	resourceWatchIsStopped func(parent, obj client.Object) bool
-	// deployTracker is used to track the deployed objects and their resource watches.
+	// resourceWatches is used to track the deployed objects and their resource watches.
 	// this is used to ensure that the resource watches are removed when the deployer is deleted.
 	// Note that technically we also store tracked objects in the status, but to stay idempotent
 	// we use a tracker so as to only write to the status, and not read from it.
@@ -248,6 +248,29 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("deployer is being deleted, waiting for resource watches to be removed")
 	}
 
+	octx := ocmctx.New(datacontext.MODE_EXTENDED)
+	session := ocmctx.NewSession(datacontext.NewSession())
+	defer func() {
+		err = errors.Join(err, octx.Finalize())
+	}()
+
+	// automatically close the session when the ocm context is closed in the above defer
+	octx.Finalizer().Close(session)
+
+	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), deployer)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), deployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to get effective config: %w", err)
+	}
+
+	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), deployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to configure context: %w", err)
+	}
+
 	resourceNamespace := deployer.Spec.ResourceRef.Namespace
 	if resourceNamespace == "" {
 		resourceNamespace = deployer.GetNamespace()
@@ -373,13 +396,13 @@ func (r *Reconciler) DownloadResourceWithOCM(
 		return nil, fmt.Errorf("failed to get resource access: %w", err)
 	}
 
-	// Get the resource graph definition manifest and its digest. Compare the digest to the one in the resource to make
+	// Get the manifest and its digest. Compare the digest to the one in the resource to make
 	// sure the resource is up to date.
 	manifest, digest, err := r.getResource(cv, resourceAccess)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetOCMResourceFailedReason, err.Error())
 
-		return nil, fmt.Errorf("failed to get resource graph definition manifest: %w", err)
+		return nil, fmt.Errorf("failed to get  manifest: %w", err)
 	}
 	defer func() {
 		err = errors.Join(err, manifest.Close())
@@ -417,10 +440,10 @@ func decodeObjectsFromManifest(manifest io.ReadCloser) (_ []client.Object, err e
 	}
 
 	if len(objs) == 0 {
-		return nil, fmt.Errorf("no objects found in resource graph definition manifest")
+		return nil, fmt.Errorf("no objects found in  manifest")
 	}
 
-	// TODO(jakobmoellerdev): support multiple objects in the resource graph definition manifest once we have pruning
+	// TODO(jakobmoellerdev): support multiple objects in the  manifest once we have pruning
 	if len(objs) > 1 {
 		return nil, fmt.Errorf("multiple objects (%d) found in deployed resource,"+
 			"the current deployer implementation does not officially support this yet", len(objs))
@@ -527,7 +550,7 @@ func (r *Reconciler) apply(ctx context.Context, resource *deliveryv1alpha1.Resou
 	setOwnershipLabels(obj, resource, deployer)
 	setOwnershipAnnotations(obj, resource)
 	if err := controllerutil.SetControllerReference(deployer, obj, r.Scheme); err != nil {
-		return fmt.Errorf("failed to set controller reference on resource graph definition: %w", err)
+		return fmt.Errorf("failed to set controller reference on object: %w", err)
 	}
 
 	if err := r.GetClient().Patch(ctx, obj, client.Apply, &client.PatchOptions{
@@ -535,13 +558,13 @@ func (r *Reconciler) apply(ctx context.Context, resource *deliveryv1alpha1.Resou
 		FieldManager:    fmt.Sprintf("%s/%s", deployerManager, deployer.UID),
 		FieldValidation: metav1.FieldValidationWarn,
 	}); err != nil {
-		return fmt.Errorf("failed to apply resource graph definition: %w", err)
+		return fmt.Errorf("failed to apply object: %w", err)
 	}
 
 	return nil
 }
 
-// trackConcurrently tracks the resource graph definition objects for the deployer concurrently.
+// trackConcurrently tracks the objects for the deployer concurrently.
 //
 // See track for more details on how the objects are tracked.
 func (r *Reconciler) trackConcurrently(ctx context.Context, deployer *deliveryv1alpha1.Deployer, objs []client.Object) error {
@@ -556,15 +579,15 @@ func (r *Reconciler) trackConcurrently(ctx context.Context, deployer *deliveryv1
 	return eg.Wait()
 }
 
-// track registers the resource graph definition object for the deployer and tracks it.
+// track registers the object for the deployer and tracks it.
 // It checks if the resource watch is already registered and synced. If not, it registers the watch and returns an error
-// indicating that the resource graph definition is not yet registered and synced.
+// indicating that the object is not yet registered and synced.
 // If the resource watch is already registered and synced, it skips the registration and returns nil.
 func (r *Reconciler) track(ctx context.Context, deployer *deliveryv1alpha1.Deployer, obj client.Object) error {
 	logger := log.FromContext(ctx)
 
 	if r.resourceWatchHasSynced(deployer, obj) {
-		logger.Info("resource graph definition is already registered and synced, skipping registration")
+		logger.Info("object is already registered and synced, skipping registration")
 	} else {
 		logger.Info("registering watch from deployer", "obj", obj.GetName())
 		select {
@@ -576,7 +599,7 @@ func (r *Reconciler) track(ctx context.Context, deployer *deliveryv1alpha1.Deplo
 			return fmt.Errorf("context canceled while unregistering resource watch for deployer %s: %w", deployer.Name, ctx.Err())
 		}
 
-		return fmt.Errorf("resource graph definition is not yet registered and synced, waiting for registration")
+		return fmt.Errorf("object is not yet registered and synced, waiting for registration")
 	}
 
 	return nil
