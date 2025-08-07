@@ -11,6 +11,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/deployer/cache"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
@@ -129,6 +130,9 @@ var _ = BeforeSuite(func() {
 			Scheme:        testEnv.Scheme,
 			EventRecorder: recorder,
 		},
+		DownloadCache: cache.NewMemoryDigestObjectCache[string, []client.Object]("deployer_test_object_cache", 1_000, func(k string, v []client.Object) {
+			GinkgoLogr.Info("DownloadCache eviction", "key", k, "value", fmt.Sprintf("%d objects", len(v)))
+		}),
 	}).SetupWithManager(ctx, k8sManager)).To(Succeed())
 
 	go func() {

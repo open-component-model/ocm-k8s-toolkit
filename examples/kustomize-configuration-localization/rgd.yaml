@@ -38,6 +38,10 @@ spec:
             byReference:
               resource:
                 name: image-resource
+          additionalStatusFields:
+            registry: resource.access.imageReference.toOCI().registry
+            repository: resource.access.imageReference.toOCI().repository
+            tag: resource.access.imageReference.toOCI().tag
           interval: 10m
     - id: gitrepository
       template:
@@ -48,9 +52,9 @@ spec:
           namespace: default
         spec:
           interval: 5m
-          url: ${resourceKustomization.status.reference.registry}/${resourceKustomization.status.reference.repository}
+          url: ${resourceKustomization.status.resource.access.?repoUrl}
           ref:
-            commit: ${resourceKustomization.status.reference.reference}
+            commit: ${resourceKustomization.status.resource.access.?commit}
     - id: kustomization
       template:
         apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -70,7 +74,7 @@ spec:
             - patch: |
                 - op: replace
                   path: /spec/template/spec/containers/0/image
-                  value: ${resourceImage.status.reference.registry}/${resourceImage.status.reference.repository}:${resourceImage.status.reference.tag}
+                  value: ${resourceImage.status.additional.?registry}/${resourceImage.status.additional.?repository}:${resourceImage.status.additional.?tag}
               target:
                 kind: Deployment
                 name: .*

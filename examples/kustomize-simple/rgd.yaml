@@ -32,9 +32,9 @@ spec:
           namespace: default
         spec:
           interval: 5m
-          url: ${resourceKustomization.status.reference.registry}/${resourceKustomization.status.reference.repository}
+          url: ${resourceKustomization.status.resource.access.?repoUrl}
           ref:
-            commit: ${resourceKustomization.status.reference.reference}
+            commit: ${resourceKustomization.status.resource.access.?commit}
     - id: kustomization
       template:
         apiVersion: kustomize.toolkit.fluxcd.io/v1
