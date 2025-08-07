@@ -25,8 +25,8 @@ const (
 	// MarshalFailedReason is used when we fail to marshal a struct.
 	MarshalFailedReason = "MarshalFailed"
 
-	// CreateOrUpdateFailedReason is used when we fail to create or update a resource.
-	CreateOrUpdateFailedReason = "CreateOrUpdateFailed"
+	// ApplyFailed is used when we fail to create or update a resource.
+	ApplyFailed = "ApplyFailed"
 
 	// GetReferenceFailedReason is used when we fail to get a reference.
 	GetReferenceFailedReason = "GetReferenceFailed"
@@ -39,4 +39,7 @@ const (
 
 	// DeletionFailedReason is used when we fail to delete the resource.
 	DeletionFailedReason = "DeletionFailed"
+
+	// ResourceNotSynced is used when the referenced resource is not yet synced.
+	ResourceNotSynced = "ResourceNotSynced"
 )

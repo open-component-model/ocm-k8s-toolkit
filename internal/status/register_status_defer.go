@@ -40,7 +40,11 @@ func UpdateStatus(
 		// Theoretically, the requeue here is not completely accurate either. If we actually update the status, this
 		// will trigger another reconciliation rather immediately (or if err somehow is not nil although the condition
 		// is ready, we will requeue after exponential backoff). But I guess, we can ignore these edge cases for now!
-		event.New(recorder, obj, obj.GetVID(), eventv1.EventSeverityInfo, "Reconciliation finished, next run in %s", requeue)
+		if requeue > 0 {
+			event.New(recorder, obj, obj.GetVID(), eventv1.EventSeverityInfo, "Reconciliation finished, next run in %s", requeue)
+		} else {
+			event.New(recorder, obj, obj.GetVID(), eventv1.EventSeverityInfo, "Reconciliation finished, no further runs scheduled until next change")
+		}
 	}
 
 	// Update the object.

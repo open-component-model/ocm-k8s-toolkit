@@ -72,9 +72,26 @@ var _ = Describe("controller", func() {
 				Expect(utils.DeployResource(filepath.Join(examplesDir, example.Name(), Bootstrap))).To(Succeed())
 				name := "rgd/" + example.Name()
 				Expect(utils.WaitForResource("create", timeout, name)).To(Succeed())
-				Expect(utils.WaitForResource("condition=ReconcilerReady=true", timeout, name)).To(Succeed())
-				Expect(utils.WaitForResource("condition=GraphVerified=true", timeout, name)).To(Succeed())
-				Expect(utils.WaitForResource("condition=CustomResourceDefinitionSynced=true", timeout, name)).To(Succeed())
+
+				Expect(utils.WaitForResource("condition=ResourceGraphAccepted=true", timeout, name)).To(
+					Succeed(),
+					"The resource graph definition %s was not accepted which means the RGD is invalid", name,
+				)
+				Expect(
+					utils.WaitForResource("condition=KindReady=true", timeout, name)).To(
+					Succeed(),
+					"The kind for the resource graph definition %s is not ready, which means KRO wasn't able to install the CRD in the Cluster", name,
+				)
+				Expect(
+					utils.WaitForResource("condition=ControllerReady=true", timeout, name)).To(
+					Succeed(),
+					"The controller for the resource graph definition %s is not ready, which means KRO wasn't able to reconcile the CRD", name,
+				)
+				Expect(
+					utils.WaitForResource("condition=Ready=true", timeout, name)).To(
+					Succeed(),
+					"The final readiness condition was not set, which means KRO believes the RGD %s was not reconciled correctly", name,
+				)
 
 				By("creating an instance of the example")
 				Expect(utils.DeployAndWaitForResource(

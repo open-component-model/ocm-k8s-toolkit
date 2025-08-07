@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"testing"
 
-	krov1alpha1 "github.com/kro-run/kro/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -88,7 +87,6 @@ var _ = BeforeSuite(func() {
 	DeferCleanup(testEnv.Stop)
 
 	Expect(v1alpha1.AddToScheme(scheme.Scheme)).Should(Succeed())
-	Expect(krov1alpha1.AddToScheme(scheme.Scheme)).Should(Succeed())
 
 	// +kubebuilder:scaffold:scheme
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
