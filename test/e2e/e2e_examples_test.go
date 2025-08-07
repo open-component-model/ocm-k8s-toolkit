@@ -8,8 +8,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/stretchr/testify/require"
-
 	"github.com/open-component-model/ocm-k8s-toolkit/test/utils"
 )
 
@@ -24,8 +22,6 @@ const (
 
 var _ = Describe("controller", func() {
 	Context("examples", func() {
-		t := GinkgoT()
-
 		for _, example := range examples {
 			fInfo, err := os.Stat(filepath.Join(examplesDir, example.Name()))
 			Expect(err).NotTo(HaveOccurred())
@@ -36,7 +32,6 @@ var _ = Describe("controller", func() {
 			reqFiles := []string{ComponentConstructor, Bootstrap, Rgd, Instance}
 
 			It("should deploy the example "+example.Name(), func() {
-				r := require.New(t)
 
 				By("validating the example directory " + example.Name())
 				var files []string
@@ -53,7 +48,7 @@ var _ = Describe("controller", func() {
 						return nil
 					})).To(Succeed())
 
-				r.Subsetf(files, reqFiles, "required files %s not found in example directory %q", reqFiles, example.Name())
+				Expect(files).To(ContainElements(reqFiles), "required files %s not found in example directory %q", reqFiles, example.Name())
 
 				By("creating and transferring a component version for " + example.Name())
 				// If directory contains a private key, the component version must signed.

@@ -8,9 +8,11 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/fluxcd/pkg/apis/meta"
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/util"
 )
@@ -40,29 +42,18 @@ func SanitizeNameForK8s(name string) string {
 func WaitForReadyObject(ctx context.Context, k8sClient client.Client, obj util.Getter, waitForField map[string]any) {
 	GinkgoHelper()
 
-	Eventually(func(g Gomega, ctx context.Context) error {
+	gvk, _ := apiutil.GVKForObject(obj, k8sClient.Scheme())
+
+	Eventually(func(g Gomega, ctx context.Context) {
 		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), obj)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				return fmt.Errorf("resource %s (Kind: %s) not found", obj.GetName(), obj.GetObjectKind())
-			}
+		g.Expect(err).To(Not(HaveOccurred()), "failed to get object %s (Kind: %s)", obj.GetName(), gvk)
 
-			return err
-		}
-
-		if obj.GetDeletionTimestamp() != nil {
-			return fmt.Errorf("resource %s (Kind: %s) is being deleted", obj.GetName(), obj.GetObjectKind())
-		}
-
-		if !conditions.IsReady(obj) {
-			return fmt.Errorf("resource %s (Kind: %s) not ready", obj.GetName(), obj.GetObjectKind())
-		}
+		g.Expect(obj.GetDeletionTimestamp()).To(BeNil(), "object %s (Kind: %s) should not be marked for deletion", obj.GetName(), gvk)
+		g.Expect(conditions.IsReady(obj)).To(BeTrue(), "object %s (Kind: %s) is not ready, condition: %v", obj.GetName(), gvk, conditions.GetMessage(obj, meta.ReadyCondition))
 
 		for field, value := range waitForField {
-			g.Expect(obj).Should(HaveField(field, value))
+			g.Expect(obj).Should(HaveField(field, value), "field %s of object %s (Kind: %s) does not match expected value %v", field, obj.GetName(), gvk, value)
 		}
-
-		return nil
 	}, "15s").WithContext(ctx).Should(Succeed())
 }
 
