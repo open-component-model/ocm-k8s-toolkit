@@ -39,7 +39,7 @@ components:
         version: 1.0.0
         access:
           type: ociArtifact
-          imageReference: ghcr.io/stefanprodan/charts/podinfo:6.7.1
+          imageReference: "ghcr.io/stefanprodan/charts/podinfo:6.9.1@sha256:565d310746f1fa4be7f93ba7965bb393153a2d57a15cfe5befc909b790a73f8a"
 ```
 
 After creating the file, we can create the OCM component version:
