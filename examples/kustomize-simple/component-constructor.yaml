@@ -10,7 +10,7 @@ components:
         access:
           type: gitHub
           repoUrl: https://github.com/stefanprodan/podinfo
-          commit: b3396adb98a6a0f5eeedd1a600beaf5e954a1f28
+          commit: cdd09cdd3daacc3082d5a78062ac493806f7abd0
       - name: kro-rgd
         type: blob
         version: "1.0.0"

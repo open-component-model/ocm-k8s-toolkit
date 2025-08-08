@@ -177,13 +177,13 @@ components:
         version: "1.0.0"
         access:
           type: ociArtifact
-          imageReference: ghcr.io/stefanprodan/charts/podinfo:6.7.1
+          imageReference: "ghcr.io/stefanprodan/charts/podinfo:6.9.1@sha256:565d310746f1fa4be7f93ba7965bb393153a2d57a15cfe5befc909b790a73f8a"
       - name: image-resource
         type: ociArtifact
         version: "1.0.0"
         access:
           type: ociRegistry
-          imageReference: ghcr.io/stefanprodan/podinfo:6.7.1
+          imageReference: "ghcr.io/stefanprodan/podinfo:6.9.1@sha256:262578cde928d5c9eba3bce079976444f624c13ed0afb741d90d5423877496cb"
       - name: resource-graph-definition
         type: blob
         version: "1.0.0"
@@ -329,7 +329,7 @@ ocm get componentversion ghcr.io/<your-namespace>//ocm.software/ocm-k8s-toolkit/
 ```text
 # Output is truncated for brevity
 - access:
-    imageReference: ghcr.io/<your-namespace>/stefanprodan/charts/podinfo:6.7.1@sha256:4d5bd3562f0b150bd6cdfdbfb149e7e4ac36e555e25baa1da9f511f4d9fb7391
+    imageReference: ghcr.io/<your-namespace>/stefanprodan/charts/podinfo:6.9.1@sha256:565d310746f1fa4be7f93ba7965bb393153a2d57a15cfe5befc909b790a73f8a
     type: ociArtifact
   digest:
     ...
@@ -338,7 +338,7 @@ ocm get componentversion ghcr.io/<your-namespace>//ocm.software/ocm-k8s-toolkit/
   type: helmChart
   version: 1.0.0
 - access:
-    imageReference: ghcr.io/<your-namespace>/stefanprodan/podinfo:6.7.1@sha256:862ca45e61b32392f7941a1bdfdbe5ff8b6899070135f1bdca1c287d0057fc94
+    imageReference: ghcr.io/<your-namespace>/stefanprodan/podinfo:6.9.1@sha256:262578cde928d5c9eba3bce079976444f624c13ed0afb741d90d5423877496cb
     type: ociArtifact
   digest:
     ...
