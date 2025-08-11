@@ -111,7 +111,7 @@ var _ = Describe("controller", func() {
 					Expect(utils.CompareResourceField(
 						"pod -l app.kubernetes.io/name="+example.Name()+"-podinfo",
 						"'{.items[0].spec.containers[0].image}'",
-						strings.TrimLeft(imageRegistry, "http://")+"/stefanprodan/podinfo:6.7.1",
+						strings.TrimLeft(imageRegistry, "http://")+"/stefanprodan/podinfo:6.9.1",
 					)).To(Succeed())
 					By("validating the configuration")
 					Expect(utils.CompareResourceField(
