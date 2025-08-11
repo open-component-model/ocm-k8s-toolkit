@@ -196,7 +196,7 @@ var _ = Describe("Resource Controller", func() {
 				&v1alpha1.SourceReference{
 					Registry:   "oci://ghcr.io/stefanprodan/charts",
 					Repository: "podinfo",
-					Reference:  "6.7.1",
+					Reference:  "6.9.1",
 				},
 			),
 			Entry("GitHub access", func() string {
