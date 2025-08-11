@@ -543,7 +543,7 @@ kubectl get pods -l app.kubernetes.io/name=bootstrap-release-podinfo -o jsonpath
 ```
 
 ```console
-ghcr.io/<your-namespace>/stefanprodan/podinfo:6.7.1
+ghcr.io/<your-namespace>/stefanprodan/podinfo:6.9.1
 ```
 
 You now have successfully created an OCM component containing a Helm chart, the respective image for localization, and a
