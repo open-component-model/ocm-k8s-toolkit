@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	eventv1 "github.com/fluxcd/pkg/apis/event/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ocmctx "ocm.software/ocm/api/ocm"
 	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
@@ -36,6 +37,7 @@ import (
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/deployer/dynamic"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/event"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/status"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/util"
@@ -403,12 +405,6 @@ func decodeObjectsFromManifest(manifest io.ReadCloser) (_ []client.Object, err e
 		return nil, fmt.Errorf("no objects found in manifest")
 	}
 
-	// TODO(jakobmoellerdev): support multiple objects in the manifest once we have pruning
-	if len(objs) > 1 {
-		return nil, fmt.Errorf("multiple objects (%d) found in deployed resource,"+
-			"the current deployer implementation does not officially support this yet", len(objs))
-	}
-
 	return objs, nil
 }
 
@@ -489,6 +485,16 @@ func digestSpec(s string) (v1.DigestSpec, error) {
 //
 // See Apply for more details on how the objects are applied.
 func (r *Reconciler) applyConcurrently(ctx context.Context, resource *deliveryv1alpha1.Resource, deployer *deliveryv1alpha1.Deployer, objs []client.Object) error {
+	if len(objs) > 1 {
+		// TODO(jakobmoellerdev): remove once https://github.com/open-component-model/ocm-k8s-toolkit/issues/273#issue-3201709052
+		//  is implemented in the deployer controller. We need proper apply detection so we can support pruning diffs.
+		//  Otherwise we can orphan resources.
+		event.New(r, deployer, nil, eventv1.EventSeverityInfo,
+			"multiple objects found in manifest,"+
+				"the current deployer implementation does not officially support this yet,"+
+				"and will not prune diffs properly.")
+	}
+
 	eg, egctx := errgroup.WithContext(ctx)
 
 	for i := range objs {
