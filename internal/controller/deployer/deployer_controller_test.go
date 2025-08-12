@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"path/filepath"
 
-	krov1alpha1 "github.com/kro-run/kro/api/v1alpha1"
 	"github.com/mandelsoft/vfs/pkg/osfs"
 	"github.com/mandelsoft/vfs/pkg/projectionfs"
 	. "github.com/onsi/ginkgo/v2"
@@ -17,7 +16,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	. "ocm.software/ocm/api/helper/builder"
 	environment "ocm.software/ocm/api/helper/env"
 	ocmmetav1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
@@ -62,8 +61,10 @@ spec:
             - name: some-container
               image: some-image:latest`)
 
-	rgdObj := &krov1alpha1.ResourceGraphDefinition{}
+	rgdObj := &unstructured.Unstructured{}
 	Expect(yaml.Unmarshal(rgd, rgdObj)).To(Succeed())
+	gvk := rgdObj.GroupVersionKind()
+	listGVK := gvk.GroupVersion().WithKind(gvk.Kind + "List")
 
 	BeforeEach(func() {
 		tempDir = GinkgoT().TempDir()
@@ -80,7 +81,7 @@ spec:
 		var namespace *corev1.Namespace
 		var ctfName, componentName, resourceName, deployerObjName string
 		var componentVersion string
-		//repositoryName := "ocm.software/test-repository"
+		// repositoryName := "ocm.software/test-repository"
 
 		BeforeEach(func(ctx SpecContext) {
 			ctfName = "ctf-" + test.SanitizeNameForK8s(ctx.SpecReport().LeafNodeText)
@@ -117,7 +118,8 @@ spec:
 			Expect(k8sClient.List(ctx, deployers)).To(Succeed())
 			Expect(deployers.Items).To(HaveLen(0))
 
-			RGDs := &krov1alpha1.ResourceGraphDefinitionList{}
+			RGDs := &unstructured.UnstructuredList{}
+			RGDs.SetGroupVersionKind(listGVK)
 			Expect(k8sClient.List(ctx, RGDs)).To(Succeed())
 			Expect(RGDs.Items).To(HaveLen(0))
 		})
@@ -187,15 +189,16 @@ spec:
 			test.WaitForReadyObject(ctx, k8sClient, deployerObj, map[string]any{})
 
 			By("checking that the deployed ResourceGraphDefinition is correct")
-			rgdObjApplied := &krov1alpha1.ResourceGraphDefinition{}
+			rgdObjApplied := &unstructured.Unstructured{}
+			rgdObjApplied.SetGroupVersionKind(gvk)
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rgdObj), rgdObjApplied)).To(Succeed())
-			Expect(rgdObjApplied.Spec).To(Equal(rgdObj.Spec))
-
-			By("mocking the GC")
-			test.DeleteObject(ctx, k8sClient, rgdObj)
+			Expect(rgdObjApplied.Object["spec"]).To(Equal(rgdObj.Object["spec"]))
 
 			By("deleting the deployer")
 			test.DeleteObject(ctx, k8sClient, deployerObj)
+
+			By("mocking the GC")
+			test.DeleteObject(ctx, k8sClient, rgdObj)
 		})
 
 		It("does not reconcile a deployer with an invalid RGD", func(ctx SpecContext) {
@@ -453,14 +456,22 @@ spec:
 			test.WaitForReadyObject(ctx, k8sClient, deployerObj, map[string]any{})
 
 			By("checking that the deployed ResourceGraphDefinition is correct")
-			rgdObjApplied := &krov1alpha1.ResourceGraphDefinition{}
+			rgdObjApplied := &unstructured.Unstructured{}
+			rgdObjApplied.SetGroupVersionKind(gvk)
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rgdObj), rgdObjApplied)).To(Succeed())
-			Expect(rgdObjApplied.Spec).To(Equal(rgdObj.Spec))
+			Expect(rgdObjApplied.Object["spec"]).To(Equal(rgdObj.Object["spec"]))
 
 			By("updating the mocked resource")
 			componentVersion = "1.0.1"
 			resourceVersion = "1.0.1"
-			rgdObjApplied.Spec.Schema.Spec = runtime.RawExtension{Raw: []byte("{\"adjustedField\":\"string\"}")}
+			// client go resets the gvk
+			rgdObjApplied.SetGroupVersionKind(gvk)
+
+			Expect(unstructured.SetNestedMap(rgdObjApplied.Object, map[string]interface{}{
+				"adjustedField": "string",
+			}, "spec", "schema", "spec")).To(Succeed())
+			rgdObjApplied.SetManagedFields(nil)
+			rgdObjApplied.SetResourceVersion("")
 			rgdUpdated, err := yaml.Marshal(rgdObjApplied)
 			Expect(err).NotTo(HaveOccurred())
 			env.OCMCommonTransport(ctfName, accessio.FormatDirectory, func() {
@@ -495,17 +506,18 @@ spec:
 
 			By("checking that the deployer gets reconciled again")
 			test.WaitForReadyObject(ctx, k8sClient, deployerObj, map[string]any{})
-			rgdObjUpdated := &krov1alpha1.ResourceGraphDefinition{}
+			rgdObjUpdated := &unstructured.Unstructured{}
+			rgdObjUpdated.SetGroupVersionKind(gvk)
 			Eventually(func(g Gomega, ctx context.Context) {
 				g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rgdObj), rgdObjUpdated))
-				g.Expect(rgdObjUpdated.Spec).To(Equal(rgdObjApplied.Spec))
+				g.Expect(rgdObjUpdated.Object["spec"]).To(Equal(rgdObjApplied.Object["spec"]))
 			}, "15s").WithContext(ctx).Should(Succeed())
-
-			By("mocking the GC")
-			test.DeleteObject(ctx, k8sClient, rgdObj)
 
 			By("deleting the deployer")
 			test.DeleteObject(ctx, k8sClient, deployerObj)
+
+			By("mocking the GC")
+			test.DeleteObject(ctx, k8sClient, rgdObj)
 		})
 
 		It("fails when the resource is updated with an invalid change", func(ctx SpecContext) {
@@ -570,12 +582,13 @@ spec:
 			Expect(k8sClient.Create(ctx, deployerObj)).To(Succeed())
 
 			By("checking that the deployer has been reconciled successfully")
-			test.WaitForReadyObject(ctx, k8sClient, deployerObj, map[string]any{})
+			test.WaitForReadyObject(ctx, k8sClient, deployerObj, nil)
 
 			By("checking that the deployed ResourceGraphDefinition is correct")
-			rgdObjApplied := &krov1alpha1.ResourceGraphDefinition{}
+			rgdObjApplied := &unstructured.Unstructured{}
+			rgdObjApplied.SetGroupVersionKind(gvk)
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(rgdObj), rgdObjApplied)).To(Succeed())
-			Expect(rgdObjApplied.Spec).To(Equal(rgdObj.Spec))
+			Expect(rgdObjApplied.Object["spec"]).To(Equal(rgdObj.Object["spec"]))
 
 			By("updating the mocked resource")
 			componentVersion = "1.0.1"
@@ -614,11 +627,11 @@ spec:
 			By("checking that the deployer gets reconciled again and fails")
 			test.WaitForNotReadyObject(ctx, k8sClient, deployerObj, v1alpha1.MarshalFailedReason)
 
-			By("mocking the GC")
-			test.DeleteObject(ctx, k8sClient, rgdObj)
-
 			By("deleting the deployer")
 			test.DeleteObject(ctx, k8sClient, deployerObj)
+
+			By("mocking the GC")
+			test.DeleteObject(ctx, k8sClient, rgdObj)
 		})
 	})
 })

@@ -4,10 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
+	"io"
+	"regexp"
+	"runtime"
+	"slices"
 
 	"github.com/fluxcd/pkg/runtime/patch"
+	"golang.org/x/sync/errgroup"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/utils/ptr"
 	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/compdesc"
 	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
@@ -20,22 +28,48 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/yaml"
 
-	krov1alpha1 "github.com/kro-run/kro/api/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ocmctx "ocm.software/ocm/api/ocm"
 	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	deliveryv1alpha1 "github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/deployer/cache"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/deployer/dynamic"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/status"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/util"
 )
 
+const (
+	// resourceWatchFinalizer is the finalizer used to ensure that the resource watch is removed when the deployer is deleted.
+	// It is used by the dynamic informer manager to unregister watches for resources that are referenced by the deployer.
+	resourceWatchFinalizer = "delivery.ocm.software/watch"
+	// deployerManager is the label used to identify the deployer as a manager of resources.
+	deployerManager = "deployer.delivery.ocm.software"
+)
+
 // Reconciler reconciles a Deployer object.
 type Reconciler struct {
 	*ocm.BaseReconciler
+
+	// resourceWatchChannel is used to register watches for resources that are referenced by the deployer.
+	// It is used by the dynamic informer manager to register watches for resources deployed.
+	// stopResourceWatchChannel is used to unregister watches for resources that are referenced by the deployer.
+	// It is used by the dynamic informer manager to unregister watches when "undeploying" a resource.
+	resourceWatchChannel, stopResourceWatchChannel chan dynamic.Event
+	// resourceWatchHasSynced is used to check if a resource watch is already registered and synced.
+	resourceWatchHasSynced func(parent, obj client.Object) bool
+	// resourceWatchIsStopped is used to check if a resource watch is stopped.
+	resourceWatchIsStopped func(parent, obj client.Object) bool
+	// resourceWatches is used to track the deployed objects and their resource watches.
+	// this is used to ensure that the resource watches are removed when the deployer is deleted.
+	// Note that technically we also store tracked objects in the status, but to stay idempotent
+	// we use a tracker so as to only write to the status, and not read from it.
+	resourceWatches func(parent client.Object) []client.Object
+
+	DownloadCache cache.DigestObjectCache[string, []client.Object]
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -47,6 +81,11 @@ var _ ocm.Reconciler = (*Reconciler)(nil)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	informerManager, err := r.setupDynamicResourceWatcherWithManager(mgr)
+	if err != nil {
+		return err
+	}
+
 	// Build index for deployers that reference a resource to get notified about resource changes.
 	const fieldName = ".spec.resourceRef"
 	if err := mgr.GetFieldIndexer().IndexField(
@@ -71,6 +110,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&deliveryv1alpha1.Deployer{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		WatchesRawSource(informerManager.Source()).
 		// Watch for events from OCM resources that are referenced by the deployer
 		Watches(
 			&deliveryv1alpha1.Resource{},
@@ -106,7 +146,82 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 		Complete(r)
 }
 
-//nolint:funlen // we do not want to cut the function at arbitrary points
+func (r *Reconciler) setupDynamicResourceWatcherWithManager(mgr ctrl.Manager) (*dynamic.InformerManager, error) {
+	// only register watches for resources that are managed by the deployer controller
+	sel, err := labels.Parse(fmt.Sprintf("%s=%s", managedByLabel, deployerManager))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse label selector: %w", err)
+	}
+
+	const channelBufferSize = 10
+
+	// For Registering and Unregistering watches, we use a dynamic informer manager.
+	// To buffer pending registrations and unregistrations, we use channels.
+	informerManager, err := dynamic.NewInformerManager(&dynamic.Options{
+		Config:     mgr.GetConfig(),
+		HTTPClient: mgr.GetHTTPClient(),
+		RESTMapper: mgr.GetRESTMapper(),
+		Handler: handler.EnqueueRequestForOwner(
+			mgr.GetScheme(), mgr.GetRESTMapper(),
+			&deliveryv1alpha1.Deployer{},
+			handler.OnlyControllerOwner(),
+		),
+		DefaultLabelSelector:        sel,
+		Workers:                     runtime.NumCPU(),
+		RegisterChannelBufferSize:   channelBufferSize,
+		UnregisterChannelBufferSize: channelBufferSize,
+		MetricsLabel:                deployerManager + "/" + "resources",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create dynamic informer deployerManager: %w", err)
+	}
+
+	// this channel is used to register watches for resources that are referenced by the deployer.
+	r.resourceWatchChannel = informerManager.RegisterChannel()
+	// this channel is used to unregister watches for resources that are referenced by the deployer.
+	r.stopResourceWatchChannel = informerManager.UnregisterChannel()
+	// The resourceWatchHasSynced function is used to check if a resource is already registered and synced once requested.
+	r.resourceWatchHasSynced = informerManager.HasSynced
+	// The resourceWatchIsStopped function is used to check if a resource watch is stopped. useful for cleanup purposes.
+	r.resourceWatchIsStopped = informerManager.IsStopped
+	r.resourceWatches = informerManager.ActiveForParent
+	// Add the dynamic informer deployerManager to the controller deployerManager. This will make the dynamic informer deployerManager start
+	// its registration and unregistration workers once the controller deployerManager is started.
+	if err := mgr.Add(informerManager); err != nil {
+		return nil, fmt.Errorf("failed to add dynamic informer deployerManager to controller deployerManager: %w", err)
+	}
+
+	return informerManager, nil
+}
+
+// Untrack removes the deployer from the tracked objects and stops the resource watch if it is still running.
+// It also removes the finalizer from the deployer if there are no more tracked objects.
+func (r *Reconciler) Untrack(ctx context.Context, deployer *deliveryv1alpha1.Deployer) error {
+	logger := log.FromContext(ctx)
+	var atLeastOneResourceNeededStopWatch bool
+	for _, obj := range r.resourceWatches(deployer) {
+		if !r.resourceWatchIsStopped(deployer, obj) {
+			logger.Info("unregistering resource watch for deployer", "name", deployer.GetName())
+			select {
+			case r.stopResourceWatchChannel <- dynamic.Event{
+				Parent: deployer,
+				Child:  obj,
+			}:
+			case <-ctx.Done():
+				return fmt.Errorf("context canceled while unregistering resource watch for deployer %s: %w", deployer.Name, ctx.Err())
+			}
+			atLeastOneResourceNeededStopWatch = true
+		}
+	}
+	if atLeastOneResourceNeededStopWatch {
+		return fmt.Errorf("waiting for at least one resource watch to be removed")
+	}
+
+	controllerutil.RemoveFinalizer(deployer, resourceWatchFinalizer)
+
+	return nil
+}
+
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("starting reconciliation")
@@ -118,7 +233,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	patchHelper := patch.NewSerialPatcher(deployer, r.Client)
 	defer func(ctx context.Context) {
-		err = errors.Join(err, status.UpdateStatus(ctx, patchHelper, deployer, r.EventRecorder, time.Second, err))
+		err = errors.Join(err, status.UpdateStatus(ctx, patchHelper, deployer, r.EventRecorder, 0, err))
 	}(ctx)
 
 	if deployer.Spec.Suspend {
@@ -126,13 +241,17 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	if !deployer.GetDeletionTimestamp().IsZero() {
-		return ctrl.Result{}, errors.New("deployer is being deleted")
+		if err := r.Untrack(ctx, deployer); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to untrack deployer: %w", err)
+		}
+
+		return ctrl.Result{}, fmt.Errorf("deployer is being deleted, waiting for resource watches to be removed")
 	}
 
 	octx := ocmctx.New(datacontext.MODE_EXTENDED)
 	session := ocmctx.NewSession(datacontext.NewSession())
 	defer func() {
-		err = octx.Finalize()
+		err = errors.Join(err, octx.Finalize())
 	}()
 
 	// automatically close the session when the ocm context is closed in the above defer
@@ -175,25 +294,86 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	// Download the resource
+	key := resource.Status.Resource.Digest
+
+	objs, err := r.DownloadCache.Load(key, func() ([]client.Object, error) {
+		return r.DownloadResourceWithOCM(ctx, deployer, resource)
+	})
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to download resource from OCM or retrieve it from the cache: %w", err)
+	}
+
+	if err = r.applyConcurrently(ctx, resource, deployer, objs); err != nil {
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.ApplyFailed, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to apply resources: %w", err)
+	}
+
+	if err = r.trackConcurrently(ctx, deployer, objs); err != nil {
+		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.ResourceNotSynced, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to sync deployed resources: %w", err)
+	}
+
+	updateDeployedObjectStatusReferences(objs, deployer)
+	// TODO: move finalizer up because removal is anyhow idempotent
+	controllerutil.AddFinalizer(deployer, resourceWatchFinalizer)
+
+	// TODO: Status propagation of RGD status to deployer
+	//       (see https://github.com/open-component-model/ocm-k8s-toolkit/issues/192)
+	status.MarkReady(r.EventRecorder, deployer, "Applied version %s", resource.Status.Resource.Version)
+
+	// we requeue the deployer after the requeue time specified in the resource.
+	return ctrl.Result{RequeueAfter: resource.GetRequeueAfter()}, nil
+}
+
+func (r *Reconciler) DownloadResourceWithOCM(
+	ctx context.Context,
+	deployer *deliveryv1alpha1.Deployer,
+	resource *deliveryv1alpha1.Resource,
+) (objs []client.Object, err error) {
+	octx := ocmctx.New(datacontext.MODE_EXTENDED)
+	session := ocmctx.NewSession(datacontext.NewSession())
+	defer func() {
+		err = errors.Join(err, octx.Finalize())
+	}()
+
+	// automatically close the session when the ocm context is closed in the above defer
+	octx.Finalizer().Close(session)
+
+	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), deployer)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), deployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return nil, fmt.Errorf("failed to get effective config: %w", err)
+	}
+
+	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs)
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), deployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return nil, fmt.Errorf("failed to configure context: %w", err)
+	}
+
 	spec, err := octx.RepositorySpecForConfig(resource.Status.Component.RepositorySpec.Raw, nil)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to get repository spec: %w", err)
+		return nil, fmt.Errorf("failed to get repository spec: %w", err)
 	}
 
 	repo, err := session.LookupRepository(octx, spec)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("invalid repository spec: %w", err)
+		return nil, fmt.Errorf("invalid repository spec: %w", err)
 	}
 
 	cv, err := session.LookupComponentVersion(repo, resource.Status.Component.Component, resource.Status.Component.Version)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetComponentVersionFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to get component version: %w", err)
+		return nil, fmt.Errorf("failed to get component version: %w", err)
 	}
 
 	resourceReference := v1.ResourceReference{
@@ -213,67 +393,67 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetOCMResourceFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to get resource access: %w", err)
+		return nil, fmt.Errorf("failed to get resource access: %w", err)
 	}
 
-	// Get the resource graph definition manifest and its digest. Compare the digest to the one in the resource to make
+	// Get the manifest and its digest. Compare the digest to the one in the resource to make
 	// sure the resource is up to date.
-	rgdManifest, digest, err := getResource(cv, resourceAccess)
+	manifest, digest, err := r.getResource(cv, resourceAccess)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetOCMResourceFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to get resource graph definition manifest: %w", err)
+		return nil, fmt.Errorf("failed to get  manifest: %w", err)
 	}
+	defer func() {
+		err = errors.Join(err, manifest.Close())
+	}()
 
 	if resource.Status.Resource.Digest != digest {
 		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.GetOCMResourceFailedReason, "resource digest mismatch")
 
-		return ctrl.Result{}, fmt.Errorf("resource digest mismatch: expected %s, got %s", resource.Status.Resource.Digest, digest)
+		return nil, fmt.Errorf("resource digest mismatch: expected %s, got %s", resource.Status.Resource.Digest, digest)
 	}
 
-	// Apply, Update, or Delete RGD
-	var rgd krov1alpha1.ResourceGraphDefinition
-	// Unmarshal the manifest into the ResourceGraphDefinition object
-	if err := yaml.Unmarshal(rgdManifest, &rgd); err != nil {
+	if objs, err = decodeObjectsFromManifest(manifest); err != nil {
 		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.MarshalFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to unmarshal manifest: %w", err)
+		return nil, fmt.Errorf("failed to decode objects: %w", err)
 	}
 
-	// TODO: Improve deployer maturity (@frewilhelm)
-	//  - https://github.com/open-component-model/ocm-k8s-toolkit/issues/194 (@frewilhelm)
-	//  - https://github.com/open-component-model/ocm-k8s-toolkit/issues/195 (@frewilhelm)
-	//  - https://github.com/open-component-model/ocm-k8s-toolkit/issues/196 (@frewilhelm)
+	return objs, nil
+}
 
-	actual := rgd.DeepCopy()
-
-	// Create or update the object in the cluster
-	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, actual, func() error {
-		if err := controllerutil.SetControllerReference(deployer, actual, r.Scheme); err != nil {
-			return fmt.Errorf("failed to set controller reference on resource graph definition: %w", err)
+func decodeObjectsFromManifest(manifest io.ReadCloser) (_ []client.Object, err error) {
+	const bufferSize = 4096
+	decoder := yaml.NewYAMLOrJSONDecoder(manifest, bufferSize)
+	var objs []client.Object
+	for {
+		var obj unstructured.Unstructured
+		err := decoder.Decode(&obj)
+		if errors.Is(err, io.EOF) {
+			break
 		}
-
-		actual.Spec = rgd.Spec
-
-		return nil
-	})
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, deployer, deliveryv1alpha1.CreateOrUpdateFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to create or update resource graph definition: %w", err)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal manifest: %w", err)
+		}
+		objs = append(objs, &obj)
 	}
 
-	logger.Info("applied resource graph definition", "operation", op, "name", actual.Name)
+	if len(objs) == 0 {
+		return nil, fmt.Errorf("no objects found in  manifest")
+	}
 
-	// TODO: Status propagation of RGD status to deployer
-	//       (see https://github.com/open-component-model/ocm-k8s-toolkit/issues/192)
-	status.MarkReady(r.EventRecorder, deployer, "Applied version %s", resourceAccess.Meta().GetVersion())
+	// TODO(jakobmoellerdev): support multiple objects in the  manifest once we have pruning
+	if len(objs) > 1 {
+		return nil, fmt.Errorf("multiple objects (%d) found in deployed resource,"+
+			"the current deployer implementation does not officially support this yet", len(objs))
+	}
 
-	return ctrl.Result{}, nil
+	return objs, nil
 }
 
 // getResource returns the resource data as byte-slice and its digest.
-func getResource(cv ocmctx.ComponentVersionAccess, resourceAccess ocmctx.ResourceAccess) ([]byte, string, error) {
+func (r *Reconciler) getResource(cv ocmctx.ComponentVersionAccess, resourceAccess ocmctx.ResourceAccess) (io.ReadCloser, string, error) {
 	octx := cv.GetContext()
 	cd := cv.GetDescriptor()
 	raw := &cd.Resources[cd.GetResourceIndex(resourceAccess.Meta())]
@@ -313,10 +493,138 @@ func getResource(cv ocmctx.ComponentVersionAccess, resourceAccess ocmctx.Resourc
 	}
 
 	// Get actual resource data
-	data, err := bAcc.Get()
+	data, err := bAcc.Reader()
 	if err != nil {
 		return nil, "", fmt.Errorf("failed getting resource data: %w", err)
 	}
 
 	return data, digest[0].String(), nil
+}
+
+var digestSpecStringPattern = regexp.MustCompile(`^(?P<algo>[\w\-]+):(?P<digest>[a-fA-F0-9]+)\[(?P<norm>[\w\/]+)\]$`)
+
+// TODO(jakobmoellerdev): currently digests are stored as strings in resource status, we should really consider storing them natively...
+func digestSpec(s string) (v1.DigestSpec, error) {
+	matches := digestSpecStringPattern.FindStringSubmatch(s)
+	if expectedMatches := 4; len(matches) != expectedMatches {
+		return v1.DigestSpec{}, fmt.Errorf("invalid digest spec format: %s", s)
+	}
+
+	digestSpec := v1.DigestSpec{}
+	for i, name := range digestSpecStringPattern.SubexpNames() {
+		switch name {
+		case "algo":
+			digestSpec.HashAlgorithm = matches[i]
+		case "digest":
+			digestSpec.Value = matches[i]
+		case "norm":
+			digestSpec.NormalisationAlgorithm = matches[i]
+		}
+	}
+
+	return digestSpec, nil
+}
+
+// applyConcurrently applies the resource objects to the cluster concurrently.
+//
+// See Apply for more details on how the objects are applied.
+func (r *Reconciler) applyConcurrently(ctx context.Context, resource *deliveryv1alpha1.Resource, deployer *deliveryv1alpha1.Deployer, objs []client.Object) error {
+	eg, egctx := errgroup.WithContext(ctx)
+
+	for i := range objs {
+		eg.Go(func() error {
+			//nolint:forcetypeassert // we know that objs[i] is a client.Object because we just cloned it
+			obj := objs[i].DeepCopyObject().(client.Object)
+
+			return r.apply(egctx, resource, deployer, obj)
+		})
+	}
+
+	return eg.Wait()
+}
+
+// apply applies the object to the cluster using Server-Side Apply. It sets the controller reference on the object
+// and patches it with the FieldManager set to the deployer UID. It also updates the deployer status with the
+// applied object reference.
+func (r *Reconciler) apply(ctx context.Context, resource *deliveryv1alpha1.Resource, deployer *deliveryv1alpha1.Deployer, obj client.Object) error {
+	setOwnershipLabels(obj, resource, deployer)
+	setOwnershipAnnotations(obj, resource)
+	if err := controllerutil.SetControllerReference(deployer, obj, r.Scheme); err != nil {
+		return fmt.Errorf("failed to set controller reference on object: %w", err)
+	}
+
+	if err := r.GetClient().Patch(ctx, obj, client.Apply, &client.PatchOptions{
+		Force:           ptr.To(true),
+		FieldManager:    fmt.Sprintf("%s/%s", deployerManager, deployer.UID),
+		FieldValidation: metav1.FieldValidationWarn,
+	}); err != nil {
+		return fmt.Errorf("failed to apply object: %w", err)
+	}
+
+	return nil
+}
+
+// trackConcurrently tracks the objects for the deployer concurrently.
+//
+// See track for more details on how the objects are tracked.
+func (r *Reconciler) trackConcurrently(ctx context.Context, deployer *deliveryv1alpha1.Deployer, objs []client.Object) error {
+	eg, egctx := errgroup.WithContext(ctx)
+
+	for i := range objs {
+		eg.Go(func() error {
+			return r.track(egctx, deployer, objs[i])
+		})
+	}
+
+	return eg.Wait()
+}
+
+// track registers the object for the deployer and tracks it.
+// It checks if the resource watch is already registered and synced. If not, it registers the watch and returns an error
+// indicating that the object is not yet registered and synced.
+// If the resource watch is already registered and synced, it skips the registration and returns nil.
+func (r *Reconciler) track(ctx context.Context, deployer *deliveryv1alpha1.Deployer, obj client.Object) error {
+	logger := log.FromContext(ctx)
+
+	if r.resourceWatchHasSynced(deployer, obj) {
+		logger.Info("object is already registered and synced, skipping registration")
+	} else {
+		logger.Info("registering watch from deployer", "obj", obj.GetName())
+		select {
+		case r.resourceWatchChannel <- dynamic.Event{
+			Parent: deployer,
+			Child:  obj,
+		}:
+		case <-ctx.Done():
+			return fmt.Errorf("context canceled while unregistering resource watch for deployer %s: %w", deployer.Name, ctx.Err())
+		}
+
+		return fmt.Errorf("object is not yet registered and synced, waiting for registration")
+	}
+
+	return nil
+}
+
+func updateDeployedObjectStatusReferences(objs []client.Object, deployer *deliveryv1alpha1.Deployer) {
+	for _, obj := range objs {
+		apiVersion, kind := obj.GetObjectKind().GroupVersionKind().ToAPIVersionAndKind()
+		ref := deliveryv1alpha1.DeployedObjectReference{
+			APIVersion: apiVersion,
+			Kind:       kind,
+			Name:       obj.GetName(),
+			Namespace:  obj.GetNamespace(),
+			UID:        obj.GetUID(),
+		}
+		if idx := slices.IndexFunc(deployer.Status.Deployed, func(reference deliveryv1alpha1.DeployedObjectReference) bool {
+			if reference.UID == obj.GetUID() {
+				return true
+			}
+
+			return false
+		}); idx < 0 {
+			deployer.Status.Deployed = append(deployer.Status.Deployed, ref)
+		} else {
+			deployer.Status.Deployed[idx] = ref
+		}
+	}
 }

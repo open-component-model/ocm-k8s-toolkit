@@ -12,11 +12,12 @@ import (
 
 	"github.com/fluxcd/pkg/runtime/events"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	krov1alpha1 "github.com/kro-run/kro/api/v1alpha1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -25,6 +26,8 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/component"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/deployer"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/deployer/cache"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/deployer/dynamic"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/replication"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/repository"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/controller/resource"
@@ -40,18 +43,21 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
-	utilruntime.Must(krov1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
+
+	dynamic.MustRegisterMetrics(metrics.Registry)
+	cache.MustRegisterMetrics(metrics.Registry)
 }
 
 func main() {
 	var (
-		metricsAddr          string
-		enableLeaderElection bool
-		probeAddr            string
-		secureMetrics        bool
-		enableHTTP2          bool
-		eventsAddr           string
+		metricsAddr               string
+		enableLeaderElection      bool
+		probeAddr                 string
+		secureMetrics             bool
+		enableHTTP2               bool
+		eventsAddr                string
+		deployerDownloadCacheSize int
 	)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metric endpoint binds to. "+
@@ -65,6 +71,8 @@ func main() {
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&eventsAddr, "events-addr", "", "The address of the events receiver.")
+	flag.IntVar(&deployerDownloadCacheSize, "deployer-download-cache-size", 1_000, //nolint:mnd // no magic number
+		"The maximum size of the deployer download object LRU cache.")
 
 	opts := zap.Options{
 		Development: true,
@@ -180,6 +188,9 @@ func main() {
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
+		DownloadCache: cache.NewMemoryDigestObjectCache[string, []client.Object]("deployer_download_cache", deployerDownloadCacheSize, func(k string, v []client.Object) {
+			setupLog.Info("evicting deployment objects from cache", "key", k, "count", len(v))
+		}),
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Deployer")
 		os.Exit(1)

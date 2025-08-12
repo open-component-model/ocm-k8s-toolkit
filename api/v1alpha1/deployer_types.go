@@ -3,6 +3,8 @@ package v1alpha1
 import (
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/types"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -41,6 +43,29 @@ type DeployerStatus struct {
 	// in the order the configuration data was applied.
 	// +optional
 	EffectiveOCMConfig []OCMConfiguration `json:"effectiveOCMConfig,omitempty"`
+
+	// Deployed contains references to the objects that have been deployed by the Deployer through
+	// the Resource.
+	Deployed []DeployedObjectReference `json:"deployed,omitempty"`
+}
+
+// DeployedObjectReference is a reference to an object that has been deployed by the Deployer.
+// It contains the API version, kind, name, and optionally the namespace of the deployed object.
+type DeployedObjectReference struct {
+	// API version of the referent.
+	APIVersion string `json:"apiVersion"`
+	// Kind of the referent.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+	Kind string `json:"kind"`
+	// Name of the referent.
+	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+	Name string `json:"name"`
+	// Namespace of the referent.
+	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+	Namespace string `json:"namespace,omitempty"`
+	// UID of the referent.
+	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
+	UID types.UID `json:"uid,omitempty"`
 }
 
 func (in *Deployer) GetConditions() []metav1.Condition {

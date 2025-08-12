@@ -8,8 +8,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/stretchr/testify/require"
-
 	"github.com/open-component-model/ocm-k8s-toolkit/test/utils"
 )
 
@@ -24,8 +22,6 @@ const (
 
 var _ = Describe("controller", func() {
 	Context("examples", func() {
-		t := GinkgoT()
-
 		for _, example := range examples {
 			fInfo, err := os.Stat(filepath.Join(examplesDir, example.Name()))
 			Expect(err).NotTo(HaveOccurred())
@@ -36,7 +32,6 @@ var _ = Describe("controller", func() {
 			reqFiles := []string{ComponentConstructor, Bootstrap, Rgd, Instance}
 
 			It("should deploy the example "+example.Name(), func() {
-				r := require.New(t)
 
 				By("validating the example directory " + example.Name())
 				var files []string
@@ -53,7 +48,7 @@ var _ = Describe("controller", func() {
 						return nil
 					})).To(Succeed())
 
-				r.Subsetf(files, reqFiles, "required files %s not found in example directory %q", reqFiles, example.Name())
+				Expect(files).To(ContainElements(reqFiles), "required files %s not found in example directory %q", reqFiles, example.Name())
 
 				By("creating and transferring a component version for " + example.Name())
 				// If directory contains a private key, the component version must signed.
@@ -72,9 +67,26 @@ var _ = Describe("controller", func() {
 				Expect(utils.DeployResource(filepath.Join(examplesDir, example.Name(), Bootstrap))).To(Succeed())
 				name := "rgd/" + example.Name()
 				Expect(utils.WaitForResource("create", timeout, name)).To(Succeed())
-				Expect(utils.WaitForResource("condition=ReconcilerReady=true", timeout, name)).To(Succeed())
-				Expect(utils.WaitForResource("condition=GraphVerified=true", timeout, name)).To(Succeed())
-				Expect(utils.WaitForResource("condition=CustomResourceDefinitionSynced=true", timeout, name)).To(Succeed())
+
+				Expect(utils.WaitForResource("condition=ResourceGraphAccepted=true", timeout, name)).To(
+					Succeed(),
+					"The resource graph definition %s was not accepted which means the RGD is invalid", name,
+				)
+				Expect(
+					utils.WaitForResource("condition=KindReady=true", timeout, name)).To(
+					Succeed(),
+					"The kind for the resource graph definition %s is not ready, which means KRO wasn't able to install the CRD in the Cluster", name,
+				)
+				Expect(
+					utils.WaitForResource("condition=ControllerReady=true", timeout, name)).To(
+					Succeed(),
+					"The controller for the resource graph definition %s is not ready, which means KRO wasn't able to reconcile the CRD", name,
+				)
+				Expect(
+					utils.WaitForResource("condition=Ready=true", timeout, name)).To(
+					Succeed(),
+					"The final readiness condition was not set, which means KRO believes the RGD %s was not reconciled correctly", name,
+				)
 
 				By("creating an instance of the example")
 				Expect(utils.DeployAndWaitForResource(
@@ -99,7 +111,7 @@ var _ = Describe("controller", func() {
 					Expect(utils.CompareResourceField(
 						"pod -l app.kubernetes.io/name="+example.Name()+"-podinfo",
 						"'{.items[0].spec.containers[0].image}'",
-						strings.TrimLeft(imageRegistry, "http://")+"/stefanprodan/podinfo:6.7.1",
+						strings.TrimLeft(imageRegistry, "http://")+"/stefanprodan/podinfo:6.9.1",
 					)).To(Succeed())
 					By("validating the configuration")
 					Expect(utils.CompareResourceField(

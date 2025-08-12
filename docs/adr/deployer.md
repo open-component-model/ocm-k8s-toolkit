@@ -117,7 +117,7 @@ components:
         version: "1.0.0"
         access:
            type: ociArtifact
-           imageReference: ghcr.io/stefanprodan/charts/podinfo:6.7.1
+           imageReference: ghcr.io/stefanprodan/charts/podinfo:6.9.1
 ```
 
 `resource-graph-definition.yaml`
@@ -278,14 +278,14 @@ components:
         version: "1.0.0"
         access:
            type: ociArtifact
-           imageReference: ghcr.io/stefanprodan/charts/podinfo:6.7.1
+           imageReference: ghcr.io/stefanprodan/charts/podinfo:6.9.1
       # This image resource contains the application image (can be used for localisation while deploying)
       - name: image-resource
         type: ociArtifact
         version: "1.0.0"
         access:
           type: ociArtifact
-          imageReference: ghcr.io/stefanprodan/podinfo:6.7.1
+          imageReference: ghcr.io/stefanprodan/podinfo:6.9.1
       # This resource contains the kro ResourceGraphDefinition
       - name: kro-rgd
         type: blob
