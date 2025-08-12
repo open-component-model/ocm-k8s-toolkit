@@ -529,10 +529,11 @@ func (r *Reconciler) applyConcurrently(ctx context.Context, resource *deliveryv1
 		// TODO(jakobmoellerdev): remove once https://github.com/open-component-model/ocm-k8s-toolkit/issues/273#issue-3201709052
 		//  is implemented in the deployer controller. We need proper apply detection so we can support pruning diffs.
 		//  Otherwise we can orphan resources.
-		event.New(r, deployer, nil, eventv1.EventSeverityInfo,
-			"multiple objects found in manifest,"+
-				"the current deployer implementation does not officially support this yet,"+
-				"and will not prune diffs properly.")
+		msg := "multiple objects found in manifest," +
+			"the current deployer implementation does not officially support this yet," +
+			"and will not prune diffs properly."
+		event.New(r, deployer, nil, eventv1.EventSeverityInfo, msg)
+		log.FromContext(ctx).Info(msg)
 	}
 
 	eg, egctx := errgroup.WithContext(ctx)
