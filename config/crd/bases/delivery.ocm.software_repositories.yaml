@@ -18,6 +18,9 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Ready")].message
       name: Ready
       type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     name: v1alpha1
     schema:
       openAPIV3Schema:

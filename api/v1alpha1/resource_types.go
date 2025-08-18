@@ -71,6 +71,7 @@ type ResourceStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].message`
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description=""
 // Resource is the Schema for the resources API.
 type Resource struct {
 	metav1.TypeMeta   `json:",inline"`
