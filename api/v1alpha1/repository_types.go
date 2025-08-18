@@ -92,7 +92,7 @@ func (in *Repository) SetObservedGeneration(v int64) {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].message`
 // Repository is the Schema for the repositories API.
 type Repository struct {
 	metav1.TypeMeta   `json:",inline"`
