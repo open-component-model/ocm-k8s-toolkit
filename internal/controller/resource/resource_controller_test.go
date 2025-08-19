@@ -243,7 +243,7 @@ var _ = Describe("Resource Controller", func() {
 					env.Component(componentName, func() {
 						env.Version(componentVersion, func() {
 							env.Resource(resourceName, "1.0.0", artifacttypes.HELM_CHART, ocmmetav1.ExternalRelation, func() {
-								env.Access(helm.New("podinfo:6.7.1", "oci://ghcr.io/stefanprodan/charts"))
+								env.Access(helm.New("podinfo:6.9.1", "oci://ghcr.io/stefanprodan/charts"))
 							})
 						})
 					})
@@ -251,7 +251,7 @@ var _ = Describe("Resource Controller", func() {
 				return filepath.Join(tempDir, ctfName)
 			},
 				&testCase{
-					HELMChart: "podinfo:6.7.1",
+					HELMChart: "podinfo:6.9.1",
 				},
 			),
 			Entry("GitHub access", func() string {
