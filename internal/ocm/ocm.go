@@ -3,12 +3,14 @@ package ocm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/mandelsoft/goutils/matcher"
 	"ocm.software/ocm/api/credentials/extensions/repositories/dockerconfig"
+	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/compdesc"
 	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
@@ -23,25 +25,45 @@ import (
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
-// ConfigureContext adds all the configuration data found in the config maps and
-// secrets specified through the OCMConfiguration objects to the ocm context.
-// NOTE: ConfigMaps and Secrets are slightly different, since secrets can also
-// contain credentials in form of docker config jsons.
+// ConfigureContext prepares and returns an OCM context function based on the given
+// OCMConfiguration resources (Secrets and ConfigMaps) and verifications.
 //
-// Furthermore, it registers the public keys for the verification of signatures
-// in the ocm context.
-func ConfigureContext(ctx context.Context, octx ocm.Context, client ctrl.Client,
-	configs []v1alpha1.OCMConfiguration, verifications ...[]Verification,
-) error {
-	var obj ctrl.Object
+// It performs three main tasks:
+//  1. Fetches all referenced Secrets and ConfigMaps from the cluster using the provided client.
+//  2. Computes a combined hash of all retrieved configuration objects. This hash can be used
+//     as a cache key or to detect configuration drift (changes to input objects).
+//  3. Returns a factory function that, when called, instantiates a new OCM context with:
+//     - Registered public keys for signature verification (from the verifications provider).
+//     - ConfigMap/Secret data applied into the OCM context.
+//
+// Notes:
+//   - Secrets and ConfigMaps are treated differently. Secrets may contain credentials
+//     such as Docker config JSONs, while ConfigMaps hold general configuration data.
+//   - The `verificationsProvider` supplies a list of signature/public key pairs that
+//     are registered in the OCM context for cryptographic verification. this happens
+//     if cached or not.
+//   - The returned `hash` uniquely identifies the configuration inputs used. Any
+//     modification to Secrets, ConfigMaps will result in a new hash.
+//
+// Returns hash - a SHA-256 digest representing the configuration state (for caching/change detection)
+// and newContext - the factory function to instantiate a fresh OCM context with applied configuration.
+func ConfigureContext(
+	ctx context.Context,
+	client ctrl.Reader,
+	configs []v1alpha1.OCMConfiguration,
+	verificationsProvider func() ([]Verification, error),
+
+) (hash string, newContext func() (ocm.Context, error), _ error) {
+	configObjs := make([]ctrl.Object, 0, len(configs))
 	for _, config := range configs {
+		var obj ctrl.Object
 		switch config.Kind {
 		case "Secret":
 			obj = &corev1.Secret{}
 		case "ConfigMap":
 			obj = &corev1.ConfigMap{}
 		default:
-			return fmt.Errorf("unsupported configuration kind: %s", config.Kind)
+			return "", nil, fmt.Errorf("unsupported configuration kind: %s", config.Kind)
 		}
 
 		err := client.Get(ctx, ctrl.ObjectKey{
@@ -49,31 +71,41 @@ func ConfigureContext(ctx context.Context, octx ocm.Context, client ctrl.Client,
 			Name:      config.Name,
 		}, obj)
 		if err != nil {
-			return fmt.Errorf("configure context cannot fetch %s "+
+			return "", nil, fmt.Errorf("configure context cannot fetch %s "+
 				"%s/%s: %w", config.Kind, config.Namespace, config.Name, err)
 		}
-		err = ConfigureContextForSecretOrConfigMap(ctx, octx, obj)
-		if err != nil {
-			return err
-		}
+		configObjs = append(configObjs, obj)
 	}
 
-	// If we were to introduce further functionality into the controller that
-	// have to use the signing registry we retrieve from the context here
-	// (e.g. signing), we would have to change the coding so that the signing
-	// operation and the verification operation use dedicated signing stores.
-	if len(verifications) > 0 {
-		if len(verifications) > 1 {
-			return fmt.Errorf("only one verification list is supported")
-		}
-		signInfo := signingattr.Get(octx)
-
-		for _, v := range verifications[0] {
-			signInfo.RegisterPublicKey(v.Signature, v.PublicKey)
-		}
+	verifications, err := verificationsProvider()
+	if err != nil {
+		return "", nil, err
 	}
 
-	return nil
+	if hash, err = GetObjectDataHash(configObjs...); err != nil {
+		return "", nil, fmt.Errorf("failed to get hash of configuration objects: %w", err)
+	}
+
+	return hash, func() (ocm.Context, error) {
+		octx := ocm.New(datacontext.MODE_EXTENDED)
+		// If we were to introduce further functionality into the controller that
+		// have to use the signing registry we retrieve from the context here
+		// (e.g. signing), we would have to change the coding so that the signing
+		// operation and the verification operation use dedicated signing stores.
+		if len(verifications) > 0 {
+			signInfo := signingattr.Get(octx)
+			for _, v := range verifications {
+				signInfo.RegisterPublicKey(v.Signature, v.PublicKey)
+			}
+		}
+
+		var err error
+		for _, configObj := range configObjs {
+			err = errors.Join(err, ConfigureContextForSecretOrConfigMap(ctx, octx, configObj))
+		}
+
+		return octx, err
+	}, nil
 }
 
 // ConfigureContextForSecretOrConfigMap wraps ConfigureContextForSecret and

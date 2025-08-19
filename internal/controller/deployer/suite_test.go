@@ -124,6 +124,9 @@ var _ = BeforeSuite(func() {
 		}
 	}()
 
+	ocmContextCache := ocm.NewContextCache("shared_ocm_context_cache", 100, 100, k8sManager.GetClient())
+	Expect(k8sManager.Add(ocmContextCache)).To(Succeed())
+
 	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client:        k8sManager.GetClient(),
@@ -133,6 +136,7 @@ var _ = BeforeSuite(func() {
 		DownloadCache: cache.NewMemoryDigestObjectCache[string, []client.Object]("deployer_test_object_cache", 1_000, func(k string, v []client.Object) {
 			GinkgoLogr.Info("DownloadCache eviction", "key", k, "value", fmt.Sprintf("%d objects", len(v)))
 		}),
+		OCMContextCache: ocmContextCache,
 	}).SetupWithManager(ctx, k8sManager)).To(Succeed())
 
 	go func() {

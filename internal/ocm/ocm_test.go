@@ -13,7 +13,6 @@ import (
 	"github.com/fluxcd/pkg/apis/meta"
 	"github.com/mandelsoft/vfs/pkg/vfs"
 	"k8s.io/apimachinery/pkg/runtime"
-	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
 	"ocm.software/ocm/api/ocm/extensions/repositories/ctf"
 	"ocm.software/ocm/api/ocm/extensions/repositories/ocireg"
@@ -330,8 +329,12 @@ consumers:
 		})
 
 		It("configure context", func() {
-			octx := ocmctx.New(datacontext.MODE_EXTENDED)
-			MustBeSuccessful(ConfigureContext(ctx, octx, clnt, configs, verifications))
+			_, newCtx, err := ConfigureContext(ctx, clnt, configs, func() ([]Verification, error) {
+				return verifications, nil
+			})
+			MustBeSuccessful(err)
+			Expect(newCtx).ToNot(BeNil())
+			octx := Must(newCtx())
 
 			creds1 := Must(octx.CredentialsContext().GetCredentialsForConsumer(Must(identity.GetConsumerId("https://example.com/path1", "")), identity.IdentityMatcher))
 			creds2 := Must(octx.CredentialsContext().GetCredentialsForConsumer(Must(identity.GetConsumerId("https://example.com/path2", "")), identity.IdentityMatcher))

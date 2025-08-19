@@ -9,7 +9,6 @@ import (
 	"github.com/fluxcd/pkg/runtime/patch"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
-	"ocm.software/ocm/api/datacontext"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -31,6 +30,8 @@ var repositoryKey = ".spec.repositoryRef"
 // Reconciler reconciles a Repository object.
 type Reconciler struct {
 	*ocm.BaseReconciler
+
+	OCMContextCache *ocm.ContextCache
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -135,26 +136,20 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	logger.Info("reconciling OCM repository")
-	octx := ocmctx.New(datacontext.MODE_EXTENDED)
-	defer func() {
-		err = octx.Finalize()
-	}()
-
-	session := ocmctx.NewSession(datacontext.NewSession())
-	// automatically close the session when the ocm context is closed in the above defer
-	octx.Finalizer().Close(session)
-
 	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), ocmRepo)
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), ocmRepo, v1alpha1.ConfigureContextFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to get effective config: %w", err)
 	}
-	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs)
+	octx, session, err := r.OCMContextCache.GetSession(&ocm.GetSessionOptions{
+		RepositorySpecification: ocmRepo.Spec.RepositorySpec,
+		OCMConfigurations:       configs,
+	})
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), ocmRepo, v1alpha1.ConfigureContextFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to configure context: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get session: %w", err)
 	}
 
 	err = r.validate(octx, session, ocmRepo)

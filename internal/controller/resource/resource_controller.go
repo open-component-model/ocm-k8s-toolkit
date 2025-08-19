@@ -11,7 +11,6 @@ import (
 	"github.com/mandelsoft/goutils/sliceutils"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
-	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/oci"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/git"
 	"ocm.software/ocm/api/ocm/extensions/accessmethods/github"
@@ -40,6 +39,8 @@ import (
 
 type Reconciler struct {
 	*ocm.BaseReconciler
+
+	OCMContextCache *ocm.ContextCache
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -245,37 +246,23 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 		return ctrl.Result{}, fmt.Errorf("failed to get ready component: %w", err)
 	}
-
 	logger.Info("reconciling resource")
-	octx := ocmctx.New(datacontext.MODE_EXTENDED)
-	defer func() {
-		err = octx.Finalize()
-	}()
-
-	session := ocmctx.NewSession(datacontext.NewSession())
-	// automatically close the session when the ocm context is closed in the above defer
-	octx.Finalizer().Close(session)
-
 	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), resource)
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.ConfigureContextFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to get effective config: %w", err)
-	}
-
-	// If the component holds verification information, we need to add it to the ocm context
-	verifications, err := ocm.GetVerifications(ctx, r.GetClient(), component)
-	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.ConfigureContextFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to get verifications: %w", err)
-	}
-
-	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs, verifications)
-	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.ConfigureContextFailedReason, err.Error())
-
 		return ctrl.Result{}, fmt.Errorf("failed to configure context: %w", err)
+	}
+
+	octx, session, err := r.OCMContextCache.GetSession(&ocm.GetSessionOptions{
+		RepositorySpecification: component.Status.Component.RepositorySpec,
+		OCMConfigurations:       configs,
+		VerificationProvider:    component,
+	})
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to get session: %w", err)
 	}
 
 	spec, err := octx.RepositorySpecForConfig(component.Status.Component.RepositorySpec.Raw, nil)

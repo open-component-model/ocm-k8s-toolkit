@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
+	_ "net/http/pprof" // Registers the pprof handlers
 	"os"
 
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -47,6 +48,7 @@ func init() {
 
 	dynamic.MustRegisterMetrics(metrics.Registry)
 	cache.MustRegisterMetrics(metrics.Registry)
+	ocm.MustRegisterMetrics(metrics.Registry)
 }
 
 func main() {
@@ -58,6 +60,8 @@ func main() {
 		enableHTTP2               bool
 		eventsAddr                string
 		deployerDownloadCacheSize int
+		ocmContextCacheSize       int
+		ocmSessionCacheSize       int
 	)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metric endpoint binds to. "+
@@ -73,6 +77,10 @@ func main() {
 	flag.StringVar(&eventsAddr, "events-addr", "", "The address of the events receiver.")
 	flag.IntVar(&deployerDownloadCacheSize, "deployer-download-cache-size", 1_000, //nolint:mnd // no magic number
 		"The maximum size of the deployer download object LRU cache.")
+	flag.IntVar(&ocmContextCacheSize, "ocm-context-cache-size", 100,
+		"The maximum size of the OCM context cache. This is the number of active OCM contexts that can be kept alive.")
+	flag.IntVar(&ocmSessionCacheSize, "ocm-session-cache-size", 100,
+		"The maximum size of the OCM context cache. This is the number of active OCM sessions that can be kept alive.")
 
 	opts := zap.Options{
 		Development: true,
@@ -138,12 +146,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	ocmContextCache := ocm.NewContextCache("shared_ocm_context_cache", ocmContextCacheSize, ocmSessionCacheSize, mgr.GetClient())
+	if err := mgr.Add(ocmContextCache); err != nil {
+		setupLog.Error(err, "unable to create ocm context cache")
+		os.Exit(1)
+	}
+
 	if err = (&repository.Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client:        mgr.GetClient(),
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
+		OCMContextCache: ocmContextCache,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Repository")
 		os.Exit(1)
@@ -155,6 +170,7 @@ func main() {
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
+		OCMContextCache: ocmContextCache,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Component")
 		os.Exit(1)
@@ -166,6 +182,7 @@ func main() {
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
+		OCMContextCache: ocmContextCache,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Resource")
 		os.Exit(1)
@@ -177,6 +194,7 @@ func main() {
 			Scheme:        mgr.GetScheme(),
 			EventRecorder: eventsRecorder,
 		},
+		OCMContextCache: ocmContextCache,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Replication")
 		os.Exit(1)
@@ -191,6 +209,7 @@ func main() {
 		DownloadCache: cache.NewMemoryDigestObjectCache[string, []client.Object]("deployer_download_cache", deployerDownloadCacheSize, func(k string, v []client.Object) {
 			setupLog.Info("evicting deployment objects from cache", "key", k, "count", len(v))
 		}),
+		OCMContextCache: ocmContextCache,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Deployer")
 		os.Exit(1)

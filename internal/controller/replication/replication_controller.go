@@ -9,7 +9,6 @@ import (
 	"github.com/fluxcd/pkg/runtime/conditions"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"k8s.io/apimachinery/pkg/types"
-	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/ocmutils/check"
 	"ocm.software/ocm/api/ocm/tools/transfer"
 	"ocm.software/ocm/api/ocm/tools/transfer/transferhandler"
@@ -35,6 +34,8 @@ import (
 // Reconciler reconciles a Replication object.
 type Reconciler struct {
 	*ocm.BaseReconciler
+
+	OCMContextCache *ocm.ContextCache
 }
 
 const (
@@ -176,13 +177,6 @@ func (r *Reconciler) transfer(ctx context.Context, configs []v1alpha1.OCMConfigu
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
 	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
 	// instance and not at the global default context variable.
-	octx := ocmctx.New(datacontext.MODE_EXTENDED)
-	defer func() {
-		retErr = errors.Join(retErr, octx.Finalize())
-	}()
-	session := ocmctx.NewSession(datacontext.NewSession())
-	// automatically close the session when the ocm context is closed in the above defer
-	octx.Finalizer().Close(session)
 
 	historyRecord = v1alpha1.TransferStatus{
 		StartTime:            metav1.Now(),
@@ -192,11 +186,14 @@ func (r *Reconciler) transfer(ctx context.Context, configs []v1alpha1.OCMConfigu
 		TargetRepositorySpec: string(targetOCMRepo.Spec.RepositorySpec.Raw),
 	}
 
-	err := ocm.ConfigureContext(ctx, octx, r.GetClient(), configs)
+	octx, session, err := r.OCMContextCache.GetSession(&ocm.GetSessionOptions{
+		RepositorySpecification: comp.Status.Component.RepositorySpec,
+		OCMConfigurations:       configs,
+	})
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), replication, v1alpha1.ConfigureContextFailedReason, err.Error())
 
-		return historyRecord, fmt.Errorf("cannot configure context: %w", err)
+		return historyRecord, fmt.Errorf("failed to get session: %w", err)
 	}
 
 	sourceRepo, err := session.LookupRepositoryForConfig(octx, comp.Status.Component.RepositorySpec.Raw)

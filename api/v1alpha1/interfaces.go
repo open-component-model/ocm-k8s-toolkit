@@ -38,6 +38,6 @@ type OCMK8SObject interface {
 // use the same function to retrieve and parse the contained or referenced public keys.
 // +kubebuilder:object:generate=false
 type VerificationProvider interface {
-	client.Object
+	GetNamespace() string
 	GetVerifications() []Verification
 }

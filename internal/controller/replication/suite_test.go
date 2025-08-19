@@ -108,12 +108,16 @@ var _ = BeforeSuite(func() {
 		}
 	}()
 
+	ocmContextCache := ocm.NewContextCache("shared_ocm_context_cache", 100, 100, k8sManager.GetClient())
+	Expect(k8sManager.Add(ocmContextCache)).To(Succeed())
+
 	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client:        k8sManager.GetClient(),
 			Scheme:        testEnv.Scheme,
 			EventRecorder: recorder,
 		},
+		OCMContextCache: ocmContextCache,
 	}).SetupWithManager(ctx, k8sManager)).To(Succeed())
 
 	go func() {

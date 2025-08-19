@@ -25,7 +25,7 @@ type Verification struct {
 	PublicKey []byte
 }
 
-func GetVerifications(ctx context.Context, client ctrl.Client,
+func GetVerifications(ctx context.Context, client ctrl.Reader,
 	obj v1alpha1.VerificationProvider,
 ) ([]Verification, error) {
 	verifications := obj.GetVerifications()

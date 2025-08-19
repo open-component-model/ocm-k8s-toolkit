@@ -8,10 +8,10 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/fluxcd/pkg/runtime/patch"
+	mandelerrors "github.com/mandelsoft/goutils/errors"
 	"github.com/mandelsoft/goutils/sliceutils"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
-	"ocm.software/ocm/api/datacontext"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -32,6 +32,8 @@ import (
 // Reconciler reconciles a Component object.
 type Reconciler struct {
 	*ocm.BaseReconciler
+
+	OCMContextCache *ocm.ContextCache
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -245,42 +247,29 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
 	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
 	// instance and not at the global default context variable.
-	octx := ocmctx.New(datacontext.MODE_EXTENDED)
-	defer func() {
-		err = octx.Finalize()
-	}()
-
-	session := ocmctx.NewSession(datacontext.NewSession())
-	// automatically close the session when the ocm context is closed in the above defer
-	octx.Finalizer().Close(session)
-
 	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), component)
-	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to get effective config: %w", err)
-	}
-
-	verifications, err := ocm.GetVerifications(ctx, r.GetClient(), component)
-	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to get verifications: %w", err)
-	}
-
-	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs, verifications)
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to configure context: %w", err)
 	}
 
+	octx, session, err := r.OCMContextCache.GetSession(&ocm.GetSessionOptions{
+		RepositorySpecification: repo.Spec.RepositorySpec,
+		OCMConfigurations:       configs,
+		VerificationProvider:    component,
+	})
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to get session: %w", err)
+	}
+
 	spec, err := octx.RepositorySpecForConfig(repo.Spec.RepositorySpec.Raw, nil)
 	if err != nil {
-		logger.Error(err, "failed to parse repository spec")
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetComponentVersionFailedReason, "RepositorySpec is invalid")
+		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.GetComponentVersionFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to parse repository spec: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get repository spec: %w", err)
 	}
 
 	repository, err := session.LookupRepository(octx, spec)
@@ -297,7 +286,21 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed looking up component: %w", err)
 	}
 
-	version, err := r.DetermineEffectiveVersion(ctx, component, session, repository, c)
+	// we need a "live", aka not cached, repository access. This is because
+	// even though the cached version is mostly good for other controllers, it is the component controllers
+	// responsibility to check if the cached version is still valid, or if we need to retrieve a new version.
+	// we need to do this because the cached version might be outdated.
+	liveRepo, err := octx.RepositoryForSpec(spec)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetComponentVersionFailedReason, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to get live repository access: %w", err)
+	}
+	defer func() {
+		err = errors.Join(err, liveRepo.Close())
+	}()
+
+	version, err := r.DetermineEffectiveVersion(ctx, component, session, liveRepo)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason, err.Error())
 
@@ -305,12 +308,34 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	cv, err := session.LookupComponentVersion(repository, c.GetName(), version)
+
+	if mandelerrors.IsErrNotFound(err) {
+		// if we are here, then the component version was not found in the cached session, but in the live repo.
+		// in this case we know the session is outdated, so forcefully close it and re-open it on the next reconcile.
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason, err.Error())
+		return ctrl.Result{}, fmt.Errorf("cached component version access was not found and cached session needed to be invalidated: %w", errors.Join(err, session.Close()))
+	}
+
 	if err != nil {
 		// this version has to exist (since it was found in GetLatestVersion) and therefore, this is most likely a
 		// static error where requeueing does not make sense
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetComponentVersionFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to get component version: %w", err)
+	}
+
+	digestSpec, err := ocm.CompareCachedAndLiveHashes(cv, liveRepo, component.Spec.Component, version)
+
+	switch {
+	case errors.Is(err, ocm.ErrComponentVersionHashMismatch):
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason, err.Error())
+		// if we are here, then the component version was found in the cache, but under a different hash
+		// in this case we know the session is outdated, so forcefully close it and re-open it on the next reconcile.
+		log.FromContext(ctx).Info("cached component version access was found, but under a different hash, closing session and re-opening it on the next reconcile")
+		return ctrl.Result{}, errors.Join(err, session.Close())
+	case err != nil:
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason, err.Error())
+		return ctrl.Result{}, fmt.Errorf("failed to compare cached and live hashes: %w", err)
 	}
 
 	if _, err := ocm.VerifyComponentVersion(ctx, cv, sliceutils.Transform(component.Spec.Verify, func(verify v1alpha1.Verification) string {
@@ -326,6 +351,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		RepositorySpec: repo.Spec.RepositorySpec,
 		Component:      component.Spec.Component,
 		Version:        version,
+		Digest:         digestSpec,
 	}
 
 	component.Status.EffectiveOCMConfig = configs
@@ -336,14 +362,21 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 }
 
 func (r *Reconciler) DetermineEffectiveVersion(ctx context.Context, component *v1alpha1.Component,
-	session ocmctx.Session, repo ocmctx.Repository, c ocmctx.ComponentAccess,
-) (string, error) {
-	versions, err := c.ListVersions()
+	session ocmctx.Session, liveRepo ocmctx.Repository,
+) (_ string, err error) {
+	liveComponentAccess, err := liveRepo.LookupComponent(component.Spec.Component)
+	if err != nil {
+		return "", fmt.Errorf("failed to lookup component: %w", err)
+	}
+	defer func() {
+		err = errors.Join(err, liveComponentAccess.Close())
+	}()
+	versions, err := liveComponentAccess.ListVersions()
 	if err != nil {
 		return "", fmt.Errorf("failed to list versions: %w", err)
 	}
 	if len(versions) == 0 {
-		return "", fmt.Errorf("component %s not found in repository", c.GetName())
+		return "", fmt.Errorf("component %s not found in repository", liveComponentAccess.GetName())
 	}
 	filter, err := ocm.RegexpFilter(component.Spec.SemverFilter)
 	if err != nil {
@@ -375,13 +408,13 @@ func (r *Reconciler) DetermineEffectiveVersion(ctx context.Context, component *v
 	case v1alpha1.DowngradePolicyEnforce:
 		return latestSemver.Original(), nil
 	case v1alpha1.DowngradePolicyAllow:
-		reconciledcv, err := session.LookupComponentVersion(repo, c.GetName(), currentSemver.Original())
+		reconciledcv, err := session.LookupComponentVersion(liveRepo, liveComponentAccess.GetName(), currentSemver.Original())
 		if err != nil {
 			return "", reconcile.TerminalError(fmt.Errorf("failed to get reconciled component version to check"+
 				" downgradability: %w", err))
 		}
 
-		latestcv, err := session.LookupComponentVersion(repo, c.GetName(), latestSemver.Original())
+		latestcv, err := session.LookupComponentVersion(liveRepo, liveComponentAccess.GetName(), latestSemver.Original())
 		if err != nil {
 			return "", fmt.Errorf("failed to get component version: %w", err)
 		}
