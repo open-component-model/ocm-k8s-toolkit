@@ -52,7 +52,6 @@ func ConfigureContext(
 	client ctrl.Reader,
 	configs []v1alpha1.OCMConfiguration,
 	verificationsProvider func() ([]Verification, error),
-
 ) (hash string, newContext func() (ocm.Context, error), _ error) {
 	configObjs := make([]ctrl.Object, 0, len(configs))
 	for _, config := range configs {

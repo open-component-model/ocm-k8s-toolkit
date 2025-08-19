@@ -7,16 +7,18 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 	"github.com/prometheus/client_golang/prometheus"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/utils/lru"
 	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
-	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
 
 var (
@@ -71,7 +73,7 @@ func NewContextCache(name string, contextCacheSize, sessionCacheSize int, client
 // Contexts are expensive to build/configure, sessions are bound to repositories.
 // Eviction handlers clean up resources when entries are removed.
 type ContextCache struct {
-	ctx                                context.Context
+	ctx                                context.Context //nolint:containedctx // context is passed via Start from manager
 	name                               string
 	contextCacheSize, sessionCacheSize int
 
@@ -93,7 +95,8 @@ func (m *ContextCache) Start(ctx context.Context) error {
 	// Cache for contexts, with eviction finalizer.
 	m.contexts = lru.NewWithEvictionFunc(m.contextCacheSize, func(key lru.Key, value interface{}) {
 		defer contextCacheSize.WithLabelValues(m.name).Dec()
-		if err := value.(ocm.Context).Finalize(); err != nil {
+		ctx := value.(ocm.Context) //nolint:forcetypeassert // safe cast
+		if err := ctx.Finalize(); err != nil {
 			logger.Error(err, "failed to finalize context", "key", key)
 		}
 	})
@@ -101,7 +104,8 @@ func (m *ContextCache) Start(ctx context.Context) error {
 	// Cache for sessions, with eviction finalizer.
 	m.sessions = lru.NewWithEvictionFunc(m.sessionCacheSize, func(key lru.Key, value interface{}) {
 		defer sessionCacheSize.WithLabelValues(m.name).Dec()
-		if err := value.(ocm.Session).Close(); err != nil {
+		session := value.(ocm.Session) //nolint:forcetypeassert // safe cast
+		if err := session.Close(); err != nil {
 			logger.Error(err, "failed to close session", "key", key)
 		}
 	})
@@ -119,6 +123,7 @@ func (m *ContextCache) Start(ctx context.Context) error {
 	}()
 
 	<-done
+
 	return nil
 }
 
@@ -157,7 +162,7 @@ func (m *ContextCache) GetSession(
 	contextFromCache, ok := m.contexts.Get(contextHash)
 	if ok {
 		// Reuse cached context, and ensure verifications are registered.
-		octx = contextFromCache.(ocm.Context)
+		octx = contextFromCache.(ocm.Context) //nolint:forcetypeassert // safe cast
 		verifications, err := verifications()
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to configure context: %w", err)
@@ -190,7 +195,7 @@ func (m *ContextCache) GetSession(
 	sessionFromCache, ok := m.sessions.Get(key)
 	if ok {
 		// Reuse cached session if still valid.
-		session = sessionFromCache.(ocm.Session)
+		session = sessionFromCache.(ocm.Session) //nolint:forcetypeassert // safe cast
 		if session.IsClosed() {
 			// Recreate session if it was closed but still in cache.
 			session = ocm.NewSession(datacontext.NewSession())

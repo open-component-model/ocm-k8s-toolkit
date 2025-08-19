@@ -9,9 +9,10 @@ import (
 	"maps"
 	"slices"
 
+	"ocm.software/ocm/api/ocm/compdesc"
+
 	v1 "k8s.io/api/core/v1"
 	ocmctx "ocm.software/ocm/api/ocm"
-	"ocm.software/ocm/api/ocm/compdesc"
 	ocmv1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 )
 
@@ -92,8 +93,10 @@ func GetObjectDataHash[T any](obj ...T) (string, error) {
 
 	if len(obj) > 1 {
 		h := sha256.Sum256([]byte(combined))
+
 		return hex.EncodeToString(h[:]), nil
 	}
+
 	return combined, nil
 }
 
@@ -101,6 +104,7 @@ func GetSecretMapDataHash(secret *v1.Secret) (string, error) {
 	if secret == nil {
 		return "", nil
 	}
+
 	return HashMap(secret.Data)
 }
 
@@ -133,5 +137,6 @@ func HashMap(data map[string][]byte) (string, error) {
 		raw.WriteByte(0)
 	}
 	h := sha256.Sum256(raw.Bytes())
+
 	return hex.EncodeToString(h[:]), nil
 }

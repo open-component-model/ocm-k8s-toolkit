@@ -171,7 +171,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	return ctrl.Result{RequeueAfter: replication.GetRequeueAfter()}, nil
 }
 
-func (r *Reconciler) transfer(configs []v1alpha1.OCMConfiguration, replication *v1alpha1.Replication, comp *v1alpha1.Component, targetOCMRepo *v1alpha1.Repository) (historyRecord v1alpha1.TransferStatus, retErr error) {
+func (r *Reconciler) transfer(
+	configs []v1alpha1.OCMConfiguration,
+	replication *v1alpha1.Replication,
+	comp *v1alpha1.Component,
+	targetOCMRepo *v1alpha1.Repository,
+) (historyRecord v1alpha1.TransferStatus, retErr error) {
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
 	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
 	// instance and not at the global default context variable.

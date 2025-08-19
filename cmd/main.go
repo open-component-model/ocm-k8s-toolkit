@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
-	_ "net/http/pprof" // Registers the pprof handlers
 	"os"
 
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -51,6 +50,7 @@ func init() {
 	ocm.MustRegisterMetrics(metrics.Registry)
 }
 
+//nolint:funlen // the main function is complex enough as it is - we don't want to separate the initialization
 func main() {
 	var (
 		metricsAddr               string
@@ -77,9 +77,9 @@ func main() {
 	flag.StringVar(&eventsAddr, "events-addr", "", "The address of the events receiver.")
 	flag.IntVar(&deployerDownloadCacheSize, "deployer-download-cache-size", 1_000, //nolint:mnd // no magic number
 		"The maximum size of the deployer download object LRU cache.")
-	flag.IntVar(&ocmContextCacheSize, "ocm-context-cache-size", 100,
+	flag.IntVar(&ocmContextCacheSize, "ocm-context-cache-size", 100, //nolint:mnd // no magic number
 		"The maximum size of the OCM context cache. This is the number of active OCM contexts that can be kept alive.")
-	flag.IntVar(&ocmSessionCacheSize, "ocm-session-cache-size", 100,
+	flag.IntVar(&ocmSessionCacheSize, "ocm-session-cache-size", 100, //nolint:mnd // no magic number
 		"The maximum size of the OCM context cache. This is the number of active OCM sessions that can be kept alive.")
 
 	opts := zap.Options{
