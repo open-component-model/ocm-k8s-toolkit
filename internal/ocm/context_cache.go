@@ -206,3 +206,8 @@ func (m *ContextCache) GetSession(
 
 	return octx, session, nil
 }
+
+func (m *ContextCache) Clear() {
+	m.sessions.Clear()
+	m.contexts.Clear()
+}

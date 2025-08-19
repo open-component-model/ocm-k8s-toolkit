@@ -152,7 +152,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, err
 	}
 
-	historyRecord, err := r.transfer(ctx, configs, replication, comp, repo)
+	historyRecord, err := r.transfer(configs, replication, comp, repo)
 	if err != nil {
 		historyRecord.Error = err.Error()
 		historyRecord.EndTime = metav1.Now()
@@ -171,9 +171,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	return ctrl.Result{RequeueAfter: replication.GetRequeueAfter()}, nil
 }
 
-func (r *Reconciler) transfer(ctx context.Context, configs []v1alpha1.OCMConfiguration,
-	replication *v1alpha1.Replication, comp *v1alpha1.Component, targetOCMRepo *v1alpha1.Repository,
-) (historyRecord v1alpha1.TransferStatus, retErr error) {
+func (r *Reconciler) transfer(configs []v1alpha1.OCMConfiguration, replication *v1alpha1.Replication, comp *v1alpha1.Component, targetOCMRepo *v1alpha1.Repository) (historyRecord v1alpha1.TransferStatus, retErr error) {
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
 	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
 	// instance and not at the global default context variable.
@@ -206,7 +204,17 @@ func (r *Reconciler) transfer(ctx context.Context, configs []v1alpha1.OCMConfigu
 		return historyRecord, fmt.Errorf("cannot lookup component version in source repository: %w", err)
 	}
 
-	targetRepo, err := session.LookupRepositoryForConfig(octx, targetOCMRepo.Spec.RepositorySpec.Raw)
+	targetCtx, targetSession, err := r.OCMContextCache.GetSession(&ocm.GetSessionOptions{
+		RepositorySpecification: targetOCMRepo.Spec.RepositorySpec,
+		OCMConfigurations:       configs,
+	})
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), replication, v1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return historyRecord, fmt.Errorf("failed to get session: %w", err)
+	}
+
+	targetRepo, err := targetSession.LookupRepositoryForConfig(targetCtx, targetOCMRepo.Spec.RepositorySpec.Raw)
 	if err != nil {
 		return historyRecord, fmt.Errorf("cannot lookup repository for RepositorySpec: %w", err)
 	}
@@ -217,6 +225,10 @@ func (r *Reconciler) transfer(ctx context.Context, configs []v1alpha1.OCMConfigu
 	if err != nil {
 		return historyRecord, fmt.Errorf("cannot retrieve transfer options from OCM context: %w", err)
 	}
+	err = transferhandler.From(targetCtx, opts)
+	if err != nil {
+		return historyRecord, fmt.Errorf("cannot retrieve transfer options from OCM context: %w", err)
+	}
 
 	err = transfer.Transfer(cv, targetRepo, opts)
 	if err != nil {
@@ -224,7 +236,7 @@ func (r *Reconciler) transfer(ctx context.Context, configs []v1alpha1.OCMConfigu
 	}
 
 	// the transfer operation can only be considered successful, if the copied component can be successfully verified in the target repository
-	err = r.validate(session, targetRepo, comp.Status.Component.Component, comp.Status.Component.Version)
+	err = r.validate(targetSession, targetRepo, comp.Status.Component.Component, comp.Status.Component.Version)
 	if err != nil {
 		return historyRecord, err
 	}
