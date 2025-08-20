@@ -62,6 +62,7 @@ func main() {
 		deployerDownloadCacheSize int
 		ocmContextCacheSize       int
 		ocmSessionCacheSize       int
+		resourceConcurrency       int
 	)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metric endpoint binds to. "+
@@ -81,6 +82,8 @@ func main() {
 		"The maximum size of the OCM context cache. This is the number of active OCM contexts that can be kept alive.")
 	flag.IntVar(&ocmSessionCacheSize, "ocm-session-cache-size", 100, //nolint:mnd // no magic number
 		"The maximum size of the OCM context cache. This is the number of active OCM sessions that can be kept alive.")
+	flag.IntVar(&resourceConcurrency, "resource-controller-concurrency", 4, //nolint:mnd // no magic number
+		"The resource controller concurrency. This is the number of active resource controller workers that can be kept alive.")
 
 	opts := zap.Options{
 		Development: true,
@@ -134,6 +137,7 @@ func main() {
 		// if you are doing or is intended to do any operation such as perform cleanups
 		// after the manager stops then its usage might be unsafe.
 		// LeaderElectionReleaseOnCancel: true,
+
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -183,7 +187,7 @@ func main() {
 			EventRecorder: eventsRecorder,
 		},
 		OCMContextCache: ocmContextCache,
-	}).SetupWithManager(ctx, mgr); err != nil {
+	}).SetupWithManager(ctx, mgr, resourceConcurrency); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Resource")
 		os.Exit(1)
 	}
