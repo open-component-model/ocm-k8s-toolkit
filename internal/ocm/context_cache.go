@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"sync"
+	"hash"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/utils/lru"
@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -112,8 +113,7 @@ func (m *ContextCache) Start(ctx context.Context) error {
 	})
 
 	<-ctx.Done()
-	m.sessions.Clear()
-	m.contexts.Clear()
+	m.Clear()
 
 	return nil
 }
@@ -129,78 +129,138 @@ type GetSessionOptions struct {
 }
 
 // GetSession returns an OCM context and session for the given options.
-// It reuses cached contexts/sessions when possible, keyed by configuration and repository hash.
-// If not cached, it creates and configures new ones.
-func (m *ContextCache) GetSession(
-	opts *GetSessionOptions,
-) (ocm.Context, ocm.Session, error) {
-	// Lazy initialization of verifications using sync.OnceValues.
-	verifications := sync.OnceValues(func() ([]Verification, error) {
-		if opts.VerificationProvider == nil {
-			return nil, nil
-		}
-		// Load verification info from provider into OCM context.
-		return GetVerifications(m.ctx, m.lookupClient, opts.VerificationProvider)
-	})
+// Contexts are cached by configuration hash. Sessions are cached by (context hash, repo hash).
+func (m *ContextCache) GetSession(opts *GetSessionOptions) (ocm.Context, ocm.Session, error) {
+	if opts == nil {
+		return nil, nil, fmt.Errorf("opts is nil")
+	}
 
-	// Build or retrieve OCM context based on configuration.
-	contextHash, newContext, err := ConfigureContext(m.ctx, m.lookupClient, opts.OCMConfigurations, verifications)
+	// 1) Load config objects and hash them -> context key
+	configObjs, err := m.getConfigObjects(opts.OCMConfigurations)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to configure context: %w", err)
+		return nil, nil, err
+	}
+	configHash, err := GetObjectDataHash(configObjs...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("hash config objects: %w", err)
 	}
 
-	var octx ocm.Context
-	contextFromCache, ok := m.contexts.Get(contextHash)
-	if ok {
-		// Reuse cached context, and ensure verifications are registered.
-		octx = contextFromCache.(ocm.Context) //nolint:forcetypeassert // safe cast
-		verifications, err := verifications()
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to configure context: %w", err)
-		}
-		signInfo := signingattr.Get(octx)
-		for _, v := range verifications {
-			signInfo.RegisterPublicKey(v.Signature, v.PublicKey)
-		}
-	} else {
-		// Create new context and cache it.
-		octx, err = newContext()
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to configure context: %w", err)
-		}
-		m.contexts.Add(contextHash, octx)
-		contextCacheSize.WithLabelValues(m.name).Inc()
+	// 2) Get existing or build new context
+	octx, err := m.getOrCreateContext(configHash, configObjs)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	// Cache key combines context hash and repository hash.
-	type keyType struct {
-		ctxHash  string
-		repoHash string
-	}
-	key := keyType{
-		ctxHash:  contextHash,
-		repoHash: fmt.Sprintf("%x", sha256.Sum256(opts.RepositorySpecification.Raw)),
+	// 3) Always register verifications
+	if err := m.registerVerifications(octx, opts); err != nil {
+		return nil, nil, err
 	}
 
-	var session ocm.Session
-	sessionFromCache, ok := m.sessions.Get(key)
-	if ok {
-		// Reuse cached session if still valid.
-		session = sessionFromCache.(ocm.Session) //nolint:forcetypeassert // safe cast
-		if session.IsClosed() {
-			// Recreate session if it was closed but still in cache.
-			session = ocm.NewSession(datacontext.NewSession())
-			m.sessions.Add(key, session)
+	// 4) Get or build session
+	key := sessionKey{
+		ctxHash:  configHash,
+		repoHash: hashBytesHex(opts.RepositorySpecification.Raw, sha256.New()),
+	}
+	sess := m.getOrCreateSession(key, octx)
+
+	return octx, sess, nil
+}
+
+// --- helpers ---
+
+type sessionKey struct {
+	ctxHash  string
+	repoHash string
+}
+
+func (m *ContextCache) getConfigObjects(configs []v1alpha1.OCMConfiguration) ([]ctrl.Object, error) {
+	objs := make([]ctrl.Object, 0, len(configs))
+	for _, c := range configs {
+		var obj ctrl.Object
+		switch c.Kind {
+		case "Secret":
+			obj = &corev1.Secret{}
+		case "ConfigMap":
+			obj = &corev1.ConfigMap{}
+		default:
+			return nil, fmt.Errorf("unsupported configuration kind: %s", c.Kind)
 		}
-	} else {
-		// Create new session, register it with context finalizer, and cache it.
-		session = ocm.NewSession(datacontext.NewSession())
-		octx.Finalizer().Close(session)
-		m.sessions.Add(key, session)
-		sessionCacheSize.WithLabelValues(m.name).Inc()
+		key := ctrl.ObjectKey{Namespace: c.Namespace, Name: c.Name}
+		if err := m.lookupClient.Get(m.ctx, key, obj); err != nil {
+			return nil, fmt.Errorf("get %s %s/%s: %w", c.Kind, c.Namespace, c.Name, err)
+		}
+		objs = append(objs, obj)
 	}
 
-	return octx, session, nil
+	return objs, nil
+}
+
+func (m *ContextCache) getOrCreateContext(ctxHash string, configObjs []ctrl.Object) (ocm.Context, error) {
+	if cached, ok := m.contexts.Get(ctxHash); ok {
+		return cached.(ocm.Context), nil //nolint:forcetypeassert // safe cast
+	}
+
+	octx := ocm.New(datacontext.MODE_EXTENDED)
+
+	var applyErr error
+	for _, obj := range configObjs {
+		applyErr = errors.Join(applyErr, ConfigureContextForSecretOrConfigMap(m.ctx, octx, obj))
+	}
+	if applyErr != nil {
+		return nil, applyErr
+	}
+
+	m.contexts.Add(ctxHash, octx)
+	contextCacheSize.WithLabelValues(m.name).Inc()
+
+	return octx, nil
+}
+
+func (m *ContextCache) registerVerifications(octx ocm.Context, opts *GetSessionOptions) error {
+	if opts.VerificationProvider == nil {
+		return nil
+	}
+	vs, err := GetVerifications(m.ctx, m.lookupClient, opts.VerificationProvider)
+	if err != nil || len(vs) == 0 {
+		return err
+	}
+	if reg := signingattr.Get(octx); reg != nil {
+		for _, v := range vs {
+			reg.RegisterPublicKey(v.Signature, v.PublicKey)
+		}
+	}
+
+	return nil
+}
+
+func (m *ContextCache) getOrCreateSession(key sessionKey, octx ocm.Context) ocm.Session {
+	if cached, ok := m.sessions.Get(key); ok {
+		s := cached.(ocm.Session) //nolint:forcetypeassert // safe cast
+		if !s.IsClosed() {
+			return s
+		}
+		// replace closed session with a fresh one
+		s = ocm.NewSession(datacontext.NewSession())
+		octx.Finalizer().Close(s)
+		m.sessions.Add(key, s)
+
+		return s
+	}
+
+	s := ocm.NewSession(datacontext.NewSession())
+	octx.Finalizer().Close(s)
+	m.sessions.Add(key, s)
+	sessionCacheSize.WithLabelValues(m.name).Inc()
+
+	return s
+}
+
+func hashBytesHex(b []byte, hash hash.Hash) string {
+	if b == nil {
+		return ""
+	}
+
+	return fmt.Sprintf("%x", hash.Sum(b))
 }
 
 func (m *ContextCache) Clear() {
