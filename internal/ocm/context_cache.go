@@ -89,11 +89,12 @@ func (m *ContextCache) Start(ctx context.Context) error {
 	if m.ctx != nil {
 		return fmt.Errorf("already started")
 	}
+	m.ctx = ctx
 
 	logger := log.FromContext(ctx)
 
 	// Cache for contexts, with eviction finalizer.
-	m.contexts = lru.NewWithEvictionFunc(m.contextCacheSize, func(key lru.Key, value interface{}) {
+	m.contexts = lru.NewWithEvictionFunc(m.contextCacheSize, func(key lru.Key, value any) {
 		defer contextCacheSize.WithLabelValues(m.name).Dec()
 		ctx := value.(ocm.Context) //nolint:forcetypeassert // safe cast
 		if err := ctx.Finalize(); err != nil {
@@ -102,7 +103,7 @@ func (m *ContextCache) Start(ctx context.Context) error {
 	})
 
 	// Cache for sessions, with eviction finalizer.
-	m.sessions = lru.NewWithEvictionFunc(m.sessionCacheSize, func(key lru.Key, value interface{}) {
+	m.sessions = lru.NewWithEvictionFunc(m.sessionCacheSize, func(key lru.Key, value any) {
 		defer sessionCacheSize.WithLabelValues(m.name).Dec()
 		session := value.(ocm.Session) //nolint:forcetypeassert // safe cast
 		if err := session.Close(); err != nil {
@@ -110,19 +111,9 @@ func (m *ContextCache) Start(ctx context.Context) error {
 		}
 	})
 
-	m.ctx = ctx
-
-	// Watch for context cancellation to clear caches.
-	done := make(chan struct{}, 1)
-	go func() {
-		<-ctx.Done()
-		m.sessions.Clear()
-		m.contexts.Clear()
-		done <- struct{}{}
-		close(done)
-	}()
-
-	<-done
+	<-ctx.Done()
+	m.sessions.Clear()
+	m.contexts.Clear()
 
 	return nil
 }
