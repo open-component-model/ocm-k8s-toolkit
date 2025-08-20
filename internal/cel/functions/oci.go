@@ -11,24 +11,26 @@ import (
 	"ocm.software/ocm/api/oci"
 )
 
+const ToOCIFunctionName = "toOCI"
+
 // ToOCI returns a CEL environment option that registers the "toOCI" function.
 // This function can be called on any CEL value (string or map) and converts
 // it into a map containing OCI reference components (host, registry, repository,
 // reference, tag, digest).
 func ToOCI() cel.EnvOption {
 	return cel.Function(
-		"toOCI",
+		ToOCIFunctionName,
 		// Member overload: allow invoking as <value>.toOCI()
 		cel.MemberOverload(
-			"toOCI_any_member",
-			[]*cel.Type{cel.AnyType},
+			"toOCI_dyn_member",
+			[]*cel.Type{cel.DynType},
 			// Return type: map<string, string>
 			types.NewMapType(types.StringType, types.StringType),
 		),
 		// Standalone overload: allow calling toOCI(<value>)
 		cel.Overload(
-			"toOCI_any",
-			[]*cel.Type{cel.AnyType},
+			"toOCI_dyn",
+			[]*cel.Type{cel.DynType},
 			types.NewMapType(types.StringType, types.StringType),
 		),
 		// Bind the overload to the Go implementation

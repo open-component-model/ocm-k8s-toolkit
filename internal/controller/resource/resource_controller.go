@@ -5,14 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
-	"sync"
 
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/google/cel-go/cel"
 	"github.com/mandelsoft/goutils/sliceutils"
-	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/fields"
 	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/compdesc"
@@ -444,7 +441,7 @@ func computeAdditionalStatusFields(
 		return fmt.Errorf("getting base CEL env: %w", err)
 	}
 	env, err = env.Extend(
-		cel.Variable("resource", cel.AnyType),
+		cel.Variable("resource", cel.DynType),
 	)
 	if err != nil {
 		return fmt.Errorf("extending CEL env: %w", err)
@@ -458,37 +455,27 @@ func computeAdditionalStatusFields(
 	fields := resource.Spec.AdditionalStatusFields
 	resource.Status.Additional = make(map[string]apiextensionsv1.JSON, len(fields))
 
-	eg, ctx := errgroup.WithContext(ctx)
-	eg.SetLimit(runtime.NumCPU())
-	var mu sync.Mutex // use a mutex to serialize concurrent writes to resource status
-
 	for name, expr := range fields {
-		eg.Go(func() error {
-			ast, issues := env.Compile(expr)
-			if issues.Err() != nil {
-				return fmt.Errorf("compiling CEL %q: %w", name, issues.Err())
-			}
-			prog, err := env.Program(ast)
-			if err != nil {
-				return fmt.Errorf("building CEL program %q: %w", name, err)
-			}
-			val, _, err := prog.ContextEval(ctx, map[string]any{"resource": resourceMap})
-			if err != nil {
-				return fmt.Errorf("evaluating CEL %q: %w", name, err)
-			}
-			raw, err := json.Marshal(val)
-			if err != nil {
-				return fmt.Errorf("marshaling CEL result %q: %w", name, err)
-			}
-			mu.Lock()
-			defer mu.Unlock()
-			resource.Status.Additional[name] = apiextensionsv1.JSON{Raw: raw}
-
-			return nil
-		})
+		ast, issues := env.Compile(expr)
+		if issues.Err() != nil {
+			return fmt.Errorf("compiling CEL %q: %w", name, issues.Err())
+		}
+		prog, err := env.Program(ast)
+		if err != nil {
+			return fmt.Errorf("building CEL program %q: %w", name, err)
+		}
+		val, _, err := prog.ContextEval(ctx, map[string]any{"resource": resourceMap})
+		if err != nil {
+			return fmt.Errorf("evaluating CEL %q: %w", name, err)
+		}
+		raw, err := json.Marshal(val)
+		if err != nil {
+			return fmt.Errorf("marshaling CEL result %q: %w", name, err)
+		}
+		resource.Status.Additional[name] = apiextensionsv1.JSON{Raw: raw}
 	}
 
-	return eg.Wait()
+	return nil
 }
 
 // toGenericMapViaJSON marshals and unmarshals a struct into a generic map representation through JSON tags.

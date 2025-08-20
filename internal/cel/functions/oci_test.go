@@ -1,8 +1,10 @@
 package functions_test
 
 import (
+	"fmt"
 	"testing"
 
+	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/cel/functions"
 	"github.com/stretchr/testify/assert"
@@ -73,6 +75,32 @@ func TestBindingToOCI_StringReference(t *testing.T) {
 			for k, v := range tc.expects {
 				a.EqualValues(v, mv.Get(types.String(k)).Value())
 			}
+
+			t.Run("cel", func(t *testing.T) {
+				r := require.New(t)
+				env, err := cel.NewEnv(functions.ToOCI(), cel.Variable("value", cel.StringType))
+				r.NoError(err)
+				ast, issues := env.Compile(fmt.Sprintf("value.%s()", functions.ToOCIFunctionName))
+				r.NoError(issues.Err())
+
+				prog, err := env.Program(ast)
+				r.NoError(err)
+				val, _, err := prog.ContextEval(t.Context(), map[string]any{
+					"value": tc.input,
+				})
+				if tc.err != nil {
+					r.IsType(&types.Err{}, val)
+					tc.err(t, val.(*types.Err))
+					return
+				}
+
+				r.IsType(&lazy.MapValue{}, val)
+				mv := val.(*lazy.MapValue)
+				a := assert.New(t)
+				for k, v := range tc.expects {
+					a.EqualValues(v, mv.Get(types.String(k)).Value())
+				}
+			})
 		})
 	}
 }
