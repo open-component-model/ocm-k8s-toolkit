@@ -206,7 +206,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to configure context: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get effective config: %w", err)
 	}
 
 	octx, session, err := r.OCMContextCache.GetSession(&ocm.GetSessionOptions{
