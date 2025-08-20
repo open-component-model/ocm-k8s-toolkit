@@ -14,7 +14,7 @@ func TestBindingToOCI_StringReference(t *testing.T) {
 	tests := []struct {
 		input   string
 		expects map[string]string
-		err     assert.ErrorAssertionFunc
+		err     require.ErrorAssertionFunc
 	}{
 		{
 			input: "registry.io/myrepo/myapp:v1",
@@ -49,6 +49,11 @@ func TestBindingToOCI_StringReference(t *testing.T) {
 				"reference":  "v1@sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
 			},
 		},
+		{
+			input:   "registry.io/myrepo/myapp:v1@sha256:gibberish",
+			expects: map[string]string{},
+			err:     require.Error,
+		},
 	}
 
 	for _, tc := range tests {
@@ -59,6 +64,7 @@ func TestBindingToOCI_StringReference(t *testing.T) {
 			if tc.err != nil {
 				r.IsType(&types.Err{}, val)
 				tc.err(t, val.(*types.Err))
+				return
 			}
 
 			r.IsType(&lazy.MapValue{}, val)
