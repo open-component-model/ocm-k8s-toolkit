@@ -92,7 +92,8 @@ func (in *Repository) SetObservedGeneration(v int64) {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].message`,description="Indicates if the Resource is Ready",priority=1
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp",description="Displays the Age of the Resource"
 // Repository is the Schema for the repositories API.
 type Repository struct {
 	metav1.TypeMeta   `json:",inline"`
