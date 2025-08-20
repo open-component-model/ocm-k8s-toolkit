@@ -227,10 +227,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to get repository spec: %w", err)
 	}
 
-	// we need a "live", aka not cached, repository access. This is because
+	// We need a "live", aka not cached, repository access. This is because
 	// even though the cached version is mostly good for other controllers, it is the component controllers
 	// responsibility to check if the cached version is still valid, or if we need to retrieve a new version.
-	// we need to do this because the cached version might be outdated.
+	// We need to do this because the cached version might be outdated.
 	liveRepo, err := octx.RepositoryForSpec(spec)
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetComponentVersionFailedReason, err.Error())
@@ -256,8 +256,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	cv, err := session.LookupComponentVersion(repository, component.Spec.Component, version)
 	switch {
 	case mandelerrors.IsErrNotFound(err):
-		// if we are here, then the component version was not found in the cached session, but in the live repo.
-		// in this case we know the session is outdated, so forcefully close it and re-open it on the next reconcile.
+		// If we are here, then the component version was not found in the cached session, but in the live repo.
+		// In this case we know the session is outdated, so forcefully close it and re-open it on the next reconcile.
 		return ctrl.Result{}, fmt.Errorf("cached component version access was not found and cached session needed to be invalidated: %w", errors.Join(err, session.Close()))
 	case err != nil:
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetComponentVersionFailedReason, err.Error())
@@ -269,8 +269,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	switch {
 	case errors.Is(err, ocm.ErrComponentVersionHashMismatch):
-		// if we are here, then the component version was found in the cache, but under a different hash
-		// in this case we know the session is outdated, so forcefully close it and re-open it on the next reconcile.
+		// If we are here, then the component version was found in the cache, but under a different hash.
+		// In this case we know the session is outdated, so forcefully close it and re-open it on the next reconcile.
 		log.FromContext(ctx).Info("cached component version access was found, but under a different hash, closing session and re-opening it on the next reconcile")
 
 		return ctrl.Result{}, errors.Join(err, session.Close())

@@ -361,7 +361,6 @@ consumers:
 			octx, session2, err := contextCache.GetSession(&GetSessionOptions{
 				RepositorySpecification: &apiextensionsv1.JSON{Raw: []byte("arbitrary")},
 				OCMConfigurations:       reversedConfigs,
-				VerificationProvider:    base,
 			})
 			Expect(octx.GetId()).To(Equal(baseId))
 			Expect(session2).To(Equal(baseSession))
