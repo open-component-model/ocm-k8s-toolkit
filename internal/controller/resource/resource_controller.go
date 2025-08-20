@@ -472,7 +472,7 @@ func computeAdditionalStatusFields(
 			if err != nil {
 				return fmt.Errorf("building CEL program %q: %w", name, err)
 			}
-			val, _, err := prog.ContextEval(ctx, map[string]interface{}{"resource": resourceMap})
+			val, _, err := prog.ContextEval(ctx, map[string]any{"resource": resourceMap})
 			if err != nil {
 				return fmt.Errorf("evaluating CEL %q: %w", name, err)
 			}
@@ -492,12 +492,12 @@ func computeAdditionalStatusFields(
 }
 
 // toGenericMapViaJSON marshals and unmarshals a struct into a generic map representation through JSON tags.
-func toGenericMapViaJSON(v interface{}) (map[string]interface{}, error) {
+func toGenericMapViaJSON(v any) (map[string]any, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return nil, err
 	}
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal(b, &m); err != nil {
 		return nil, err
 	}
