@@ -3,6 +3,7 @@ package ocm_test
 import (
 	"encoding/base64"
 	"encoding/pem"
+	"slices"
 
 	. "github.com/mandelsoft/goutils/testutils"
 	. "github.com/onsi/ginkgo/v2"
@@ -104,6 +105,7 @@ var _ = Describe("ocm context caching", func() {
 
 			config1 := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
+					UID:  "c1",
 					Name: Config1,
 				},
 				Data: map[string]string{
@@ -132,6 +134,7 @@ sets:
 
 			config2 := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
+					UID:  "c2",
 					Name: Config2,
 				},
 				Data: map[string]string{
@@ -160,6 +163,7 @@ sets:
 
 			config3 := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
+					UID:  "c3",
 					Name: Config3,
 				},
 				Data: map[string]string{
@@ -189,6 +193,7 @@ sets:
 			By("setup secrets")
 			secret1 := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
+					UID:  "s1",
 					Name: Secret1,
 				},
 				Data: map[string][]byte{
@@ -212,6 +217,7 @@ consumers:
 
 			secret2 := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
+					UID:  "s2",
 					Name: Secret2,
 				},
 				Data: map[string][]byte{
@@ -235,6 +241,7 @@ consumers:
 
 			secret3 := &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
+					UID:  "s3",
 					Name: Secret3,
 				},
 				Data: map[string][]byte{
@@ -311,6 +318,63 @@ consumers:
 
 		AfterEach(func() {
 			MustBeSuccessful(env.Cleanup())
+		})
+
+		It("get recached", func(ctx SpecContext) {
+			contextCache := NewContextCache("test", 1, 1, clnt)
+			cacheDone := make(chan error, 1)
+			go func() {
+				cacheDone <- contextCache.Start(ctx)
+			}()
+			DeferCleanup(func(ctx SpecContext) {
+				Eventually(cacheDone).WithContext(ctx).Should(Receive(Succeed()))
+			})
+
+			base := &v1alpha1.Component{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+				},
+				Spec: v1alpha1.ComponentSpec{
+					OCMConfig: configs,
+				},
+			}
+			for _, verification := range verifications {
+				base.Spec.Verify = append(base.Spec.Verify, v1alpha1.Verification{
+					Signature: verification.Signature,
+					Value:     base64.StdEncoding.EncodeToString(verification.PublicKey),
+				})
+			}
+
+			octx, session, err := contextCache.GetSession(&GetSessionOptions{
+				RepositorySpecification: &apiextensionsv1.JSON{Raw: []byte("arbitrary")},
+				OCMConfigurations:       configs,
+				VerificationProvider:    base,
+			})
+			baseId := octx.GetId()
+			baseSession := session
+
+			reversedConfigs := slices.Clone(configs)
+			slices.Reverse(reversedConfigs)
+			reversedbase := base.DeepCopy()
+			slices.Reverse(reversedbase.Spec.OCMConfig)
+
+			octx, session2, err := contextCache.GetSession(&GetSessionOptions{
+				RepositorySpecification: &apiextensionsv1.JSON{Raw: []byte("arbitrary")},
+				OCMConfigurations:       reversedConfigs,
+				VerificationProvider:    base,
+			})
+			Expect(octx.GetId()).To(Equal(baseId))
+			Expect(session2).To(Equal(baseSession))
+
+			octx, session3, err := contextCache.GetSession(&GetSessionOptions{
+				RepositorySpecification: &apiextensionsv1.JSON{Raw: []byte("other")},
+				OCMConfigurations:       reversedConfigs,
+				VerificationProvider:    base,
+			})
+			Expect(octx.GetId()).To(Equal(baseId))
+			Expect(session3).ToNot(Equal(baseSession))
+
+			MustBeSuccessful(err)
 		})
 
 		It("configure context", func(ctx SpecContext) {

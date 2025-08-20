@@ -2,18 +2,21 @@ package ocm
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"ocm.software/ocm/api/ocm/compdesc"
 
 	v1 "k8s.io/api/core/v1"
 	ocmctx "ocm.software/ocm/api/ocm"
 	ocmv1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
+	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var ErrComponentVersionHashMismatch = errors.New("component version hash mismatch")
@@ -67,7 +70,7 @@ func CompareCachedAndLiveHashes(
 	}, nil
 }
 
-func GetObjectDataHash[T any](obj ...T) (string, error) {
+func GetObjectDataHash[T ctrl.Object](obj ...T) (string, error) {
 	hasher := func(obj any) (string, error) {
 		switch obj := obj.(type) {
 		case *v1.Secret:
@@ -79,25 +82,32 @@ func GetObjectDataHash[T any](obj ...T) (string, error) {
 		}
 	}
 
-	var combined string
-	for i, o := range obj {
+	hashes := make([]string, 0, len(obj))
+	for _, o := range obj {
 		h, err := hasher(o)
 		if err != nil {
 			return "", err
 		}
+		hashes = append(hashes, h)
+	}
+	slices.SortFunc(hashes, cmp.Compare)
+	hashes = slices.Concat(hashes)
+
+	var combined strings.Builder
+	for i, hash := range hashes {
 		if i > 0 {
-			combined += "\x00" // delimiter
+			combined.WriteString("\x00") // delimiter
 		}
-		combined += h
+		combined.WriteString(hash)
 	}
 
 	if len(obj) > 1 {
-		h := sha256.Sum256([]byte(combined))
+		h := sha256.Sum256([]byte(combined.String()))
 
 		return hex.EncodeToString(h[:]), nil
 	}
 
-	return combined, nil
+	return combined.String(), nil
 }
 
 func GetSecretMapDataHash(secret *v1.Secret) (string, error) {
