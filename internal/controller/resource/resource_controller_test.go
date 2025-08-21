@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 
@@ -92,8 +93,17 @@ var _ = Describe("Resource Controller", func() {
 			Expect(resources.Items).To(HaveLen(0))
 		})
 
+		type testCase struct {
+			Registry      string
+			Repository    string
+			Reference     string
+			HELMChart     string
+			GithubRepoURL string
+			GitRepository string
+		}
+
 		DescribeTable("reconciles a created resource",
-			func(createCTF func() string, expSourceRef *v1alpha1.SourceReference) {
+			func(createCTF func() string, tc *testCase) {
 				By("creating a CTF")
 				ctfPath := createCTF()
 
@@ -119,6 +129,28 @@ var _ = Describe("Resource Controller", func() {
 					},
 				)
 
+				additionalStatusFields := map[string]string{}
+				if tc != nil {
+					if tc.Registry != "" {
+						additionalStatusFields["registry"] = "resource.access.toOCI().registry"
+					}
+					if tc.Repository != "" {
+						additionalStatusFields["repository"] = "resource.access.toOCI().repository"
+					}
+					if tc.Reference != "" {
+						additionalStatusFields["reference"] = "resource.access.toOCI().reference"
+					}
+					if tc.HELMChart != "" {
+						additionalStatusFields["helmChart"] = "resource.access.helmChart"
+					}
+					if tc.GithubRepoURL != "" {
+						additionalStatusFields["gitRepoURL"] = "resource.access.repoUrl"
+					}
+					if tc.GitRepository != "" {
+						additionalStatusFields["gitRepository"] = "resource.access.repository"
+					}
+				}
+
 				By("creating a resource")
 				resourceObj := &v1alpha1.Resource{
 					ObjectMeta: metav1.ObjectMeta{
@@ -134,14 +166,39 @@ var _ = Describe("Resource Controller", func() {
 								Resource: ocmmetav1.NewIdentity(resourceName),
 							},
 						},
+						AdditionalStatusFields: additionalStatusFields,
 					},
 				}
 				Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
 
 				By("checking that the resource has been reconciled successfully")
-				test.WaitForReadyObject(ctx, k8sClient, resourceObj, map[string]any{
-					"Status.Reference": expSourceRef,
-				})
+
+				fields := map[string]any{}
+
+				if tc != nil {
+					m := map[string]apiextensionsv1.JSON{}
+					if tc.Registry != "" {
+						m["registry"] = mustToJSON(tc.Registry)
+					}
+					if tc.Repository != "" {
+						m["repository"] = mustToJSON(tc.Repository)
+					}
+					if tc.Reference != "" {
+						m["reference"] = mustToJSON(tc.Reference)
+					}
+					if tc.HELMChart != "" {
+						m["helmChart"] = mustToJSON(tc.HELMChart)
+					}
+					if tc.GithubRepoURL != "" {
+						m["gitRepoURL"] = mustToJSON(tc.GithubRepoURL)
+					}
+					if tc.GitRepository != "" {
+						m["gitRepository"] = mustToJSON(tc.GitRepository)
+					}
+					fields["Status.Additional"] = m
+				}
+
+				test.WaitForReadyObject(ctx, k8sClient, resourceObj, fields)
 
 				By("deleting the resource")
 				test.DeleteObject(ctx, k8sClient, resourceObj)
@@ -174,10 +231,10 @@ var _ = Describe("Resource Controller", func() {
 				})
 				return filepath.Join(tempDir, ctfName)
 			},
-				&v1alpha1.SourceReference{
+				&testCase{
 					Registry:   "ghcr.io",
 					Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
-					Tag:        "0.24.0",
+					Reference:  "0.24.0",
 				},
 			),
 			Entry("Helm access", func() string {
@@ -193,10 +250,8 @@ var _ = Describe("Resource Controller", func() {
 				})
 				return filepath.Join(tempDir, ctfName)
 			},
-				&v1alpha1.SourceReference{
-					Registry:   "oci://ghcr.io/stefanprodan/charts",
-					Repository: "podinfo",
-					Reference:  "6.9.1",
+				&testCase{
+					HELMChart: "podinfo:6.9.1",
 				},
 			),
 			Entry("GitHub access", func() string {
@@ -216,10 +271,8 @@ var _ = Describe("Resource Controller", func() {
 				})
 				return filepath.Join(tempDir, ctfName)
 			},
-				&v1alpha1.SourceReference{
-					Registry:   "https://github.com",
-					Repository: "/open-component-model/ocm-k8s-toolkit",
-					Reference:  "8f7e04f4b58d2a9e22f88e79dddfc36183688f28",
+				&testCase{
+					GithubRepoURL: "https://github.com/open-component-model/ocm-k8s-toolkit",
 				},
 			),
 			Entry("git access", func() string {
@@ -238,10 +291,8 @@ var _ = Describe("Resource Controller", func() {
 				})
 				return filepath.Join(tempDir, ctfName)
 			},
-				&v1alpha1.SourceReference{
-					Registry:   "https://github.com",
-					Repository: "/open-component-model/ocm-k8s-toolkit",
-					Reference:  "refs/heads/main",
+				&testCase{
+					GitRepository: "https://github.com/open-component-model/ocm-k8s-toolkit",
 				},
 			),
 		)
@@ -418,6 +469,11 @@ var _ = Describe("Resource Controller", func() {
 							Resource: ocmmetav1.NewIdentity(resourceName),
 						},
 					},
+					AdditionalStatusFields: map[string]string{
+						"registry":   "resource.access.toOCI().registry",
+						"repository": "resource.access.toOCI().repository",
+						"reference":  "resource.access.toOCI().reference",
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
@@ -433,13 +489,12 @@ var _ = Describe("Resource Controller", func() {
 			Expect(k8sClient.Status().Update(ctx, componentObjReady)).To(Succeed())
 
 			By("checking that the resource has been reconciled successfully")
-			expectedSourceRef := &v1alpha1.SourceReference{
-				Registry:   "ghcr.io",
-				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
-				Tag:        "0.24.0",
-			}
 			test.WaitForReadyObject(ctx, k8sClient, resourceObj, map[string]any{
-				"Status.Reference": expectedSourceRef,
+				"Status.Additional": map[string]apiextensionsv1.JSON{
+					"registry":   mustToJSON("ghcr.io"),
+					"repository": mustToJSON("open-component-model/ocm/ocm.software/ocmcli/ocmcli-image"),
+					"reference":  mustToJSON("0.24.0"),
+				},
 			})
 
 			By("deleting the resource")
@@ -502,18 +557,18 @@ var _ = Describe("Resource Controller", func() {
 							Resource: ocmmetav1.NewIdentity(resourceName),
 						},
 					},
+					AdditionalStatusFields: map[string]string{
+						"reference": "resource.access.toOCI().reference",
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
 
 			By("checking that the resource has been reconciled successfully")
-			expectedSourceRef := &v1alpha1.SourceReference{
-				Registry:   "ghcr.io",
-				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
-				Tag:        "0.23.0",
-			}
 			test.WaitForReadyObject(ctx, k8sClient, resourceObj, map[string]any{
-				"Status.Reference": expectedSourceRef,
+				"Status.Additional": map[string]apiextensionsv1.JSON{
+					"reference": mustToJSON("0.23.0"),
+				},
 			})
 
 			By("updating resource spec")
@@ -529,14 +584,11 @@ var _ = Describe("Resource Controller", func() {
 			Expect(k8sClient.Update(ctx, resourceObjUpdate)).To(Succeed())
 
 			By("checking that the updated resource has been reconciled successfully")
-			expectedSourceRef = &v1alpha1.SourceReference{
-				Registry:   "ghcr.io",
-				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
-				Tag:        "0.24.0",
-			}
 			test.WaitForReadyObject(ctx, k8sClient, resourceObj, map[string]any{
 				"Status.Resource.Version": resourceVersionUpdated,
-				"Status.Reference":        expectedSourceRef,
+				"Status.Additional": map[string]apiextensionsv1.JSON{
+					"reference": mustToJSON("0.24.0"),
+				},
 			})
 
 			By("deleting the resource")
@@ -596,18 +648,23 @@ var _ = Describe("Resource Controller", func() {
 							Resource: ocmmetav1.NewIdentity(resourceName),
 						},
 					},
+					AdditionalStatusFields: map[string]string{
+						"reference": "resource.access.toOCI().reference",
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
 
 			By("checking that the resource has been reconciled successfully")
-			expectedSourceRef := &v1alpha1.SourceReference{
+			expected := &testCase{
 				Registry:   "ghcr.io",
 				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
-				Tag:        "0.23.0",
+				Reference:  "0.23.0",
 			}
 			test.WaitForReadyObject(ctx, k8sClient, resourceObj, map[string]any{
-				"Status.Reference": expectedSourceRef,
+				"Status.Additional": map[string]apiextensionsv1.JSON{
+					"reference": mustToJSON(expected.Reference),
+				},
 			})
 
 			By("updating the component version with a new resource")
@@ -657,14 +714,16 @@ var _ = Describe("Resource Controller", func() {
 
 			// component spec update should trigger resource reconciliation
 			By("checking that the resource was reconciled again")
-			expectedSourceRef = &v1alpha1.SourceReference{
+			expected = &testCase{
 				Registry:   "ghcr.io",
 				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
-				Tag:        "0.24.0",
+				Reference:  "0.24.0",
 			}
 			test.WaitForReadyObject(ctx, k8sClient, resourceObj, map[string]any{
 				"Status.Component.Version": componentVersionUpdated,
-				"Status.Reference":         expectedSourceRef,
+				"Status.Additional": map[string]apiextensionsv1.JSON{
+					"reference": mustToJSON(expected.Reference),
+				},
 			})
 
 			By("deleting the resource")
@@ -730,18 +789,18 @@ var _ = Describe("Resource Controller", func() {
 							ReferencePath: []ocmmetav1.Identity{ocmmetav1.NewIdentity(nestedComponentReference)},
 						},
 					},
+					AdditionalStatusFields: map[string]string{
+						"reference": "resource.access.toOCI().reference",
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, resourceObj)).To(Succeed())
 
 			By("checking that the resource has been reconciled successfully")
-			expectedSourceRef := &v1alpha1.SourceReference{
-				Registry:   "ghcr.io",
-				Repository: "open-component-model/ocm/ocm.software/ocmcli/ocmcli-image",
-				Tag:        "0.23.0",
-			}
 			test.WaitForReadyObject(ctx, k8sClient, resourceObj, map[string]any{
-				"Status.Reference":           expectedSourceRef,
+				"Status.Additional": map[string]apiextensionsv1.JSON{
+					"reference": mustToJSON("0.23.0"),
+				},
 				"Status.Component.Component": nestedComponentName,
 				"Status.Component.Version":   componentVersion,
 			})
@@ -752,3 +811,9 @@ var _ = Describe("Resource Controller", func() {
 
 	})
 })
+
+func mustToJSON(v string) apiextensionsv1.JSON {
+	raw, err := json.Marshal(v)
+	Expect(err).ToNot(HaveOccurred())
+	return apiextensionsv1.JSON{Raw: raw}
+}
