@@ -2,6 +2,7 @@ package ocm
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -25,21 +26,16 @@ var ErrComponentVersionHashMismatch = errors.New("component version hash mismatc
 // It performs the following steps:
 //  1. Looks up the live component version from the given repository.
 //  2. Computes a normalized hash for both the cached descriptor and the live descriptor
-//     using compdesc.JsonNormalisationV3 and SHA-256.
+//     using the specified normalization algorithm and hash function.
 //  3. Compares the two hashes. If they differ, returns ErrComponentVersionHashMismatch.
 //  4. If they match, returns a DigestSpec with the hash metadata.
-//
-// Parameters:
-//   - currentComponentVersion: cached component version (from the current session).
-//   - liveRepo: repository to look up the live component version.
-//   - component: name of the component.
-//   - version: version string of the component.
 func CompareCachedAndLiveHashes(
 	currentComponentVersion ocmctx.ComponentVersionAccess,
 	liveRepo ocmctx.Repository,
 	component, version string,
+	normAlgo compdesc.NormalisationAlgorithm,
+	hash crypto.Hash,
 ) (_ *ocmv1.DigestSpec, err error) {
-	normAlgo := compdesc.JsonNormalisationV3
 	liveCV, err := liveRepo.LookupComponentVersion(component, version)
 	if err != nil {
 		return nil, fmt.Errorf("failed to lookup live component version to compare with current state: %w", err)
@@ -47,24 +43,34 @@ func CompareCachedAndLiveHashes(
 	defer func() {
 		err = errors.Join(err, liveCV.Close())
 	}()
+
 	// cached version from session
-	_, hash, err := compdesc.NormHash(currentComponentVersion.GetDescriptor(), normAlgo, sha256.New())
+	cachedDesc := currentComponentVersion.GetDescriptor()
+	if err := cachedDesc.IsNormalizeable(); err != nil {
+		return nil, fmt.Errorf("cached component version is not normalizeable: %w", err)
+	}
+	cachedHash, err := compdesc.Hash(cachedDesc, normAlgo, hash.New())
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash cached component version: %w", err)
 	}
-	_, liveHash, err := compdesc.NormHash(liveCV.GetDescriptor(), normAlgo, sha256.New())
+
+	liveDesc := liveCV.GetDescriptor()
+	if err := liveDesc.IsNormalizeable(); err != nil {
+		return nil, fmt.Errorf("live component version is not normalizeable: %w", err)
+	}
+	liveHash, err := compdesc.Hash(liveDesc, normAlgo, hash.New())
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash live component version: %w", err)
 	}
 
-	if hash != liveHash {
+	if cachedHash != liveHash {
 		return nil, fmt.Errorf("%w: %s != %s", ErrComponentVersionHashMismatch, hash, liveHash)
 	}
 
 	return &ocmv1.DigestSpec{
-		HashAlgorithm:          "sha256",
+		HashAlgorithm:          hash.String(),
 		NormalisationAlgorithm: normAlgo,
-		Value:                  hash,
+		Value:                  cachedHash,
 	}, nil
 }
 

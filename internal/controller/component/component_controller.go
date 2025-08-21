@@ -2,6 +2,7 @@ package component
 
 import (
 	"context"
+	"crypto"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/mandelsoft/goutils/sliceutils"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
+	"ocm.software/ocm/api/ocm/compdesc"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -269,7 +271,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	compareStart := time.Now()
 	logger.V(1).Info("comparing cached and live hashes", "component", component.Spec.Component, "version", version)
-	digestSpec, err := ocm.CompareCachedAndLiveHashes(cv, liveRepo, component.Spec.Component, version)
+	digestSpec, err := ocm.CompareCachedAndLiveHashes(cv, liveRepo, component.Spec.Component, version,
+		compdesc.JsonNormalisationV3, crypto.SHA256,
+	)
 	logger.V(1).Info("finished comparing cached and live hashes", "component", component.Spec.Component, "version", version, "duration", time.Since(compareStart))
 
 	switch {
