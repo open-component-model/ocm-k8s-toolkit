@@ -11,6 +11,7 @@ require (
 	github.com/fluxcd/pkg/apis/event v0.18.0
 	github.com/fluxcd/pkg/apis/meta v1.18.0
 	github.com/fluxcd/pkg/runtime v0.74.0
+	github.com/go-logr/logr v1.4.3
 	github.com/google/cel-go v0.23.2
 	github.com/mandelsoft/goutils v0.0.0-20241227142622-83a787399095
 	github.com/mandelsoft/vfs v0.4.4
@@ -203,7 +204,6 @@ require (
 	github.com/go-git/go-git/v5 v5.16.2 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
 	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/analysis v0.23.0 // indirect

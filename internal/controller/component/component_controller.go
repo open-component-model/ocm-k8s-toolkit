@@ -220,6 +220,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 		return ctrl.Result{}, fmt.Errorf("failed to get session: %w", err)
 	}
+	logger = logger.WithValues("ocmContext", octx.GetId())
 
 	spec, err := octx.RepositorySpecForConfig(repo.Spec.RepositorySpec.Raw, nil)
 	if err != nil {

@@ -151,6 +151,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 		return ctrl.Result{}, fmt.Errorf("failed to get session: %w", err)
 	}
+	logger = logger.WithValues("ocmContext", octx.GetId())
 
 	err = r.validate(octx, session, ocmRepo)
 	if err != nil {
@@ -161,7 +162,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 	r.fillRepoStatusFromSpec(ocmRepo, configs)
 
-	status.MarkReady(r.EventRecorder, ocmRepo, "Successfully reconciled")
+	logger.Info("updating status")
+	status.MarkReady(r.EventRecorder, ocmRepo, "Successfully reconciled OCM repository")
 
 	return ctrl.Result{RequeueAfter: ocmRepo.GetRequeueAfter()}, nil
 }

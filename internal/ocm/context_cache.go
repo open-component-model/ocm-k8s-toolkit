@@ -200,9 +200,10 @@ func (m *ContextCache) getConfigObjects(configs []v1alpha1.OCMConfiguration) ([]
 
 func (m *ContextCache) getOrCreateContext(ctxHash string, configObjs []ctrl.Object) (ocm.Context, error) {
 	if cached, ok := m.contexts.Get(ctxHash); ok {
-		m.logger.V(1).Info("reusing cached ocm context", "hash", ctxHash)
+		ctx := cached.(ocm.Context) //nolint:forcetypeassert // safe cast
+		m.logger.V(1).Info("reusing cached ocm context", "hash", ctxHash, "id", ctx.GetId())
 
-		return cached.(ocm.Context), nil //nolint:forcetypeassert // safe cast
+		return ctx, nil
 	}
 	m.logger.V(1).Info("creating new ocm context", "hash", ctxHash)
 
