@@ -105,7 +105,7 @@ var _ = BeforeSuite(func() {
 		}
 	}()
 
-	ocmContextCache := ocm.NewContextCache("shared_ocm_context_cache", 100, 100, k8sManager.GetClient())
+	ocmContextCache := ocm.NewContextCache("shared_ocm_context_cache", 100, 100, k8sManager.GetClient(), GinkgoLogr)
 	Expect(k8sManager.Add(ocmContextCache)).To(Succeed())
 
 	Expect((&Reconciler{

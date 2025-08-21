@@ -321,7 +321,7 @@ consumers:
 		})
 
 		It("get recached", func(ctx SpecContext) {
-			contextCache := NewContextCache("test", 1, 1, clnt)
+			contextCache := NewContextCache("test", 1, 1, clnt, GinkgoLogr)
 			cacheDone := make(chan error, 1)
 			go func() {
 				cacheDone <- contextCache.Start(ctx)
@@ -377,8 +377,9 @@ consumers:
 		})
 
 		It("configure context", func(ctx SpecContext) {
-			contextCache := NewContextCache("test", 1, 1, clnt)
+			contextCache := NewContextCache("test", 1, 1, clnt, GinkgoLogr)
 			cacheDone := make(chan error, 1)
+
 			go func() {
 				cacheDone <- contextCache.Start(ctx)
 			}()

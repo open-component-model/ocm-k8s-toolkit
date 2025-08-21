@@ -150,7 +150,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	ocmContextCache := ocm.NewContextCache("shared_ocm_context_cache", ocmContextCacheSize, ocmSessionCacheSize, mgr.GetClient())
+	ocmContextCache := ocm.NewContextCache("shared_ocm_context_cache", ocmContextCacheSize, ocmSessionCacheSize, mgr.GetClient(), mgr.GetLogger())
 	if err := mgr.Add(ocmContextCache); err != nil {
 		setupLog.Error(err, "unable to create ocm context cache")
 		os.Exit(1)

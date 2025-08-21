@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"hash"
 
+	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/utils/lru"
 	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	corev1 "k8s.io/api/core/v1"
@@ -24,8 +24,8 @@ import (
 
 var (
 	// Prometheus gauges tracking cache sizes for sessions and contexts.
-	sessionCacheSize *prometheus.GaugeVec
-	contextCacheSize *prometheus.GaugeVec
+	sessionCacheSizeMetric *prometheus.GaugeVec
+	contextCacheSizeMetric *prometheus.GaugeVec
 )
 
 // MustRegisterMetrics registers metrics and panics on error.
@@ -40,18 +40,18 @@ func MustRegisterMetrics(registerer prometheus.Registerer) {
 // Uses errors.Join to return multiple registration errors if they occur.
 func RegisterMetrics(registerer prometheus.Registerer) error {
 	return errors.Join(
-		registerer.Register(sessionCacheSize),
-		registerer.Register(contextCacheSize),
+		registerer.Register(sessionCacheSizeMetric),
+		registerer.Register(contextCacheSizeMetric),
 	)
 }
 
 // init initializes Prometheus metric definitions.
 func init() {
-	sessionCacheSize = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	sessionCacheSizeMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "session_cache_size",
 		Help: "number of objects in cache",
 	}, []string{"name"})
-	contextCacheSize = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	contextCacheSizeMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "context_cache_size",
 		Help: "number of objects in cache",
 	}, []string{"name"})
@@ -61,27 +61,46 @@ func init() {
 var _ manager.Runnable = (*ContextCache)(nil)
 
 // NewContextCache constructs a ContextCache with given name, size, and k8s client.
-func NewContextCache(name string, contextCacheSize, sessionCacheSize int, client ctrl.Client) *ContextCache {
-	return &ContextCache{
-		name:             name,
-		contextCacheSize: contextCacheSize,
-		sessionCacheSize: sessionCacheSize,
-		lookupClient:     client,
+func NewContextCache(name string, contextCacheSize, sessionCacheSize int, client ctrl.Client, logger logr.Logger) *ContextCache {
+	c := &ContextCache{
+		lookupClient: client,
+		logger:       logger,
 	}
+
+	// Cache for contexts, with eviction finalizer.
+	c.contexts = lru.NewWithEvictionFunc(contextCacheSize, func(key lru.Key, value any) {
+		defer contextCacheSizeMetric.WithLabelValues(name).Dec()
+		ctx := value.(ocm.Context) //nolint:forcetypeassert // safe cast
+		if err := ctx.Finalize(); err != nil {
+			c.logger.Error(err, "failed to finalize context", "key", key)
+		}
+	})
+
+	// Cache for sessions, with eviction finalizer.
+	c.sessions = lru.NewWithEvictionFunc(sessionCacheSize, func(key lru.Key, value any) {
+		defer contextCacheSizeMetric.WithLabelValues(name).Dec()
+		session := value.(ocm.Session) //nolint:forcetypeassert // safe cast
+		if err := session.Close(); err != nil {
+			c.logger.Error(err, "failed to close session", "key", key)
+		}
+	})
+
+	return c
 }
 
 // ContextCache holds LRU caches for OCM contexts and sessions.
 // Contexts are expensive to build/configure, sessions are bound to repositories.
 // Eviction handlers clean up resources when entries are removed.
 type ContextCache struct {
-	ctx                                context.Context //nolint:containedctx // context is passed via Start from manager
-	name                               string
-	contextCacheSize, sessionCacheSize int
+	ctx  context.Context //nolint:containedctx // context is passed via Start from manager
+	name string
 
 	contexts *lru.Cache // cache of ocm.Context objects
 	sessions *lru.Cache // cache of ocm.Session objects
 
 	lookupClient ctrl.Reader // k8s client used for fetching configuration
+
+	logger logr.Logger
 }
 
 // Start initializes caches with eviction functions and blocks until context is done.
@@ -91,27 +110,6 @@ func (m *ContextCache) Start(ctx context.Context) error {
 		return fmt.Errorf("already started")
 	}
 	m.ctx = ctx
-
-	logger := log.FromContext(ctx)
-
-	// Cache for contexts, with eviction finalizer.
-	m.contexts = lru.NewWithEvictionFunc(m.contextCacheSize, func(key lru.Key, value any) {
-		defer contextCacheSize.WithLabelValues(m.name).Dec()
-		ctx := value.(ocm.Context) //nolint:forcetypeassert // safe cast
-		if err := ctx.Finalize(); err != nil {
-			logger.Error(err, "failed to finalize context", "key", key)
-		}
-	})
-
-	// Cache for sessions, with eviction finalizer.
-	m.sessions = lru.NewWithEvictionFunc(m.sessionCacheSize, func(key lru.Key, value any) {
-		defer sessionCacheSize.WithLabelValues(m.name).Dec()
-		session := value.(ocm.Session) //nolint:forcetypeassert // safe cast
-		if err := session.Close(); err != nil {
-			logger.Error(err, "failed to close session", "key", key)
-		}
-	})
-
 	<-ctx.Done()
 	m.Clear()
 
@@ -199,6 +197,7 @@ func (m *ContextCache) getOrCreateContext(ctxHash string, configObjs []ctrl.Obje
 	if cached, ok := m.contexts.Get(ctxHash); ok {
 		return cached.(ocm.Context), nil //nolint:forcetypeassert // safe cast
 	}
+	m.logger.V(1).Info("creating new ocm context", "hash", ctxHash)
 
 	octx := ocm.New(datacontext.MODE_EXTENDED)
 
@@ -211,7 +210,7 @@ func (m *ContextCache) getOrCreateContext(ctxHash string, configObjs []ctrl.Obje
 	}
 
 	m.contexts.Add(ctxHash, octx)
-	contextCacheSize.WithLabelValues(m.name).Inc()
+	contextCacheSizeMetric.WithLabelValues(m.name).Inc()
 
 	return octx, nil
 }
@@ -239,6 +238,8 @@ func (m *ContextCache) getOrCreateSession(key sessionKey, octx ocm.Context) ocm.
 		if !s.IsClosed() {
 			return s
 		}
+		m.logger.V(1).Info("replacing close ocm session", "context", key.ctxHash, "repo", key.repoHash)
+
 		// replace closed session with a fresh one
 		s = ocm.NewSession(datacontext.NewSession())
 		octx.Finalizer().Close(s)
@@ -246,11 +247,12 @@ func (m *ContextCache) getOrCreateSession(key sessionKey, octx ocm.Context) ocm.
 
 		return s
 	}
+	m.logger.V(1).Info("creating new ocm session", "context", key.ctxHash, "repo", key.repoHash)
 
 	s := ocm.NewSession(datacontext.NewSession())
 	octx.Finalizer().Close(s)
 	m.sessions.Add(key, s)
-	sessionCacheSize.WithLabelValues(m.name).Inc()
+	sessionCacheSizeMetric.WithLabelValues(m.name).Inc()
 
 	return s
 }
