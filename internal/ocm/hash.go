@@ -2,14 +2,12 @@ package ocm
 
 import (
 	"bytes"
-	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
 	"slices"
-	"strings"
 
 	"ocm.software/ocm/api/ocm/compdesc"
 
@@ -70,83 +68,84 @@ func CompareCachedAndLiveHashes(
 	}, nil
 }
 
-func GetObjectDataHash[T ctrl.Object](obj ...T) (string, error) {
-	hasher := func(obj any) (string, error) {
-		switch obj := obj.(type) {
-		case *v1.Secret:
-			return GetSecretMapDataHash(obj)
-		case *v1.ConfigMap:
-			return GetConfigMapDataHash(obj)
-		default:
-			return "", fmt.Errorf("unsupported object type for data hash calculation: %T", obj)
-		}
-	}
-
-	hashes := make([]string, 0, len(obj))
-	for _, o := range obj {
-		h, err := hasher(o)
+// GetObjectDataHash returns a stable 64-hex digest for a set of objects.
+// Double-hash scheme:
+//  1. Per object: HashMap(...) -> 32-byte SHA-256 digest.
+//  2. Aggregate: sort the 32-byte digests, concatenate them (explicit []byte),
+//     then SHA-256 the result. This is order-independent and unambiguous.
+func GetObjectDataHash[T ctrl.Object](objects ...T) (string, error) {
+	// Step 1: get fixed-size per-object digests
+	digests := make([][]byte, 0, len(objects))
+	for _, o := range objects {
+		d, err := GetObjectHash(o)
 		if err != nil {
 			return "", err
 		}
-		hashes = append(hashes, h)
-	}
-	slices.SortFunc(hashes, cmp.Compare)
-	hashes = slices.Concat(hashes)
-
-	var combined strings.Builder
-	for i, hash := range hashes {
-		if i > 0 {
-			combined.WriteString("\x00") // delimiter
-		}
-		combined.WriteString(hash)
+		digests = append(digests, d)
 	}
 
-	if len(obj) > 1 {
-		h := sha256.Sum256([]byte(combined.String()))
+	// Sort for order independence.
+	slices.SortFunc(digests, bytes.Compare)
 
-		return hex.EncodeToString(h[:]), nil
-	}
+	// Step 2: final aggregate hash.
+	// Explicit concatenation of fixed-size digests.
+	sum := sha256.Sum256(bytes.Join(digests, nil))
 
-	return combined.String(), nil
+	return hex.EncodeToString(sum[:]), nil
 }
 
-func GetSecretMapDataHash(secret *v1.Secret) (string, error) {
-	if secret == nil {
-		return "", nil
+func GetObjectHash(object ctrl.Object) ([]byte, error) {
+	switch o := object.(type) {
+	case *v1.Secret:
+		return GetSecretMapDataHash(o)
+	case *v1.ConfigMap:
+		return GetConfigMapDataHash(o)
+	default:
+		return nil, fmt.Errorf("unsupported object type for data hash calculation: %T", o)
 	}
-
-	return HashMap(secret.Data)
 }
 
-func GetConfigMapDataHash(configMap *v1.ConfigMap) (string, error) {
-	if configMap == nil {
-		return "", nil
+// GetSecretMapDataHash returns a 32-byte digest of a Secret's data.
+// Empty or nil secrets hash the empty canonical form.
+func GetSecretMapDataHash(s *v1.Secret) ([]byte, error) {
+	if s == nil || len(s.Data) == 0 {
+		return HashMap(map[string][]byte{})
 	}
-	m := make(map[string][]byte, len(configMap.Data)+len(configMap.BinaryData))
-	for k, v := range configMap.Data {
+
+	return HashMap(s.Data)
+}
+
+// GetConfigMapDataHash returns a 32-byte digest of a ConfigMap's data.
+// Empty or nil maps hash the empty canonical form.
+func GetConfigMapDataHash(cm *v1.ConfigMap) ([]byte, error) {
+	if cm == nil {
+		return HashMap(map[string][]byte{})
+	}
+	m := make(map[string][]byte, len(cm.Data)+len(cm.BinaryData))
+	for k, v := range cm.Data {
 		m[k] = []byte(v)
 	}
-	for k, v := range configMap.BinaryData {
+	for k, v := range cm.BinaryData {
 		m[k] = v
 	}
-	switch len(m) {
-	case 0:
-		return "", nil
-	default:
-		return HashMap(m)
+	if len(m) == 0 {
+		return HashMap(map[string][]byte{})
 	}
+
+	return HashMap(m)
 }
 
-// HashMap deterministically hashes map data.
-func HashMap(data map[string][]byte) (string, error) {
+// HashMap deterministically hashes map data and returns the 32-byte SHA-256 sum.
+// Keys are sorted; for each key: write key, 0x00, value, 0x00.
+func HashMap(data map[string][]byte) ([]byte, error) {
 	var raw bytes.Buffer
 	for _, k := range slices.Sorted(maps.Keys(data)) {
 		raw.WriteString(k)
-		raw.WriteByte(0) // delimiter
+		raw.WriteByte(0)
 		raw.Write(data[k])
 		raw.WriteByte(0)
 	}
-	h := sha256.Sum256(raw.Bytes())
+	sum := sha256.Sum256(raw.Bytes())
 
-	return hex.EncodeToString(h[:]), nil
+	return sum[:], nil
 }
