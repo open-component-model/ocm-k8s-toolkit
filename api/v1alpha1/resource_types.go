@@ -5,6 +5,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -38,6 +39,10 @@ type ResourceSpec struct {
 	// Resource.
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
+
+	// AdditionalStatusFields are additional fields that can be used to
+	// extend the status of the Resource with custom expressions.
+	AdditionalStatusFields map[string]string `json:"additionalStatusFields,omitempty"`
 }
 
 // ResourceStatus defines the observed state of Resource.
@@ -51,10 +56,6 @@ type ResourceStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// SourceReference references the source of the resource.
-	// +optional
-	Reference *SourceReference `json:"reference,omitempty"`
-
 	// +optional
 	Resource *ResourceInfo `json:"resource,omitempty"`
 
@@ -66,6 +67,9 @@ type ResourceStatus struct {
 	// in the order the configuration data was applied.
 	// +optional
 	EffectiveOCMConfig []OCMConfiguration `json:"effectiveOCMConfig,omitempty"`
+
+	// +optional
+	Additional map[string]apiextensionsv1.JSON `json:"additional,omitempty"`
 }
 
 // +kubebuilder:object:root=true

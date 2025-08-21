@@ -8,14 +8,10 @@ import (
 	"strings"
 
 	"github.com/fluxcd/pkg/runtime/patch"
+	"github.com/google/cel-go/cel"
 	"github.com/mandelsoft/goutils/sliceutils"
 	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/types"
-	"ocm.software/ocm/api/oci"
-	"ocm.software/ocm/api/ocm/extensions/accessmethods/git"
-	"ocm.software/ocm/api/ocm/extensions/accessmethods/github"
-	"ocm.software/ocm/api/ocm/extensions/accessmethods/helm"
-	"ocm.software/ocm/api/ocm/extensions/accessmethods/ociartifact"
+	"ocm.software/ocm/api/ocm/compdesc"
 	"ocm.software/ocm/api/ocm/resolvers"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -26,13 +22,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	giturls "github.com/chainguard-dev/git-urls"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	ocmctx "ocm.software/ocm/api/ocm"
 	v1 "ocm.software/ocm/api/ocm/compdesc/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	ocmcel "github.com/open-component-model/ocm-k8s-toolkit/internal/cel"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/status"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/util"
@@ -41,6 +38,7 @@ import (
 type Reconciler struct {
 	*ocm.BaseReconciler
 
+	CELEnvironment  *cel.Env
 	OCMContextCache *ocm.ContextCache
 }
 
@@ -106,7 +104,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, con
 				requests := make([]reconcile.Request, 0, len(list.Items))
 				for _, resource := range list.Items {
 					requests = append(requests, reconcile.Request{
-						NamespacedName: types.NamespacedName{
+						NamespacedName: k8stypes.NamespacedName{
 							Namespace: resource.GetNamespace(),
 							Name:      resource.GetName(),
 						},
@@ -142,7 +140,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, con
 				}
 
 				return []reconcile.Request{
-					{NamespacedName: types.NamespacedName{
+					{NamespacedName: k8stypes.NamespacedName{
 						Namespace: resource.GetNamespace(),
 						Name:      resource.GetName(),
 					}},
@@ -157,7 +155,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, con
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=resources,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=resources/status,verbs=get;update;patch
 
-//nolint:cyclop,funlen,gocognit,maintidx // we do not want to cut the function at arbitrary points
+//nolint:cyclop,funlen,gocognit // we do not want to cut the function at arbitrary points
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("starting reconciliation")
@@ -319,22 +317,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to get resource access: %w", err)
 	}
 
-	accSpec, err := resourceAccess.Access()
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetOCMResourceFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to get resource access spec: %w", err)
-	}
-
-	// TODO: Must be adjusted when Kro supports CEL optionals (@frewilhelm)
-	//   (see https://github.com/open-component-model/ocm-project/issues/455)
-	sourceRef, err := getSourceRefForAccessSpec(ctx, accSpec, cv)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetReferenceFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to get source reference: %w", err)
-	}
-
 	// Get repository spec of actual component descriptor of the referenced resource
 	resCompVersRepoSpec := resourceCV.Repository().GetSpecification()
 	resCompVersRepoSpecData, err := json.Marshal(resCompVersRepoSpec)
@@ -345,7 +327,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}
 
 	// Update status
-	if err = setResourceStatus(ctx, configs, resource, resourceAccess, sourceRef, &v1alpha1.ComponentInfo{
+	if err = setResourceStatus(ctx, configs, resource, resourceAccess, &v1alpha1.ComponentInfo{
 		RepositorySpec: &apiextensionsv1.JSON{Raw: resCompVersRepoSpecData},
 		Component:      resourceCV.GetName(),
 		Version:        resourceCV.GetVersion(),
@@ -360,145 +342,143 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	return ctrl.Result{RequeueAfter: resource.GetRequeueAfter()}, nil
 }
 
-// getSourceRefForAccessSpec determines the source reference for a given access specification.
-// It supports multiple access types (e.g., OCI, Helm, GitHub, Git) and extracts relevant
-// information such as registry, repository, and reference details.
-func getSourceRefForAccessSpec(ctx context.Context, accSpec any, cv ocmctx.ComponentVersionAccess) (*v1alpha1.SourceReference, error) {
-	logger := log.FromContext(ctx)
-
-	switch access := accSpec.(type) {
-	case *ociartifact.AccessSpec:
-		ociURLDigest, err := access.GetOCIReference(cv)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get OCI reference: %w", err)
-		}
-
-		// TODO: Replace with another reference parser that is not ocm v1 lib (@frewilhelm)
-		//   Why is it needed in the first place?
-		//   Because if a reference consists of a tag and a digest, we need to store both of them.
-		//   Additionally, consuming resources, as a HelmRelease or OCIRepository, might need the tag, the digest, or
-		//   both of them. Thus, we have to offer some flexibility here.
-		//   ocm v2 lib offers a LooseReference that is able to parse a reference with a tag and a digest. However, the
-		//   functionality is placed in an internal package and not available for us (yet).
-		ref, err := oci.ParseRef(ociURLDigest)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse OCI reference: %w", err)
-		}
-
-		var tag string
-		if ref.Tag != nil {
-			tag = *ref.Tag
-		}
-
-		var digest string
-		if ref.Digest != nil {
-			digest = ref.Digest.String()
-		}
-
-		var reference string
-		if tag != "" && digest != "" {
-			reference = fmt.Sprintf("%s@%s", tag, digest)
-		}
-
-		return &v1alpha1.SourceReference{
-			Registry:   ref.Host,
-			Repository: strings.TrimLeft(ref.Repository, "/"),
-			Reference:  reference,
-			Tag:        tag,
-			Digest:     digest,
-		}, nil
-	case *helm.AccessSpec:
-		return &v1alpha1.SourceReference{
-			Registry:   access.HelmRepository,
-			Repository: access.GetChartName(),
-			Reference:  access.GetVersion(),
-		}, nil
-	case *github.AccessSpec:
-		gitHubURL, err := giturls.Parse(access.RepoURL)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse GitHub URL: %w", err)
-		}
-
-		// In the current OCM spec, the commit is mandatory, while the reference is optional. The ocm v1 lib ignores any
-		// reference. This is why, we set the coomit as reference.
-		// (See spec https://github.com/open-component-model/ocm-spec/blob/7bfbc171e814e73d6e95cfa07cc85813f89a1d44/doc/04-extensions/02-access-types/github.md)
-		return &v1alpha1.SourceReference{
-			Registry:   fmt.Sprintf("%s://%s", gitHubURL.Scheme, gitHubURL.Host),
-			Repository: gitHubURL.Path,
-			Reference:  access.Commit,
-		}, nil
-	case *git.AccessSpec:
-		gitURL, err := giturls.Parse(access.Repository)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse Git URL: %w", err)
-		}
-
-		reference, err := parseReference(access.Commit, access.Ref)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse reference: %w", err)
-		}
-
-		return &v1alpha1.SourceReference{
-			Registry:   fmt.Sprintf("%s://%s", gitURL.Scheme, gitURL.Host),
-			Repository: gitURL.Path,
-			Reference:  reference,
-		}, nil
-	default:
-		logger.Info("skip setting reference for resource as no source reference is available for this access type", "access type", access)
-
-		return nil, nil
-	}
-}
-
-func parseReference(commit, ref string) (string, error) {
-	var reference string
-	switch {
-	case commit != "":
-		reference = commit
-	case ref != "":
-		reference = ref
-	default:
-		return "", fmt.Errorf("no commit or reference specified")
-	}
-
-	return reference, nil
-}
-
-// setResourceStatus updates the resource status with the all required information.
+// setResourceStatus updates the resource status with all required information.
 func setResourceStatus(
 	ctx context.Context,
 	configs []v1alpha1.OCMConfiguration,
 	resource *v1alpha1.Resource,
-	resourceAccess ocmctx.ResourceAccess,
-	reference *v1alpha1.SourceReference,
+	access ocmctx.ResourceAccess,
 	component *v1alpha1.ComponentInfo,
 ) error {
 	log.FromContext(ctx).V(1).Info("updating resource status")
 
-	// Get the access spec from the resource access
-	accessSpec, err := resourceAccess.Access()
+	spec, err := access.Access()
 	if err != nil {
-		return fmt.Errorf("failed to get access spec: %w", err)
+		return fmt.Errorf("getting access spec: %w", err)
 	}
 
-	accessData, err := json.Marshal(accessSpec)
+	info, err := buildResourceInfo(access, spec)
 	if err != nil {
-		return fmt.Errorf("failed to marshal access spec: %w", err)
+		return fmt.Errorf("building resource info: %w", err)
 	}
+	resource.Status.Resource = info
 
-	resource.Status.Resource = &v1alpha1.ResourceInfo{
-		Name:          resourceAccess.Meta().Name,
-		Type:          resourceAccess.Meta().Type,
-		Version:       resourceAccess.Meta().Version,
-		ExtraIdentity: resourceAccess.Meta().ExtraIdentity,
-		Access:        apiextensionsv1.JSON{Raw: accessData},
-		Digest:        resourceAccess.Meta().Digest.String(),
+	if err := computeAdditionalStatusFields(ctx, compdesc.Resource{
+		ResourceMeta: *access.Meta(),
+		Access:       spec,
+	}, resource); err != nil {
+		return fmt.Errorf("evaluating additional status fields: %w", err)
 	}
 
 	resource.Status.EffectiveOCMConfig = configs
-
-	resource.Status.Reference = reference
 	resource.Status.Component = component
 
 	return nil
+}
+
+// buildResourceInfo constructs a ResourceInfo from the access metadata and spec.
+func buildResourceInfo(
+	access ocmctx.ResourceAccess,
+	spec any,
+) (*v1alpha1.ResourceInfo, error) {
+	meta := access.Meta()
+	raw, err := json.Marshal(spec)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling access spec: %w", err)
+	}
+
+	labels := convertLabels(meta.Labels)
+
+	return &v1alpha1.ResourceInfo{
+		Name:          meta.Name,
+		Type:          meta.Type,
+		Version:       meta.Version,
+		ExtraIdentity: meta.ExtraIdentity,
+		Access:        apiextensionsv1.JSON{Raw: raw},
+		Digest:        meta.Digest.String(),
+		Labels:        labels,
+	}, nil
+}
+
+// convertLabels maps metadata labels to API Label objects.
+func convertLabels(in compdesc.Labels) []v1alpha1.Label {
+	out := make([]v1alpha1.Label, len(in))
+	for i, l := range in {
+		out[i] = v1alpha1.Label{
+			Name:    l.Name,
+			Value:   apiextensionsv1.JSON{Raw: l.Value},
+			Version: l.Version,
+			Signing: l.Signing,
+		}
+		if l.Merge != nil {
+			out[i].Merge = &v1alpha1.MergeAlgorithmSpecification{
+				Algorithm: l.Merge.Algorithm,
+				Config:    apiextensionsv1.JSON{Raw: l.Merge.Config},
+			}
+		}
+	}
+
+	return out
+}
+
+// computeAdditionalStatusFields compiles and evaluates CEL expressions for additional fields.
+func computeAdditionalStatusFields(
+	ctx context.Context,
+	res compdesc.Resource,
+	resource *v1alpha1.Resource,
+) error {
+	env, err := ocmcel.BaseEnv()
+	if err != nil {
+		return fmt.Errorf("getting base CEL env: %w", err)
+	}
+	env, err = env.Extend(
+		cel.Variable("resource", cel.DynType),
+	)
+	if err != nil {
+		return fmt.Errorf("extending CEL env: %w", err)
+	}
+
+	resourceMap, err := toGenericMapViaJSON(res)
+	if err != nil {
+		return fmt.Errorf("preparing CEL variables: %w", err)
+	}
+
+	fields := resource.Spec.AdditionalStatusFields
+	resource.Status.Additional = make(map[string]apiextensionsv1.JSON, len(fields))
+
+	for name, expr := range fields {
+		ast, issues := env.Compile(expr)
+		if issues.Err() != nil {
+			return fmt.Errorf("compiling CEL %q: %w", name, issues.Err())
+		}
+		prog, err := env.Program(ast)
+		if err != nil {
+			return fmt.Errorf("building CEL program %q: %w", name, err)
+		}
+		val, _, err := prog.ContextEval(ctx, map[string]any{"resource": resourceMap})
+		if err != nil {
+			return fmt.Errorf("evaluating CEL %q: %w", name, err)
+		}
+		raw, err := json.Marshal(val)
+		if err != nil {
+			return fmt.Errorf("marshaling CEL result %q: %w", name, err)
+		}
+		resource.Status.Additional[name] = apiextensionsv1.JSON{Raw: raw}
+	}
+
+	return nil
+}
+
+// toGenericMapViaJSON marshals and unmarshals a struct into a generic map representation through JSON tags.
+func toGenericMapViaJSON(v any) (map[string]any, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+
+	return m, nil
 }

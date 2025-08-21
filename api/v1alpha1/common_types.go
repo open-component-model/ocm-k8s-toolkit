@@ -99,17 +99,28 @@ type ResourceInfo struct {
 	Access apiextensionsv1.JSON `json:"access,omitempty"`
 	// +required
 	Digest string `json:"digest,omitempty"`
+	// +optional
+	Labels []Label `json:"labels,omitempty"`
 }
 
-type SourceReference struct {
-	// +required
-	Registry string `json:"registry"`
-	// +required
-	Repository string `json:"repository"`
-	// +optional
-	Reference string `json:"reference"`
-	// +optional
-	Digest string `json:"digest"`
-	// +optional
-	Tag string `json:"tag"`
+type Label struct {
+	// Name is the unique name of the label.
+	Name string `json:"name"`
+	// Value is the json/yaml data of the label
+	Value apiextensionsv1.JSON `json:"value"`
+	// Version is the optional specification version of the attribute value
+	Version string `json:"version,omitempty"`
+	// Signing describes whether the label should be included into the signature
+	Signing bool `json:"signing,omitempty"`
+	// MergeAlgorithm optionally describes the desired merge handling used to
+	// merge the label value during a transfer.
+	Merge *MergeAlgorithmSpecification `json:"merge,omitempty"`
+}
+
+type MergeAlgorithmSpecification struct {
+	// Algorithm optionally described the Merge algorithm used to
+	// merge the label value during a transfer.
+	Algorithm string `json:"algorithm"`
+	// Config contains optional config for the merge algorithm.
+	Config apiextensionsv1.JSON `json:"config,omitempty"`
 }
