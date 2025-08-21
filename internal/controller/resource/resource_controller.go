@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/google/cel-go/cel"
@@ -302,6 +303,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
 	}
 
+	startRetrievingResource := time.Now()
+	logger.V(1).Info("retrieving resource", "component", fmt.Sprintf("%s:%s", cv.GetName(), cv.GetVersion()), "resource", resourceReference, "duration", time.Since(startRetrievingResource))
 	resourceAccess, resourceCV, err := ocm.GetResourceAccessForComponentVersion(
 		ctx,
 		session,
@@ -311,6 +314,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		resolvers.NewCompoundResolver(repo, octx.GetResolver()),
 		resource.Spec.SkipVerify,
 	)
+	logger.V(1).Info("retrieved resource", "component", fmt.Sprintf("%s:%s", cv.GetName(), cv.GetVersion()), "resource", resourceReference, "duration", time.Since(startRetrievingResource))
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetOCMResourceFailedReason, err.Error())
 

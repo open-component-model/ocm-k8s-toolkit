@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/fluxcd/pkg/runtime/patch"
@@ -265,7 +266,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to get component version: %w", err)
 	}
 
+	compareStart := time.Now()
+	logger.V(1).Info("comparing cached and live hashes", "component", component.Spec.Component, "version", version)
 	digestSpec, err := ocm.CompareCachedAndLiveHashes(cv, liveRepo, component.Spec.Component, version)
+	logger.V(1).Info("finished comparing cached and live hashes", "component", component.Spec.Component, "version", version, "duration", time.Since(compareStart))
 
 	switch {
 	case errors.Is(err, ocm.ErrComponentVersionHashMismatch):

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"hash"
+	"sync"
 
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
@@ -101,6 +102,8 @@ type ContextCache struct {
 	lookupClient ctrl.Reader // k8s client used for fetching configuration
 
 	logger logr.Logger
+
+	retrievalLock sync.Mutex
 }
 
 // Start initializes caches with eviction functions and blocks until context is done.
@@ -132,6 +135,8 @@ func (m *ContextCache) GetSession(opts *GetSessionOptions) (ocm.Context, ocm.Ses
 	if opts == nil {
 		return nil, nil, fmt.Errorf("opts is nil")
 	}
+	m.retrievalLock.Lock()
+	defer m.retrievalLock.Unlock()
 
 	// 1) Load config objects and hash them -> context key
 	configObjs, err := m.getConfigObjects(opts.OCMConfigurations)
@@ -195,6 +200,8 @@ func (m *ContextCache) getConfigObjects(configs []v1alpha1.OCMConfiguration) ([]
 
 func (m *ContextCache) getOrCreateContext(ctxHash string, configObjs []ctrl.Object) (ocm.Context, error) {
 	if cached, ok := m.contexts.Get(ctxHash); ok {
+		m.logger.V(1).Info("reusing cached ocm context", "hash", ctxHash)
+
 		return cached.(ocm.Context), nil //nolint:forcetypeassert // safe cast
 	}
 	m.logger.V(1).Info("creating new ocm context", "hash", ctxHash)
@@ -236,6 +243,8 @@ func (m *ContextCache) getOrCreateSession(key sessionKey, octx ocm.Context) ocm.
 	if cached, ok := m.sessions.Get(key); ok {
 		s := cached.(ocm.Session) //nolint:forcetypeassert // safe cast
 		if !s.IsClosed() {
+			m.logger.V(1).Info("reusing cached ocm session", "context", key.ctxHash, "repo", key.repoHash)
+
 			return s
 		}
 		m.logger.V(1).Info("replacing close ocm session", "context", key.ctxHash, "repo", key.repoHash)
