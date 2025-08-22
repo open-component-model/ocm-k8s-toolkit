@@ -2,16 +2,18 @@ package component
 
 import (
 	"context"
+	"crypto"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/goutils/sliceutils"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
-	"ocm.software/ocm/api/datacontext"
+	"ocm.software/ocm/api/ocm/compdesc"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -20,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	mandelerrors "github.com/mandelsoft/goutils/errors"
 	ocmctx "ocm.software/ocm/api/ocm"
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -32,6 +35,8 @@ import (
 // Reconciler reconciles a Component object.
 type Reconciler struct {
 	*ocm.BaseReconciler
+
+	OCMContextCache *ocm.ContextCache
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -141,7 +146,7 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 // +kubebuilder:rbac:groups="",resources=serviceaccounts/token,verbs=create
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-//nolint:cyclop,funlen,gocognit // we do not want to cut the function at arbitrary points
+//nolint:funlen // we do not want to cut the function at arbitrary points
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("starting reconciliation")
@@ -157,52 +162,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	}(ctx)
 
 	if !component.GetDeletionTimestamp().IsZero() {
-		// The component should only be deleted if no resource exists that references that component.
-		resourceList := &v1alpha1.ResourceList{}
-		if err := r.List(ctx, resourceList, &client.ListOptions{
-			FieldSelector: fields.OneTermEqualSelector(
-				resourceIndex,
-				client.ObjectKeyFromObject(component).Name,
-			),
-		}); err != nil {
-			status.MarkNotReady(r.EventRecorder, component, v1alpha1.DeletionFailedReason, err.Error())
-
-			return ctrl.Result{}, fmt.Errorf("failed to list resource: %w", err)
-		}
-
-		if len(resourceList.Items) > 0 {
-			var names []string
-			for _, res := range resourceList.Items {
-				names = append(names, fmt.Sprintf("%s/%s", res.Namespace, res.Name))
-			}
-
-			msg := fmt.Sprintf(
-				"component cannot be removed as resources are still referencing it: %s",
-				strings.Join(names, ","),
-			)
-			status.MarkNotReady(r.EventRecorder, component, v1alpha1.DeletionFailedReason, msg)
-
-			return ctrl.Result{}, errors.New(msg)
-		}
-
-		if updated := controllerutil.RemoveFinalizer(component, v1alpha1.ComponentFinalizer); updated {
-			if err := r.Update(ctx, component); err != nil {
-				status.MarkNotReady(r.EventRecorder, component, v1alpha1.DeletionFailedReason, err.Error())
-
-				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
-			}
-
-			return ctrl.Result{}, nil
-		}
-
-		status.MarkNotReady(
-			r.EventRecorder,
-			component,
-			v1alpha1.DeletionFailedReason,
-			"component is being deleted and still has existing finalizers",
-		)
-
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, r.reconcileDelete(ctx, component)
 	}
 
 	if updated := controllerutil.AddFinalizer(component, v1alpha1.ComponentFinalizer); updated {
@@ -245,15 +205,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	// DefaultContext is essentially the same as the extended context created here. The difference is, if we
 	// register a new type at an extension point (e.g. a new access type), it's only registered at this exact context
 	// instance and not at the global default context variable.
-	octx := ocmctx.New(datacontext.MODE_EXTENDED)
-	defer func() {
-		err = octx.Finalize()
-	}()
-
-	session := ocmctx.NewSession(datacontext.NewSession())
-	// automatically close the session when the ocm context is closed in the above defer
-	octx.Finalizer().Close(session)
-
 	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), component)
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
@@ -261,26 +212,43 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to get effective config: %w", err)
 	}
 
-	verifications, err := ocm.GetVerifications(ctx, r.GetClient(), component)
+	octx, session, err := r.OCMContextCache.GetSession(&ocm.GetSessionOptions{
+		RepositorySpecification: repo.Spec.RepositorySpec,
+		OCMConfigurations:       configs,
+		VerificationProvider:    component,
+	})
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to get verifications: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get session: %w", err)
 	}
-
-	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs, verifications)
-	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.ConfigureContextFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to configure context: %w", err)
-	}
+	logger = logger.WithValues("ocmContext", octx.GetId())
 
 	spec, err := octx.RepositorySpecForConfig(repo.Spec.RepositorySpec.Raw, nil)
 	if err != nil {
-		logger.Error(err, "failed to parse repository spec")
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetComponentVersionFailedReason, "RepositorySpec is invalid")
+		status.MarkNotReady(r.GetEventRecorder(), component, v1alpha1.GetComponentVersionFailedReason, err.Error())
 
-		return ctrl.Result{}, fmt.Errorf("failed to parse repository spec: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get repository spec: %w", err)
+	}
+
+	// We need a "live", aka not cached, repository access. This is because
+	// even though the cached version is mostly good for other controllers, it is the component controllers
+	// responsibility to check if the cached version is still valid, or if we need to retrieve a new version.
+	// We need to do this because the cached version might be outdated.
+	liveRepo, err := octx.RepositoryForSpec(spec)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetComponentVersionFailedReason, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to get live repository access: %w", err)
+	}
+	defer func() {
+		err = errors.Join(err, liveRepo.Close())
+	}()
+	version, err := r.DetermineEffectiveVersionFromLiveRepo(ctx, component, session, liveRepo)
+	if err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to determine effective version: %w", err)
 	}
 
 	repository, err := session.LookupRepository(octx, spec)
@@ -289,28 +257,36 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 		return ctrl.Result{}, fmt.Errorf("failed looking up repository: %w", err)
 	}
-
-	c, err := session.LookupComponent(repository, component.Spec.Component)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetComponentVersionFailedReason, "Component not found in repository")
-
-		return ctrl.Result{}, fmt.Errorf("failed looking up component: %w", err)
-	}
-
-	version, err := r.DetermineEffectiveVersion(ctx, component, session, repository, c)
-	if err != nil {
-		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to determine effective version: %w", err)
-	}
-
-	cv, err := session.LookupComponentVersion(repository, c.GetName(), version)
-	if err != nil {
-		// this version has to exist (since it was found in GetLatestVersion) and therefore, this is most likely a
-		// static error where requeueing does not make sense
+	cv, err := session.LookupComponentVersion(repository, component.Spec.Component, version)
+	switch {
+	case mandelerrors.IsErrNotFound(err):
+		// If we are here, then the component version was not found in the cached session, but in the live repo.
+		// In this case we know the session is outdated, so forcefully close it and re-open it on the next reconcile.
+		return ctrl.Result{}, fmt.Errorf("cached component version access was not found and cached session needed to be invalidated: %w", errors.Join(err, session.Close()))
+	case err != nil:
 		status.MarkNotReady(r.EventRecorder, component, v1alpha1.GetComponentVersionFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to get component version: %w", err)
+	}
+
+	compareStart := time.Now()
+	logger.V(1).Info("comparing cached and live hashes", "component", component.Spec.Component, "version", version)
+	digestSpec, err := ocm.CompareCachedAndLiveHashes(cv, liveRepo, component.Spec.Component, version,
+		compdesc.JsonNormalisationV3, crypto.SHA256,
+	)
+	logger.V(1).Info("finished comparing cached and live hashes", "component", component.Spec.Component, "version", version, "duration", time.Since(compareStart))
+
+	switch {
+	case errors.Is(err, ocm.ErrComponentVersionHashMismatch):
+		// If we are here, then the component version was found in the cache, but under a different hash.
+		// In this case we know the session is outdated, so forcefully close it and re-open it on the next reconcile.
+		log.FromContext(ctx).Info("cached component version access was found, but under a different hash, closing session and re-opening it on the next reconcile")
+
+		return ctrl.Result{}, errors.Join(err, session.Close())
+	case err != nil:
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.CheckVersionFailedReason, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to compare cached and live hashes: %w", err)
 	}
 
 	if _, err := ocm.VerifyComponentVersion(ctx, cv, sliceutils.Transform(component.Spec.Verify, func(verify v1alpha1.Verification) string {
@@ -326,6 +302,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		RepositorySpec: repo.Spec.RepositorySpec,
 		Component:      component.Spec.Component,
 		Version:        version,
+		Digest:         digestSpec,
 	}
 
 	component.Status.EffectiveOCMConfig = configs
@@ -335,15 +312,71 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	return ctrl.Result{RequeueAfter: component.GetRequeueAfter()}, nil
 }
 
-func (r *Reconciler) DetermineEffectiveVersion(ctx context.Context, component *v1alpha1.Component,
-	session ocmctx.Session, repo ocmctx.Repository, c ocmctx.ComponentAccess,
-) (string, error) {
-	versions, err := c.ListVersions()
+func (r *Reconciler) reconcileDelete(ctx context.Context, component *v1alpha1.Component) error {
+	// The component should only be deleted if no resource exists that references that component.
+	resourceList := &v1alpha1.ResourceList{}
+	if err := r.List(ctx, resourceList, &client.ListOptions{
+		FieldSelector: fields.OneTermEqualSelector(
+			resourceIndex,
+			client.ObjectKeyFromObject(component).Name,
+		),
+	}); err != nil {
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.DeletionFailedReason, err.Error())
+
+		return fmt.Errorf("failed to list resource: %w", err)
+	}
+
+	if len(resourceList.Items) > 0 {
+		var names []string
+		for _, res := range resourceList.Items {
+			names = append(names, fmt.Sprintf("%s/%s", res.Namespace, res.Name))
+		}
+
+		msg := fmt.Sprintf(
+			"component cannot be removed as resources are still referencing it: %s",
+			strings.Join(names, ","),
+		)
+		status.MarkNotReady(r.EventRecorder, component, v1alpha1.DeletionFailedReason, msg)
+
+		return errors.New(msg)
+	}
+
+	if updated := controllerutil.RemoveFinalizer(component, v1alpha1.ComponentFinalizer); updated {
+		if err := r.Update(ctx, component); err != nil {
+			status.MarkNotReady(r.EventRecorder, component, v1alpha1.DeletionFailedReason, err.Error())
+
+			return fmt.Errorf("failed to remove finalizer: %w", err)
+		}
+
+		return nil
+	}
+
+	status.MarkNotReady(
+		r.EventRecorder,
+		component,
+		v1alpha1.DeletionFailedReason,
+		"component is being deleted and still has existing finalizers",
+	)
+
+	return nil
+}
+
+func (r *Reconciler) DetermineEffectiveVersionFromLiveRepo(ctx context.Context, component *v1alpha1.Component,
+	session ocmctx.Session, liveRepo ocmctx.Repository,
+) (_ string, err error) {
+	liveComponentAccess, err := liveRepo.LookupComponent(component.Spec.Component)
+	if err != nil {
+		return "", fmt.Errorf("failed to lookup component: %w", err)
+	}
+	defer func() {
+		err = errors.Join(err, liveComponentAccess.Close())
+	}()
+	versions, err := liveComponentAccess.ListVersions()
 	if err != nil {
 		return "", fmt.Errorf("failed to list versions: %w", err)
 	}
 	if len(versions) == 0 {
-		return "", fmt.Errorf("component %s not found in repository", c.GetName())
+		return "", fmt.Errorf("component %s not found in repository", liveComponentAccess.GetName())
 	}
 	filter, err := ocm.RegexpFilter(component.Spec.SemverFilter)
 	if err != nil {
@@ -375,13 +408,13 @@ func (r *Reconciler) DetermineEffectiveVersion(ctx context.Context, component *v
 	case v1alpha1.DowngradePolicyEnforce:
 		return latestSemver.Original(), nil
 	case v1alpha1.DowngradePolicyAllow:
-		reconciledcv, err := session.LookupComponentVersion(repo, c.GetName(), currentSemver.Original())
+		reconciledcv, err := session.LookupComponentVersion(liveRepo, liveComponentAccess.GetName(), currentSemver.Original())
 		if err != nil {
 			return "", reconcile.TerminalError(fmt.Errorf("failed to get reconciled component version to check"+
 				" downgradability: %w", err))
 		}
 
-		latestcv, err := session.LookupComponentVersion(repo, c.GetName(), latestSemver.Original())
+		latestcv, err := session.LookupComponentVersion(liveRepo, liveComponentAccess.GetName(), latestSemver.Original())
 		if err != nil {
 			return "", fmt.Errorf("failed to get component version: %w", err)
 		}

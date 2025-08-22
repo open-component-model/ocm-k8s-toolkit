@@ -34,6 +34,7 @@ var testEnv *envtest.Environment
 var recorder record.EventRecorder
 var ctx context.Context
 var cancel context.CancelFunc
+var ocmContextCache *ocm.ContextCache
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -105,13 +106,17 @@ var _ = BeforeSuite(func() {
 		}
 	}()
 
+	ocmContextCache = ocm.NewContextCache("shared_ocm_context_cache", 100, 100, k8sManager.GetClient(), GinkgoLogr)
+	Expect(k8sManager.Add(ocmContextCache)).To(Succeed())
+
 	Expect((&Reconciler{
 		BaseReconciler: &ocm.BaseReconciler{
 			Client:        k8sManager.GetClient(),
 			Scheme:        testEnv.Scheme,
 			EventRecorder: recorder,
 		},
-	}).SetupWithManager(ctx, k8sManager)).To(Succeed())
+		OCMContextCache: ocmContextCache,
+	}).SetupWithManager(ctx, k8sManager, 1)).To(Succeed())
 
 	go func() {
 		defer GinkgoRecover()

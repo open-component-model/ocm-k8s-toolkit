@@ -87,6 +87,9 @@ var _ = BeforeSuite(func() {
 	ctx, cancel := context.WithCancel(context.Background())
 	DeferCleanup(cancel)
 
+	ocmContextCache := ocm.NewContextCache("shared_ocm_context_cache", 100, 100, k8sManager.GetClient(), GinkgoLogr)
+	Expect(k8sManager.Add(ocmContextCache)).To(Succeed())
+
 	repositoryKey = "metadata.name"
 	// Register reconcilers
 	Expect((&Reconciler{
@@ -98,6 +101,7 @@ var _ = BeforeSuite(func() {
 				IncludeObject: true,
 			},
 		},
+		OCMContextCache: ocmContextCache,
 	}).SetupWithManager(ctx, k8sManager)).To(Succeed())
 
 	go func() {

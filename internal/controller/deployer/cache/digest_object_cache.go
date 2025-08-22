@@ -23,6 +23,9 @@ func MustRegisterMetrics(registerer prometheus.Registerer) {
 func RegisterMetrics(registerer prometheus.Registerer) error {
 	return errors.Join(
 		registerer.Register(objectCacheSize),
+		registerer.Register(missCount),
+		registerer.Register(hitCount),
+		registerer.Register(evictCount),
 	)
 }
 
@@ -38,6 +41,10 @@ func init() {
 	hitCount = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "cache_hit_total",
 		Help: "number of cache hits",
+	}, []string{"name"})
+	evictCount = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "cache_evict_total",
+		Help: "number of cache evictions",
 	}, []string{"name"})
 }
 

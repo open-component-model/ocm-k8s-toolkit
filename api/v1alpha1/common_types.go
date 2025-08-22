@@ -81,6 +81,9 @@ type ComponentInfo struct {
 	Component string `json:"component,omitempty"`
 	// +required
 	Version string `json:"version,omitempty"`
+	// Digest information of the Component, if available as per OCM specification.
+	// +optional
+	Digest *ocmv1.DigestSpec `json:"digest,omitempty"`
 }
 
 type ResourceInfo struct {

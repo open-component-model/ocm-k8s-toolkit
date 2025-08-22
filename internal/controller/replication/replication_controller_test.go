@@ -60,8 +60,6 @@ var _ = Describe("Replication Controller", func() {
 		)
 
 		var (
-			ctx       context.Context
-			cancel    context.CancelFunc
 			namespace *corev1.Namespace
 			env       *ocmbuilder.Builder
 		)
@@ -77,14 +75,10 @@ var _ = Describe("Replication Controller", func() {
 		var replNamespacedName types.NamespacedName
 
 		var iteration = 0
-		var maxTimeToReconcile = 5 * time.Minute
 
-		BeforeEach(func() {
+		BeforeEach(func(ctx SpecContext) {
 			env = ocmbuilder.NewBuilder(environment.FileSystem(osfs.OsFs))
 			DeferCleanup(env.Cleanup)
-
-			ctx, cancel = context.WithCancel(context.Background())
-			DeferCleanup(cancel)
 
 			if namespace == nil {
 				namespace = &corev1.Namespace{
@@ -109,10 +103,7 @@ var _ = Describe("Replication Controller", func() {
 			}
 		})
 
-		AfterEach(func() {
-		})
-
-		It("should be properly reflected in the history", func() {
+		It("should be properly reflected in the history", func(ctx SpecContext) {
 			By("Create source CTF")
 			sourcePath := GinkgoT().TempDir()
 
@@ -133,6 +124,7 @@ var _ = Describe("Replication Controller", func() {
 			By("Simulate component controller")
 			component.Status.Component = *newTestComponentInfo(compOCMName, compVersion, sourceSpecData)
 			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
+			ocmContextCache.Clear()
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
 			By("Create target CTF")
@@ -145,18 +137,21 @@ var _ = Describe("Replication Controller", func() {
 			By("Simulate repository controller for target repository")
 			targetRepo.Spec.RepositorySpec.Raw = *targetSpecData
 			conditions.MarkTrue(targetRepo, meta.ReadyCondition, "ready", "")
+			ocmContextCache.Clear()
 			Expect(k8sClient.Status().Update(ctx, targetRepo)).To(Succeed())
 
 			By("Create and reconcile Replication resource")
 			replication := newTestReplication(testNamespace, replResourceName, compResourceName, targetRepoResourceName)
 			Expect(k8sClient.Create(ctx, replication)).To(Succeed())
 
-			replication = &v1alpha1.Replication{}
-			Eventually(func() bool {
-				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
-				// TODO: with IsReady only the test flickers. Why is it not sufficient???
-				return conditions.IsReady(replication) && replication.Status.ObservedGeneration > 0
-			}).WithTimeout(maxTimeToReconcile).Should(BeTrue())
+			Eventually(func(g Gomega, ctx context.Context) {
+				replication = &v1alpha1.Replication{}
+				g.Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
+				g.Expect(replication.Status).ToNot(BeNil())
+				g.Expect(replication.Status.Conditions).ToNot(BeNil())
+				g.Expect(conditions.IsReady(replication)).To(BeTrue())
+				g.Expect(replication.Status.ObservedGeneration).To(BeNumerically(">", 0))
+			}).WithContext(ctx).Should(Succeed())
 
 			Expect(replication.Status.History).To(HaveLen(1))
 			Expect(replication.Status.History[0].Component).To(Equal(compOCMName))
@@ -175,16 +170,17 @@ var _ = Describe("Replication Controller", func() {
 			By("Simulate component controller discovering the newer version")
 			component.Status.Component = *newTestComponentInfo(compOCMName, compNewVersion, sourceSpecData)
 			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
+			ocmContextCache.Clear()
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
 			By("Expect Replication controller to transfer the new version within the interval")
-			waitingTime := replication.GetRequeueAfter() + maxTimeToReconcile
 			replication = &v1alpha1.Replication{}
-			Eventually(func() bool {
-				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
+			Eventually(func(g Gomega, ctx context.Context) {
+				g.Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
 				// Wait for the second entry in the history
-				return conditions.IsReady(replication) && len(replication.Status.History) == 2
-			}).WithTimeout(waitingTime).Should(BeTrue())
+				g.Expect(conditions.IsReady(replication)).To(BeTrue())
+				g.Expect(replication.Status.History).To(HaveLen(2))
+			}).WithContext(ctx).Should(Succeed())
 
 			// Expect see the new component version in the history
 			Expect(replication.Status.History[1].Version).To(Equal(compNewVersion))
@@ -196,7 +192,7 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Delete(ctx, sourceRepo)).To(Succeed())
 		})
 
-		It("should be possible to configure transfer options", func() {
+		It("should be possible to configure transfer options", func(ctx SpecContext) {
 
 			By("Create source CTF")
 			sourcePath := GinkgoT().TempDir()
@@ -218,6 +214,7 @@ var _ = Describe("Replication Controller", func() {
 			By("Simulate component controller")
 			component.Status.Component = *newTestComponentInfo(compOCMName, compVersion, sourceSpecData)
 			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
+			ocmContextCache.Clear()
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
 			By("Create target CTF")
@@ -230,6 +227,7 @@ var _ = Describe("Replication Controller", func() {
 			By("Simulate repository controller for target repository")
 			targetRepo.Spec.RepositorySpec.Raw = *targetSpecData
 			conditions.MarkTrue(targetRepo, meta.ReadyCondition, "ready", "")
+			ocmContextCache.Clear()
 			Expect(k8sClient.Status().Update(ctx, targetRepo)).To(Succeed())
 
 			By("Create ConfigMap with transfer options")
@@ -250,10 +248,11 @@ var _ = Describe("Replication Controller", func() {
 
 			By("Wait for reconciliation to run")
 			replication = &v1alpha1.Replication{}
-			Eventually(func() bool {
-				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
-				return conditions.IsReady(replication) && len(replication.Status.History) == 1
-			}).WithTimeout(maxTimeToReconcile).Should(BeTrue())
+			Eventually(func(g Gomega, ctx context.Context) {
+				g.Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
+				g.Expect(conditions.IsReady(replication)).To(BeTrue())
+				g.Expect(replication.Status.History).To(HaveLen(1))
+			}).WithContext(ctx).Should(Succeed())
 
 			// Expect to see the transfered component version in the history
 			Expect(replication.Status.History[0].Version).To(Equal(compVersion))
@@ -271,7 +270,7 @@ var _ = Describe("Replication Controller", func() {
 			Expect(k8sClient.Delete(ctx, sourceRepo)).To(Succeed())
 		})
 
-		It("transfer errors should be properly reflected in the history", func() {
+		It("transfer errors should be properly reflected in the history", func(ctx SpecContext) {
 			By("Create source CTF")
 			sourcePath := GinkgoT().TempDir()
 
@@ -293,6 +292,7 @@ var _ = Describe("Replication Controller", func() {
 			By("Simulate component controller")
 			component.Status.Component = *newTestComponentInfo(compOCMName, compVersion, sourceSpecData)
 			conditions.MarkTrue(component, meta.ReadyCondition, "ready", "")
+			ocmContextCache.Clear()
 			Expect(k8sClient.Status().Update(ctx, component)).To(Succeed())
 
 			By("Create target CTF")
@@ -305,6 +305,7 @@ var _ = Describe("Replication Controller", func() {
 			By("Simulate repository controller for target repository")
 			targetRepo.Spec.RepositorySpec.Raw = *targetSpecData
 			conditions.MarkTrue(targetRepo, meta.ReadyCondition, "ready", "")
+			ocmContextCache.Clear()
 			Expect(k8sClient.Status().Update(ctx, targetRepo)).To(Succeed())
 
 			By("Create and reconcile Replication resource")
@@ -321,13 +322,13 @@ var _ = Describe("Replication Controller", func() {
 			prevStartTime := replication.Status.History[0].StartTime
 			expectedErrorMsg := "cannot lookup component version in source repository: component version \"" + compOCMName + ":" + compVersion + "\" not found"
 
-			Eventually(func(ctx context.Context) bool {
-				Expect(conditions.IsReady(replication)).To(BeFalse(), "Expect replication to fail")
-				Expect(len(replication.Status.History)).To(Equal(1), "Expect history to only contain one entry")
+			Eventually(func(g Gomega, ctx context.Context) bool {
+				g.Expect(conditions.IsReady(replication)).To(BeFalse(), "Expect replication to fail")
+				g.Expect(len(replication.Status.History)).To(Equal(1), "Expect history to only contain one entry")
 
 				historyEntry := replication.Status.History[0]
-				Expect(historyEntry.Success).To(BeFalse())
-				Expect(historyEntry.Error).To(HavePrefix(expectedErrorMsg))
+				g.Expect(historyEntry.Success).To(BeFalse())
+				g.Expect(historyEntry.Error).To(HavePrefix(expectedErrorMsg))
 
 				// If the current StartTime is after the stored StartTime, we know that another Reconciliation was
 				// processed
@@ -337,10 +338,10 @@ var _ = Describe("Replication Controller", func() {
 
 				// Get an update of the replication object
 				replication = &v1alpha1.Replication{}
-				Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, replNamespacedName, replication)).To(Succeed())
 
 				return false
-			}, "10s").WithContext(ctx).Should(BeTrue())
+			}).WithContext(ctx).Should(BeTrue())
 
 			// Check that the other fields are properly set.
 			Expect(replication.Status.History[0].Component).To(Equal(compOCMName))

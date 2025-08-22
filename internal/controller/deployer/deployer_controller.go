@@ -16,7 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/utils/ptr"
-	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/compdesc"
 	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
 	"ocm.software/ocm/api/ocm/resolvers"
@@ -72,6 +71,8 @@ type Reconciler struct {
 	resourceWatches func(parent client.Object) []client.Object
 
 	DownloadCache cache.DigestObjectCache[string, []client.Object]
+
+	OCMContextCache *ocm.ContextCache
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
@@ -250,29 +251,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("deployer is being deleted, waiting for resource watches to be removed")
 	}
 
-	octx := ocmctx.New(datacontext.MODE_EXTENDED)
-	session := ocmctx.NewSession(datacontext.NewSession())
-	defer func() {
-		err = errors.Join(err, octx.Finalize())
-	}()
-
-	// automatically close the session when the ocm context is closed in the above defer
-	octx.Finalizer().Close(session)
-
-	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), deployer)
-	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), deployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to get effective config: %w", err)
-	}
-
-	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs)
-	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), deployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to configure context: %w", err)
-	}
-
 	resourceNamespace := deployer.Spec.ResourceRef.Namespace
 	if resourceNamespace == "" {
 		resourceNamespace = deployer.GetNamespace()
@@ -334,15 +312,6 @@ func (r *Reconciler) DownloadResourceWithOCM(
 	deployer *deliveryv1alpha1.Deployer,
 	resource *deliveryv1alpha1.Resource,
 ) (objs []client.Object, err error) {
-	octx := ocmctx.New(datacontext.MODE_EXTENDED)
-	session := ocmctx.NewSession(datacontext.NewSession())
-	defer func() {
-		err = errors.Join(err, octx.Finalize())
-	}()
-
-	// automatically close the session when the ocm context is closed in the above defer
-	octx.Finalizer().Close(session)
-
 	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), deployer)
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), deployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
@@ -350,11 +319,14 @@ func (r *Reconciler) DownloadResourceWithOCM(
 		return nil, fmt.Errorf("failed to get effective config: %w", err)
 	}
 
-	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs)
+	octx, session, err := r.OCMContextCache.GetSession(&ocm.GetSessionOptions{
+		RepositorySpecification: resource.Status.Component.RepositorySpec,
+		OCMConfigurations:       configs,
+	})
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), deployer, deliveryv1alpha1.ConfigureContextFailedReason, err.Error())
 
-		return nil, fmt.Errorf("failed to configure context: %w", err)
+		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
 
 	spec, err := octx.RepositorySpecForConfig(resource.Status.Component.RepositorySpec.Raw, nil)

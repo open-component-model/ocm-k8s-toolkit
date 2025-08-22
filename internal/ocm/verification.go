@@ -25,7 +25,7 @@ type Verification struct {
 	PublicKey []byte
 }
 
-func GetVerifications(ctx context.Context, client ctrl.Client,
+func GetVerifications(ctx context.Context, client ctrl.Reader,
 	obj v1alpha1.VerificationProvider,
 ) ([]Verification, error) {
 	verifications := obj.GetVerifications()
@@ -69,7 +69,7 @@ func VerifyComponentVersion(ctx context.Context, cv ocm.ComponentVersionAccess, 
 	logger := log.FromContext(ctx).WithName("signature-validation")
 
 	if len(sigs) == 0 || cv == nil {
-		logger.Info("no signatures passed, skipping validation")
+		logger.V(1).Info("no signatures passed, skipping validation")
 
 		return nil, nil
 	}

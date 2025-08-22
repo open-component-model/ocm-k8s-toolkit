@@ -6,16 +6,17 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/google/cel-go/cel"
 	"github.com/mandelsoft/goutils/sliceutils"
 	"k8s.io/apimachinery/pkg/fields"
-	"ocm.software/ocm/api/datacontext"
 	"ocm.software/ocm/api/ocm/compdesc"
 	"ocm.software/ocm/api/ocm/resolvers"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -37,14 +38,16 @@ import (
 
 type Reconciler struct {
 	*ocm.BaseReconciler
-	CELEnvironment *cel.Env
+
+	CELEnvironment  *cel.Env
+	OCMContextCache *ocm.ContextCache
 }
 
 var _ ocm.Reconciler = (*Reconciler)(nil)
 
 var deployerIndex = "Resource.spec.resourceRef"
 
-func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, concurrency int) error {
 	// Build index for resources that reference a component to make sure that we get notified when a component changes.
 	const fieldName = "spec.componentRef.name"
 	if err := mgr.GetFieldIndexer().IndexField(ctx, &v1alpha1.Resource{}, fieldName, func(obj client.Object) []string {
@@ -144,13 +147,16 @@ func (r *Reconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) err
 					}},
 				}
 			})).
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: concurrency,
+		}).
 		Complete(r)
 }
 
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=resources,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=delivery.ocm.software,resources=resources/status,verbs=get;update;patch
 
-//nolint:cyclop,funlen,gocognit,maintidx // we do not want to cut the function at arbitrary points
+//nolint:cyclop,funlen,gocognit // we do not want to cut the function at arbitrary points
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("starting reconciliation")
@@ -243,38 +249,25 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 
 		return ctrl.Result{}, fmt.Errorf("failed to get ready component: %w", err)
 	}
-
 	logger.Info("reconciling resource")
-	octx := ocmctx.New(datacontext.MODE_EXTENDED)
-	defer func() {
-		err = octx.Finalize()
-	}()
-
-	session := ocmctx.NewSession(datacontext.NewSession())
-	// automatically close the session when the ocm context is closed in the above defer
-	octx.Finalizer().Close(session)
-
 	configs, err := ocm.GetEffectiveConfig(ctx, r.GetClient(), resource)
-	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.ConfigureContextFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to get effective config: %w", err)
-	}
-
-	// If the component holds verification information, we need to add it to the ocm context
-	verifications, err := ocm.GetVerifications(ctx, r.GetClient(), component)
-	if err != nil {
-		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.ConfigureContextFailedReason, err.Error())
-
-		return ctrl.Result{}, fmt.Errorf("failed to get verifications: %w", err)
-	}
-
-	err = ocm.ConfigureContext(ctx, octx, r.GetClient(), configs, verifications)
 	if err != nil {
 		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.ConfigureContextFailedReason, err.Error())
 
 		return ctrl.Result{}, fmt.Errorf("failed to configure context: %w", err)
 	}
+
+	octx, session, err := r.OCMContextCache.GetSession(&ocm.GetSessionOptions{
+		RepositorySpecification: component.Status.Component.RepositorySpec,
+		OCMConfigurations:       configs,
+		VerificationProvider:    component,
+	})
+	if err != nil {
+		status.MarkNotReady(r.GetEventRecorder(), resource, v1alpha1.ConfigureContextFailedReason, err.Error())
+
+		return ctrl.Result{}, fmt.Errorf("failed to get session: %w", err)
+	}
+	logger = logger.WithValues("ocmContext", octx.GetId())
 
 	spec, err := octx.RepositorySpecForConfig(component.Status.Component.RepositorySpec.Raw, nil)
 	if err != nil {
@@ -311,6 +304,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		ReferencePath: resource.Spec.Resource.ByReference.ReferencePath,
 	}
 
+	startRetrievingResource := time.Now()
+	logger.V(1).Info("retrieving resource", "component", fmt.Sprintf("%s:%s", cv.GetName(), cv.GetVersion()), "reference", resourceReference, "duration", time.Since(startRetrievingResource))
 	resourceAccess, resourceCV, err := ocm.GetResourceAccessForComponentVersion(
 		ctx,
 		session,
@@ -320,6 +315,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 		resolvers.NewCompoundResolver(repo, octx.GetResolver()),
 		resource.Spec.SkipVerify,
 	)
+	logger.V(1).Info("retrieved resource", "component", fmt.Sprintf("%s:%s", cv.GetName(), cv.GetVersion()), "reference", resourceReference, "duration", time.Since(startRetrievingResource))
 	if err != nil {
 		status.MarkNotReady(r.EventRecorder, resource, v1alpha1.GetOCMResourceFailedReason, err.Error())
 

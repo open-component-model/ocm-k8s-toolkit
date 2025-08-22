@@ -710,6 +710,7 @@ var _ = Describe("Resource Controller", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			componentObj.Spec.Semver = componentVersionUpdated
+			ocmContextCache.Clear()
 			Expect(k8sClient.Update(ctx, componentObj)).To(Succeed())
 
 			// component spec update should trigger resource reconciliation

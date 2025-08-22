@@ -11,7 +11,6 @@ import (
 	"ocm.software/ocm/api/credentials/extensions/repositories/dockerconfig"
 	"ocm.software/ocm/api/ocm"
 	"ocm.software/ocm/api/ocm/compdesc"
-	"ocm.software/ocm/api/ocm/extensions/attrs/signingattr"
 	"ocm.software/ocm/api/utils/runtime"
 	"ocm.software/ocm/api/utils/semverutils"
 
@@ -22,59 +21,6 @@ import (
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
 )
-
-// ConfigureContext adds all the configuration data found in the config maps and
-// secrets specified through the OCMConfiguration objects to the ocm context.
-// NOTE: ConfigMaps and Secrets are slightly different, since secrets can also
-// contain credentials in form of docker config jsons.
-//
-// Furthermore, it registers the public keys for the verification of signatures
-// in the ocm context.
-func ConfigureContext(ctx context.Context, octx ocm.Context, client ctrl.Client,
-	configs []v1alpha1.OCMConfiguration, verifications ...[]Verification,
-) error {
-	var obj ctrl.Object
-	for _, config := range configs {
-		switch config.Kind {
-		case "Secret":
-			obj = &corev1.Secret{}
-		case "ConfigMap":
-			obj = &corev1.ConfigMap{}
-		default:
-			return fmt.Errorf("unsupported configuration kind: %s", config.Kind)
-		}
-
-		err := client.Get(ctx, ctrl.ObjectKey{
-			Namespace: config.Namespace,
-			Name:      config.Name,
-		}, obj)
-		if err != nil {
-			return fmt.Errorf("configure context cannot fetch %s "+
-				"%s/%s: %w", config.Kind, config.Namespace, config.Name, err)
-		}
-		err = ConfigureContextForSecretOrConfigMap(ctx, octx, obj)
-		if err != nil {
-			return err
-		}
-	}
-
-	// If we were to introduce further functionality into the controller that
-	// have to use the signing registry we retrieve from the context here
-	// (e.g. signing), we would have to change the coding so that the signing
-	// operation and the verification operation use dedicated signing stores.
-	if len(verifications) > 0 {
-		if len(verifications) > 1 {
-			return fmt.Errorf("only one verification list is supported")
-		}
-		signInfo := signingattr.Get(octx)
-
-		for _, v := range verifications[0] {
-			signInfo.RegisterPublicKey(v.Signature, v.PublicKey)
-		}
-	}
-
-	return nil
-}
 
 // ConfigureContextForSecretOrConfigMap wraps ConfigureContextForSecret and
 // ConfigureContextForConfigMaps to configure the ocm context.
