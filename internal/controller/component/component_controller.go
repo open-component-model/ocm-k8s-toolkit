@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	eventv1 "github.com/fluxcd/pkg/apis/event/v1beta1"
 	"github.com/fluxcd/pkg/runtime/patch"
 	"github.com/mandelsoft/goutils/sliceutils"
 	"k8s.io/apimachinery/pkg/fields"
@@ -27,6 +28,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/open-component-model/ocm-k8s-toolkit/api/v1alpha1"
+	"github.com/open-component-model/ocm-k8s-toolkit/internal/event"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/ocm"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/status"
 	"github.com/open-component-model/ocm-k8s-toolkit/internal/util"
@@ -277,6 +279,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Re
 	logger.V(1).Info("finished comparing cached and live hashes", "component", component.Spec.Component, "version", version, "duration", time.Since(compareStart))
 
 	switch {
+	case errors.Is(err, ocm.ErrUnstableHash):
+		event.New(r.EventRecorder, component, nil, eventv1.EventSeverityInfo, err.Error())
+		err = nil
 	case errors.Is(err, ocm.ErrComponentVersionHashMismatch):
 		// If we are here, then the component version was found in the cache, but under a different hash.
 		// In this case we know the session is outdated, so forcefully close it and re-open it on the next reconcile.
