@@ -18,8 +18,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var ErrUnstableHash = errors.New("unstable hash detected")
-var ErrComponentVersionIsNotNormalizeable = errors.New("component version is not normalizeable (possibly due to missing digests on component references or resources")
+var (
+	ErrUnstableHash                       = errors.New("unstable hash detected")
+	ErrComponentVersionIsNotNormalizeable = errors.New("component version is not normalizeable (possibly due to missing digests on component references or resources")
+)
 
 var ErrComponentVersionHashMismatch = errors.New("component version hash mismatch")
 
